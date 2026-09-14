@@ -1,0 +1,175 @@
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ข้อมูลบริษัท เช่น EV7, GI
+model Company {
+  id          String    @id @default(uuid())
+  code        String    @unique // EV7, GI
+  name        String
+  taxId       String?
+  address     String?
+  branches    Branch[]
+  vehicles    Vehicle[]
+  jobs        Job[]
+  invoices    Invoice[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ข้อมูลสาขา
+model Branch {
+  id          String    @id @default(uuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  code        String    // เช่น BKK-HO, BKK-RNG, BKK-RM9
+  name        String    // พระราม 9, รังสิต, เชียงใหม่
+  address     String?
+  phone       String?
+  vehicles    Vehicle[]
+  jobs        Job[]     @relation("BranchJobs")
+  originJobs  Job[]     @relation("OriginBranchJobs")
+  destJobs    Job[]     @relation("DestBranchJobs")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([companyId, code])
+}
+
+// ข้อมูล Supplier คู่ค้า
+model Supplier {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  taxId       String?
+  phone       String?
+  email       String?
+  address     String?
+  services    String    // เช่น "CAR_WASH,VEHICLE_SLIDE"
+  bankName    String?
+  bankAccount String?
+  isActive    Boolean   @default(true)
+  jobs        Job[]
+  invoices    Invoice[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ข้อมูลรถยนต์ Interface มาจาก External Stock System
+model Vehicle {
+  vin             String        @id // VIN เป็น Unique ID
+  model           String        // เช่น BYD Atto 3, MG4, NETA V
+  color           String
+  companyId       String
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  currentBranchId String
+  currentBranch   Branch        @relation(fields: [currentBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vehicleType     String        // Sedan, SUV, Commercial, Hatchback
+  licensePlate    String?
+  mileage         Int?
+  status          String        @default("AVAILABLE") // AVAILABLE, IN_TRANSIT, IN_WASH
+  jobs            Job[]
+  carWashItems    CarWashItem[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+// งานสั่งงาน Supplier
+model Job {
+  id               String        @id @default(uuid())
+  jobNumber        String        @unique // CW-202609-001, VS-202609-001
+  jobType          String        // CAR_WASH, VEHICLE_SLIDE
+  status           String        @default("PENDING_SUPPLIER") // PENDING_SUPPLIER, IN_PROGRESS, WAITING_APPROVAL, APPROVED, REJECTED, INVOICED, CANCELLED
+  companyId        String
+  company          Company       @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId         String
+  branch           Branch        @relation("BranchJobs", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplierId       String
+  supplier         Supplier      @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  // Vehicle Slide ข้อมูล
+  vin              String?
+  vehicle          Vehicle?      @relation(fields: [vin], references: [vin], onDelete: NoAction, onUpdate: NoAction)
+  originBranchId   String?
+  originBranch     Branch?       @relation("OriginBranchJobs", fields: [originBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  destBranchId     String?
+  destBranch       Branch?       @relation("DestBranchJobs", fields: [destBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pickupDateTime   DateTime?
+  deliveryDateTime DateTime?
+  contactPerson    String?
+  contactPhone     String?
+  transferReason   String?
+
+  // Car Wash รายการรถหลายคัน
+  carWashItems     CarWashItem[]
+
+  // การตรวจรับและส่งมอบ
+  requestedBy      String?
+  completedAt      DateTime?
+  approvedAt       DateTime?
+  approvedBy       String?
+  rejectReason     String?
+
+  // รูปหลักฐาน
+  evidences        JobEvidence[]
+
+  // ค่าใช้จ่ายและการวางบิล
+  estimatedCost    Float?
+  actualCost       Float?
+  invoiceId        String?
+  invoice          Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+// รายการคันรถใน Car Wash Order
+model CarWashItem {
+  id              String   @id @default(uuid())
+  jobId           String
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  vin             String
+  vehicle         Vehicle  @relation(fields: [vin], references: [vin], onDelete: NoAction, onUpdate: NoAction)
+  actualWashDate  DateTime // วันที่ปฏิบัติงานจริงของแต่ละ VIN
+  washType        String   @default("STANDARD") // STANDARD, DEEP_CLEAN, POLISH
+  unitPrice       Float    @default(150.0)
+  status          String   @default("PENDING")
+  remarks         String?
+}
+
+// รูปภาพหลักฐานงาน
+model JobEvidence {
+  id           String   @id @default(uuid())
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  vin          String?
+  photoUrl     String
+  caption      String?
+  evidenceType String   // BEFORE, AFTER, PICKUP, DROPOFF
+  uploadedAt   DateTime @default(now())
+}
+
+// ใบวางบิล Invoice
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique // INV-EV7-202609-001, INV-GI-202609-001
+  supplierId    String
+  supplier      Supplier      @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status        String        @default("SUBMITTED") // DRAFT, SUBMITTED, VERIFIED, PAID, CANCELLED
+  invoiceDate   DateTime      @default(now())
+  dueDate       DateTime?
+  subtotal      Float
+  vatAmount     Float
+  totalAmount   Float
+  notes         String?
+  jobs          Job[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}

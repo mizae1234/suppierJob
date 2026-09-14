@@ -1,0 +1,188 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useApp } from '@/context/AppContext';
+import { UserRole, CompanyCode } from '@/types';
+import { 
+  Search, 
+  Bell, 
+  User, 
+  Building, 
+  Wrench, 
+  Shield, 
+  Check, 
+  ChevronDown,
+  Menu,
+  X
+} from 'lucide-react';
+
+export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobileMenuToggle }) => {
+  const router = useRouter();
+  const {
+    currentRole,
+    setCurrentRole,
+    currentCompany,
+    setCurrentCompany,
+    currentBranchId,
+    setCurrentBranchId,
+    currentSupplierId,
+    setCurrentSupplierId,
+    branches,
+    suppliers,
+    waitingApprovalCount,
+  } = useApp();
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/jobs?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  // Branches filtered by current company if company selected
+  const availableBranches = branches.filter(b => {
+    if (currentCompany === 'ALL') return true;
+    const compCode = b.code.startsWith('EV7') ? 'EV7' : 'GI';
+    return compCode === currentCompany;
+  });
+
+  return (
+    <header className="fixed top-0 left-0 lg:left-72 right-0 h-20 bg-white/95 backdrop-blur-md border-b border-emerald-950/10 z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden">
+      {/* Mobile Menu Toggle & Search Bar */}
+      <div className="flex items-center gap-3 flex-1 max-w-xl">
+        <button
+          onClick={onMobileMenuToggle}
+          className="lg:hidden p-2 rounded-xl text-gray-700 hover:bg-[#f4f9f5] border border-gray-200"
+          aria-label="Toggle Navigation"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <form onSubmit={handleSearchSubmit} className="relative w-full">
+          <Search className="w-4 h-4 text-emerald-800/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="ค้นหาเลข VIN / รหัสงาน (Job No.) / ทะเบียนรถ..."
+            className="w-full h-10 pl-10 pr-4 rounded-full bg-[#f4f9f5] border border-emerald-950/10 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0f5238] focus:bg-white transition-all shadow-xs"
+          />
+        </form>
+      </div>
+
+      {/* Control Center & Role Context Switcher */}
+      <div className="flex items-center gap-3 shrink-0">
+        {/* Role Selector Pill */}
+        <div className="hidden sm:flex items-center p-1 rounded-full bg-[#f4f9f5] border border-emerald-950/10 shadow-xs">
+          {(['ADMIN', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
+            const isActive = currentRole === role;
+            const labels = {
+              ADMIN: 'Admin ส่วนกลาง',
+              BRANCH: 'สาขา (Branch)',
+              SUPPLIER: 'Supplier คู่ค้า',
+            };
+            return (
+              <button
+                key={role}
+                onClick={() => setCurrentRole(role)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  isActive
+                    ? 'bg-[#0f5238] text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {labels[role]}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Company Selector Pill */}
+        <div className="hidden md:flex items-center p-1 rounded-full bg-[#f4f9f5] border border-emerald-950/10 shadow-xs">
+          {(['ALL', 'EV7', 'GI'] as const).map((comp) => {
+            const isActive = currentCompany === comp;
+            return (
+              <button
+                key={comp}
+                onClick={() => setCurrentCompany(comp)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  isActive
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {comp === 'ALL' ? 'ทุกบริษัท' : comp}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Branch Selector Dropdown (When Role is BRANCH) */}
+        {currentRole === 'BRANCH' && (
+          <div className="relative">
+            <select
+              value={currentBranchId}
+              onChange={(e) => setCurrentBranchId(e.target.value)}
+              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full bg-[#eaf5ee] text-[#0f5238] border border-emerald-700/20 focus:outline-none focus:ring-2 focus:ring-emerald-700 appearance-none cursor-pointer"
+            >
+              {availableBranches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        )}
+
+        {/* Supplier Selector Dropdown (When Role is SUPPLIER) */}
+        {currentRole === 'SUPPLIER' && (
+          <div className="relative">
+            <select
+              value={currentSupplierId}
+              onChange={(e) => setCurrentSupplierId(e.target.value)}
+              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full bg-[#eaf5ee] text-[#0f5238] border border-emerald-700/20 focus:outline-none focus:ring-2 focus:ring-emerald-700 appearance-none cursor-pointer"
+            >
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        )}
+
+        {/* Pending Approval Notification Icon */}
+        <button
+          onClick={() => router.push('/approvals')}
+          className="relative p-2 rounded-full text-gray-600 hover:text-[#0f5238] hover:bg-[#f4f9f5] transition-colors"
+          title="งานรอตรวจรับ"
+        >
+          <Bell className="w-5 h-5" />
+          {waitingApprovalCount > 0 && (
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white animate-pulse" />
+          )}
+        </button>
+
+        {/* User Profile Avatar */}
+        <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#0f5238] to-[#52b788] flex items-center justify-center text-white shadow-xs font-semibold text-xs">
+            {currentRole === 'ADMIN' ? 'AD' : currentRole === 'BRANCH' ? 'BR' : 'SP'}
+          </div>
+          <div className="hidden xl:block text-left">
+            <p className="text-xs font-bold text-gray-900 leading-tight">
+              {currentRole === 'ADMIN' ? 'ผู้ดูแลระบบส่วนกลาง' : currentRole === 'BRANCH' ? 'เจ้าหน้าที่สาขา' : 'คู่ค้า Supplier'}
+            </p>
+            <p className="text-[11px] text-gray-500">
+              {currentCompany === 'ALL' ? 'EV7 & GI Fleet' : currentCompany}
+            </p>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
