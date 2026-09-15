@@ -19,7 +19,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Wrench,
-  X
+  X,
+  Smartphone
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
   const pathname = usePathname();
   const { 
     currentRole, 
+    setCurrentRole,
     currentCompany, 
     activeBranch, 
     activeSupplier, 
@@ -98,6 +100,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       badge: null,
     },
     {
+      label: 'โหมดมือถือ (Mobile App)',
+      href: '/mobile',
+      icon: Smartphone,
+      badge: 'Supplier',
+      badgeColor: 'bg-emerald-100 text-[#0f5238]',
+    },
+    {
       label: 'ตั้งค่าระบบ',
       href: '/settings',
       icon: Settings,
@@ -105,7 +114,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
     },
   ];
 
-  const handleLinkClick = () => {
+  const handleLinkClick = (href: string) => {
+    if (href === '/mobile') {
+      setCurrentRole('SUPPLIER');
+    }
     if (isMobile && onClose) {
       onClose();
     }
@@ -120,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       <div className="flex flex-col h-full overflow-hidden">
         {/* Brand Header */}
         <div className="h-20 px-6 flex items-center justify-between border-b border-emerald-950/5 shrink-0">
-          <Link href="/" onClick={handleLinkClick} className="flex items-center gap-3">
+          <Link href="/" onClick={() => handleLinkClick('/')} className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#0f5238] to-[#2d6a4f] flex items-center justify-center shadow-[0_4px_16px_rgba(15,82,56,0.25)] text-white shrink-0">
               <Truck className="w-5 h-5 text-white" />
             </div>
@@ -191,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
                 <Link
                   key={item.href}
                   href={item.href}
-                  onClick={handleLinkClick}
+                  onClick={() => handleLinkClick(item.href)}
                   className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     isActive
                       ? 'bg-[#0f5238] text-white shadow-[0_4px_16px_rgba(15,82,56,0.25)] font-semibold'

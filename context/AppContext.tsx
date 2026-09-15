@@ -80,6 +80,7 @@ interface AppContextType {
   invoices: Invoice[];
 
   // Helpers / Computed
+  isLoaded: boolean;
   activeBranch?: Branch;
   activeSupplier?: Supplier;
   filteredJobs: Job[];
@@ -472,6 +473,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        isLoaded,
         currentRole,
         setCurrentRole,
         currentCompany,

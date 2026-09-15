@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { UserRole, CompanyCode } from '@/types';
@@ -14,7 +15,8 @@ import {
   Check, 
   ChevronDown,
   Menu,
-  X
+  X,
+  Smartphone
 } from 'lucide-react';
 
 export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobileMenuToggle }) => {
@@ -87,7 +89,12 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             return (
               <button
                 key={role}
-                onClick={() => setCurrentRole(role)}
+                onClick={() => {
+                  setCurrentRole(role);
+                  if (role === 'SUPPLIER') {
+                    router.push('/mobile');
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                   isActive
                     ? 'bg-[#0f5238] text-white shadow-xs'
@@ -155,6 +162,17 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         )}
+
+        {/* Mobile Portal Shortcut Button */}
+        <Link
+          href="/mobile"
+          onClick={() => setCurrentRole('SUPPLIER')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-200/80 hover:bg-[#0f5238] hover:text-white transition-all text-xs font-semibold shadow-xs"
+          title="เปิดหน้าจอมือถือสำหรับคนขับ / ช่าง Supplier"
+        >
+          <Smartphone className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">โหมดมือถือ (Mobile)</span>
+        </Link>
 
         {/* Pending Approval Notification Icon */}
         <button

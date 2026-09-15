@@ -55,9 +55,11 @@ SQL Server จะจัดเก็บเวลาแบบเวลาไทย
    - สร้างงาน Car Wash และ Vehicle Slide
    - ตรวจรับงาน (Approve / Reject ขอให้แก้ไข)
 3. **Supplier (คู่ค้าผู้รับจ้าง)**:
+   - **เข้าสู่ Mobile Portal อัตโนมัติ (`/mobile`)**: หากผู้ใช้งานมีบทบาทเป็น `SUPPLIER` ไม่ว่าจะมาจากการเลือก Role ใน Header, หน้า Settings, หรือค่าที่บันทึกไว้ใน LocalStorage ระบบ `AppShell` จะ Redirect เข้าสู่ Mobile Version ทันทีโดยไม่ต้องเปิดเมนู
    - เห็นเฉพาะงานที่ได้รับมอบหมายตาม Supplier ID ของตน
    - รับงาน (`IN_PROGRESS`), แนบรูปหลักฐานก่อน-หลัง, ส่งงานตรวจรับ (`WAITING_APPROVAL`)
    - ออกใบวางบิล (Create Invoice) สำหรับงานที่ผ่านการตรวจรับแล้ว
+   - มีระบบสลับสิทธิ์กลับสู่ Desktop Portal (Admin/Branch) ในแท็บโปรไฟล์ (Profile Tab) เพื่อความสะดวกในการทดสอบระบบ
 
 ---
 
@@ -110,9 +112,33 @@ SQL Server จะจัดเก็บเวลาแบบเวลาไทย
 3. **No Duplicate Invoicing**: งานที่ถูกวางบิลแล้วจะมี `invoiceId` กำกับ และสถานะเปลี่ยนเป็น `INVOICED` ทันที ป้องกันการนำ Job เดิมมาเบิกเงินซ้ำ
 4. **Tax Calculation**: ระบบคำนวณยอดรวมก่อนภาษี (Subtotal), VAT 7%, และยอดสุทธิ (Grand Total) พร้อมเลขบัญชีธนาคารสำหรับโอนเงิน
 
+### Flow 5: Mobile Supplier Portal Operations (สำหรับคนขับและช่างหน้างาน)
+ออกแบบเฉพาะสำหรับอุปกรณ์มือถือผ่านหน้า `/mobile` โดยถอดแบบดีไซน์จาก Stitch Design (`EV7 OPERATIONS PORTAL - SUPPLIER & BRANCH`):
+1. **งานใหม่ (`PENDING_SUPPLIER`)**: ช่าง/คนขับกดปุ่ม **"กดรับงาน (เริ่มงาน)"** ➜ สถานะเปลี่ยนเป็น `IN_PROGRESS`
+2. **ส่งมอบงาน (`IN_PROGRESS`)**: แตะปุ่ม **"ถ่ายรูปส่งงาน"** ➜ เปิด Modal ให้ถ่ายรูปจริงจากกล้อง อัปโหลดไฟล์ หรือเลือกรูปตัวอย่างด่วน พร้อมระบุประเภทรูป (ก่อนทำ / หลังทำ / รับรถ / ส่งมอบ) ➜ สถานะเปลี่ยนเป็น `WAITING_APPROVAL` (รอสาขาตรวจรับ)
+3. **งานที่โดนปฏิเสธ (`REJECTED`)**: หน้าจอแสดงแบนเนอร์สีแดงระบุเหตุผลที่สาขาไม่อนุมัติ (เช่น "ยังมีคราบฝังแน่น") พร้อมปุ่ม **"ถ่ายรูปแก้ไขส่งงาน"** เพื่อส่งตรวจรับซ้ำ
+4. **การวางบิลผ่านมือถือ (`APPROVED` ➜ `INVOICED`)**: ในแท็บ **"วางบิล"** ช่างสามารถติ๊กเลือกงานที่ผ่านเกณฑ์ ระบบคำนวณยอดเงิน Subtotal + VAT 7% และยอดสุทธิ Grand Total แบบ Real-time พร้อมกดออกเลข Invoice ได้ทันที
+
 ---
 
-## 5. โครงสร้างไฟล์ในโปรเจกต์ (File & Component Structure)
+## 5. Shared Utilities Layer (Admin & Mobile Single Source of Truth)
+
+เพื่อให้ทั้งระบบ Desktop Admin และ Mobile Portal ใช้ตรรกะเดียวกัน ไม่มีการเขียนสไตล์สี หรือสูตรคำนวณซ้ำซ้อน ระบบจึงแยก Utilities กลางไว้ใน `lib/`:
+1. **`lib/job-utils.ts`**:
+   - `JOB_STATUS_META` & `getJobStatusBadge(status)`: นิยาม Label ภาษาไทย, สีพื้นหลัง, สีข้อความ, สีกรอบ สำหรับทุกสถานะ (`PENDING_SUPPLIER`, `IN_PROGRESS`, `WAITING_APPROVAL`, `APPROVED`, `REJECTED`, `INVOICED`, `CANCELLED`)
+   - `getJobVehicleDisplay(job)`: รวมข้อมูลรถ (รุ่น, สี, VIN, จำนวนคัน) ทั้งงาน Car Wash และ Vehicle Slide ออกมาเป็นฟอร์แมตมาตรฐาน
+   - `getJobTotalCost(job)`: คืนค่ายอดเงินสุทธิ (Actual Cost หรือ Estimated Cost)
+   - `getJobTypeDisplay(jobType)`: ข้อมูลและสีของประเภทงาน Car Wash / Vehicle Slide
+2. **`lib/billing-utils.ts`**:
+   - `calculateBillingSummary(jobs)`: คำนวณ Subtotal, VAT (7%), และ Grand Total พร้อมกัน
+   - `formatCurrency(amount, options)`: จัดรูปแบบเงินบาทไทย เช่น `฿32,400` หรือ `฿32,400.00`
+   - `validateJobsForInvoicing(jobs, expectedCompany)`: ตรวจสอบความถูกต้องก่อนออกบิล (ต้องเป็น APPROVED, ห้ามวางบิลซ้ำ, แยกบริษัท EV7/GI เด็ดขาด)
+3. **`lib/date-utils.ts`**:
+   - `formatThaiDate`, `formatThaiDateTime`, `formatTimeOnly`: จัดการเวลาไทย (Bangkok UTC+7) ป้องกันปัญหา Double Timezone
+
+---
+
+## 6. โครงสร้างไฟล์และ Modular Components (File & Component Architecture)
 
 ```
 supplierJobManagement/
@@ -123,22 +149,47 @@ supplierJobManagement/
 ├── prisma/
 │   └── schema.prisma             # SQL Server Models & Constraints
 ├── types/
-│   └── index.ts                  # TypeScript interfaces & enums
+│   └── index.ts                  # TypeScript interfaces & enums (Job, Vehicle, etc.)
 ├── lib/
 │   ├── prisma.ts                 # Prisma Client singleton
 │   ├── mock-data.ts              # Seed data for EV7 & GI branches, cars, jobs
-│   └── date-utils.ts             # Safe Bangkok (UTC+7) date/time formatters
+│   ├── date-utils.ts             # Safe Bangkok (UTC+7) date/time formatters
+│   ├── job-utils.ts              # [SHARED] Status badges, vehicle summary, total cost
+│   └── billing-utils.ts          # [SHARED] Subtotal, VAT 7%, Grand total, invoice validation
 ├── context/
-│   └── AppContext.tsx            # Global state (Role, Company, Branch, CRUD)
+│   └── AppContext.tsx            # Global state (Role, Company, Branch, CRUD, LocalStorage)
 ├── components/
-│   └── layout/
-│       ├── Sidebar.tsx           # Responsive sidebar with exact route matching
-│       ├── Header.tsx            # Search, Role Switcher, Company Switcher
-│       └── AppShell.tsx          # Wrapper layout with mobile drawer
+│   ├── layout/
+│   │   ├── Sidebar.tsx           # Responsive desktop sidebar with exact route matching & Mobile link
+│   │   ├── Header.tsx            # Search, Role Switcher, Company Switcher, Mobile Portal CTA
+│   │   └── AppShell.tsx          # Wrapper layout (bypasses chrome on /mobile for native view)
+│   ├── dashboard/                # [MODULAR] Admin Desktop Dashboard Components
+│   │   ├── DashboardHeader.tsx          # Header title, date, company filter, quick create buttons
+│   │   ├── DashboardStatsCards.tsx      # 6 Key KPI summary cards (Total, In-Progress, Approvals, etc.)
+│   │   ├── WorkflowPipeline.tsx         # 5-step visual pipeline (Dispatched -> Invoiced)
+│   │   ├── UrgentApprovalsSection.tsx   # Highlight section for jobs waiting branch inspection
+│   │   ├── RecentJobsTable.tsx          # Table of latest dispatched jobs with status badges
+│   │   └── CompanyComparisonCards.tsx   # Side-by-side comparative analytics (EV7 vs GI Fleet)
+│   └── mobile/                   # [MODULAR] EV7 Operations Supplier Mobile Portal
+│       ├── MobileHeader.tsx             # iOS status simulation, EV7 CI logo, notification bell, avatar
+│       ├── SupplierGreeting.tsx         # Real-time Thai date, supplier name greeting, branch dropdown
+│       ├── ActionAlertBanner.tsx        # Urgent new job assigned alert banner
+│       ├── JobCounterGrid.tsx           # 5-slot KPI grid with interactive filter triggers
+│       ├── JobCard.tsx                  # Dedicated card for Car Wash & Slide with action buttons
+│       ├── RecentJobsSection.tsx        # Recent jobs list container on home tab
+│       ├── MyJobsTab.tsx                # Full job search & status filter tab
+│       ├── BillingTab.tsx               # Invoice selection, VAT 7% calculation, invoice history
+│       ├── ProfileTab.tsx               # Partner profile, banking info, switch supplier, desktop link
+│       ├── BottomNavBar.tsx             # Fixed bottom dock with central (+) quick submit button
+│       ├── SubmitEvidenceModal.tsx      # Camera/gallery upload modal with evidence type tagging
+│       ├── ViewEvidenceModal.tsx        # Photo lightbox gallery modal
+│       └── JobDetailDrawer.tsx          # Bottom drawer showing transfer route & vehicle list
 └── app/
     ├── globals.css               # Stitch theme design tokens & print media
     ├── layout.tsx                # Root layout with fonts & AppProvider
-    ├── page.tsx                  # Dashboard (KPIs, Pipeline, Urgent approvals)
+    ├── page.tsx                  # Clean controller for Admin Dashboard
+    ├── mobile/
+    │   └── page.tsx              # Clean controller for Mobile Supplier Portal
     ├── jobs/
     │   ├── page.tsx              # All Jobs (Table View & Kanban Board View)
     │   ├── create-car-wash/
@@ -156,13 +207,13 @@ supplierJobManagement/
     ├── reports/
     │   └── page.tsx              # Expense & volume analytics, CSV export
     └── settings/
-        └── page.tsx              # Role simulator, SQL Server guide, Data reset
+        └── page.tsx              # Role simulator, SQL Server guide, Mobile Portal card, Data reset
 ```
 
 ---
 
-## 6. แนวทางต่อยอดและพัฒนาในอนาคต (Next Steps & Integration)
+## 7. แนวทางต่อยอดและพัฒนาในอนาคต (Next Steps & Integration)
 
 1. **เชื่อมต่อ Live SQL Server**: นำ Connection String จริงใส่ใน `.env` และรัน `npx prisma db push`
 2. **เชื่อมต่อ External Stock API**: สร้าง Route Handler ใน `app/api/external-stock/route.ts` เพื่อดึงข้อมูล VIN แบบอัตโนมัติตามระยะเวลา (Cron / Webhook)
-3. **Cloud Object Storage สำหรับรูปถ่าย**: เสริม S3/Cloud Storage Adapter ในการอัปโหลดไฟล์รูปภาพจริงจากหน้างาน
+3. **Cloud Object Storage สำหรับรูปถ่าย**: เสริม S3/Cloud Storage Adapter ในการอัปโหลดไฟล์รูปภาพจริงจากหน้างานแทน Data URL / Presets

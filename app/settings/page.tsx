@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { UserRole, CompanyCode } from '@/types';
 import { 
@@ -13,10 +15,13 @@ import {
   CheckCircle2, 
   Server, 
   KeyRound,
-  Info
+  Info,
+  Smartphone,
+  ArrowRight
 } from 'lucide-react';
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { 
     currentRole, 
     setCurrentRole, 
@@ -114,12 +119,17 @@ DATABASE_URL=&quot;sqlserver://localhost:1433;database=SupplierJobDB;user=sa;pas
             {
               role: 'SUPPLIER' as UserRole,
               title: '3. Supplier คู่ค้า',
-              desc: 'ดูงานที่รับมอบหมาย แนบรูปหลักฐาน และออกใบวางบิล',
+              desc: 'ดูงานที่รับมอบหมาย แนบรูปหลักฐาน และออกใบวางบิล (เข้าสู่ Mobile Version)',
             },
           ]).map(item => (
             <div
               key={item.role}
-              onClick={() => setCurrentRole(item.role)}
+              onClick={() => {
+                setCurrentRole(item.role);
+                if (item.role === 'SUPPLIER') {
+                  router.push('/mobile');
+                }
+              }}
               className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-2 ${
                 currentRole === item.role
                   ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20'
@@ -170,6 +180,34 @@ DATABASE_URL=&quot;sqlserver://localhost:1433;database=SupplierJobDB;user=sa;pas
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Mobile Supplier Portal Card */}
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-[#0f5238] to-[#1b4332] text-white shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-white shrink-0">
+            <Smartphone className="w-6 h-6 text-emerald-300" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-white">หน้าจอมือถือ EV7 Supplier Portal</h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                Stitch Design
+              </span>
+            </div>
+            <p className="text-xs text-emerald-100/80 mt-0.5">
+              หน้าจอสำหรับคนขับรถสไลด์และช่างล้างรถ: อัปโหลดรูปภาพหลักฐาน ตรวจสอบงาน และวางบิลผ่านมือถือ
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/mobile"
+          className="flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-white hover:bg-emerald-50 text-[#0f5238] text-xs font-bold transition-all shadow-sm shrink-0 active:scale-98"
+        >
+          <span>เปิดหน้าจอมือถือ (/mobile)</span>
+          <ArrowRight className="w-4 h-4" />
+        </Link>
       </div>
 
       {/* Reset Mock Data Card */}
