@@ -43,7 +43,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       </div>
 
       {/* Action Controls & Company Pill */}
-      <div className="flex items-center gap-2.5 flex-wrap">
+      <div className="flex items-center gap-2.5 flex-nowrap shrink-0">
         {/* Multi-Company Selector Pill */}
         <div className="flex items-center bg-white p-1 rounded-full border border-emerald-950/10 shadow-xs">
           {(['ALL', 'EV7', 'GI'] as const).map(comp => (
