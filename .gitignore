@@ -40,3 +40,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# agent / AI generated
+AGENTS.md
+CLAUDE.md
+skill_code.md
