@@ -14,14 +14,7 @@ import {
   JobEvidence,
   CarWashItem 
 } from '@/types';
-import { 
-  INITIAL_COMPANIES, 
-  INITIAL_BRANCHES, 
-  INITIAL_SUPPLIERS, 
-  INITIAL_VEHICLES, 
-  INITIAL_JOBS, 
-  INITIAL_INVOICES 
-} from '@/lib/mock-data';
+// Mock data removed — app now starts with empty data
 
 interface CreateCarWashParams {
   companyCode: CompanyCode;
@@ -114,12 +107,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentBranchId, setCurrentBranchId] = useState<string>('br-ev7-rm9');
   const [currentSupplierId, setCurrentSupplierId] = useState<string>('sup-001');
 
-  const [companies] = useState<Company[]>(INITIAL_COMPANIES);
-  const [branches] = useState<Branch[]>(INITIAL_BRANCHES);
-  const [suppliers] = useState<Supplier[]>(INITIAL_SUPPLIERS);
-  const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);
-  const [jobs, setJobs] = useState<Job[]>(INITIAL_JOBS);
-  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
+  const [companies] = useState<Company[]>([]);
+  const [branches] = useState<Branch[]>([]);
+  const [suppliers] = useState<Supplier[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
   // Load from localStorage on mount
@@ -458,16 +451,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, invoice: newInvoice };
   };
 
-  // Action: Reset Demo Data
+  // Action: Reset Data
   const resetToDefaultData = () => {
     localStorage.clear();
-    setJobs(INITIAL_JOBS);
-    setVehicles(INITIAL_VEHICLES);
-    setInvoices(INITIAL_INVOICES);
+    setJobs([]);
+    setVehicles([]);
+    setInvoices([]);
     setCurrentRole('ADMIN');
     setCurrentCompany('ALL');
-    setCurrentBranchId('br-ev7-rm9');
-    setCurrentSupplierId('sup-001');
+    setCurrentBranchId('');
+    setCurrentSupplierId('');
   };
 
   return (
