@@ -93,7 +93,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, selectedCompany } = useAuth();
 
   const [currentRole, setCurrentRole] = useState<UserRole>('ADMIN');
   const [currentCompany, setCurrentCompany] = useState<'ALL' | CompanyCode>('ALL');
@@ -154,9 +154,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (user.branchId) setCurrentBranchId(user.branchId);
     if (user.supplierId) setCurrentSupplierId(user.supplierId);
 
-    // Set company based on user's role
+    // Set company based on user's role + login selection
     if (user.role === 'ADMIN') {
-      setCurrentCompany('ALL');
+      // If admin selected a specific company at login, use it; otherwise show ALL
+      setCurrentCompany(selectedCompany || 'ALL');
     } else if (user.companyCode) {
       setCurrentCompany(user.companyCode as CompanyCode);
     }

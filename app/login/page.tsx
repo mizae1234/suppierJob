@@ -86,7 +86,7 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
 
-    const result = await login(username.trim(), password);
+    const result = await login(username.trim(), password, company as 'EV7' | 'GI');
 
     if (!result.success) {
       setError(result.error || 'รหัสผ่านไม่ถูกต้อง');

@@ -21,7 +21,9 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  selectedCompany: 'EV7' | 'GI' | null;
+  setSelectedCompany: (company: 'EV7' | 'GI' | null) => void;
+  login: (username: string, password: string, company?: 'EV7' | 'GI') => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -30,6 +32,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedCompany, setSelectedCompany] = useState<'EV7' | 'GI' | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -71,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user, isLoading, pathname, router]);
 
-  const login = useCallback(async (username: string, password: string) => {
+  const login = useCallback(async (username: string, password: string, company?: 'EV7' | 'GI') => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -83,6 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (res.ok && data.success) {
         setUser(data.user);
+        if (company) setSelectedCompany(company);
         return { success: true };
       } else {
         return { success: false, error: data.error || 'เข้าสู่ระบบไม่สำเร็จ' };
@@ -108,6 +112,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isLoading,
         isAuthenticated: !!user,
+        selectedCompany,
+        setSelectedCompany,
         login,
         logout,
       }}
