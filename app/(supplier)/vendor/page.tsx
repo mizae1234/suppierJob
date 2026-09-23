@@ -60,7 +60,7 @@ export default function SupplierDashboardPage() {
       icon: ClipboardList,
       color: '#3b82f6',
       bg: '#eff6ff',
-      href: '/s/jobs?tab=new',
+      href: '/vendor/jobs?tab=new',
     },
     {
       label: 'กำลังทำ',
@@ -68,7 +68,7 @@ export default function SupplierDashboardPage() {
       icon: Clock,
       color: '#f59e0b',
       bg: '#fffbeb',
-      href: '/s/jobs?tab=progress',
+      href: '/vendor/jobs?tab=progress',
     },
     {
       label: 'รอตรวจรับ',
@@ -76,7 +76,7 @@ export default function SupplierDashboardPage() {
       icon: AlertCircle,
       color: '#ef4444',
       bg: '#fef2f2',
-      href: '/s/jobs?tab=waiting',
+      href: '/vendor/jobs?tab=waiting',
     },
     {
       label: 'ผ่านแล้ว',
@@ -84,7 +84,7 @@ export default function SupplierDashboardPage() {
       icon: CheckCircle2,
       color: theme.primary,
       bg: theme.badgeBg,
-      href: '/s/jobs?tab=approved',
+      href: '/vendor/jobs?tab=approved',
     },
   ];
 

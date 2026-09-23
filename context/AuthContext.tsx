@@ -61,21 +61,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isLoading) return;
 
     const isLoginPage = pathname === '/login';
-    const isSupplierRoute = pathname?.startsWith('/s');
+    const isSupplierRoute = pathname?.startsWith('/vendor');
 
     if (!user && !isLoginPage) {
       router.replace('/login');
     } else if (user && isLoginPage) {
       // Redirect based on role after login
       if (user.role === 'SUPPLIER') {
-        router.replace('/s');
+        router.replace('/vendor');
       } else {
         router.replace('/');
       }
     } else if (user && !isLoginPage) {
       // Prevent supplier from accessing admin routes
       if (user.role === 'SUPPLIER' && !isSupplierRoute) {
-        router.replace('/s');
+        router.replace('/vendor');
       }
     }
   }, [user, isLoading, pathname, router]);

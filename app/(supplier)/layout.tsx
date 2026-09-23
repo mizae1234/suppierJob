@@ -24,9 +24,9 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
   const supplierName = activeSupplier?.name || user?.supplierName || 'Supplier';
 
   const navItems = [
-    { label: 'หน้าแรก', href: '/s', icon: LayoutDashboard },
-    { label: 'รายการงาน', href: '/s/jobs', icon: ClipboardList },
-    { label: 'ใบวางบิล', href: '/s/invoices', icon: Receipt },
+    { label: 'หน้าแรก', href: '/vendor', icon: LayoutDashboard },
+    { label: 'รายการงาน', href: '/vendor/jobs', icon: ClipboardList },
+    { label: 'ใบวางบิล', href: '/vendor/invoices', icon: Receipt },
   ];
 
   return (
@@ -54,8 +54,8 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
           {/* Center: Nav Links */}
           <nav className="hidden sm:flex items-center gap-1">
             {navItems.map(item => {
-              const isActive = item.href === '/s'
-                ? pathname === '/s'
+              const isActive = item.href === '/vendor'
+                ? pathname === '/vendor'
                 : pathname?.startsWith(item.href);
               const Icon = item.icon;
               return (
@@ -101,8 +101,8 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
         {/* Mobile Nav Bar */}
         <div className="sm:hidden flex items-center justify-around border-t border-gray-100 py-1">
           {navItems.map(item => {
-            const isActive = item.href === '/s'
-              ? pathname === '/s'
+            const isActive = item.href === '/vendor'
+              ? pathname === '/vendor'
               : pathname?.startsWith(item.href);
             const Icon = item.icon;
             return (
