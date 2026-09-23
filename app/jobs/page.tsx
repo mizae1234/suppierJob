@@ -186,29 +186,29 @@ function JobsContent() {
   }, [activeJob, hasPrevJob, hasNextJob, currentJobIndex, previewPhotoUrl]);
 
   // Supplier action: Accept job
-  const handleAcceptJob = (jobId: string) => {
-    updateJobStatus(jobId, 'IN_PROGRESS');
+  const handleAcceptJob = async (jobId: string) => {
+    await updateJobStatus(jobId, 'IN_PROGRESS');
     if (selectedJob?.id === jobId) {
       setSelectedJob(prev => prev ? { ...prev, status: 'IN_PROGRESS' } : null);
     }
   };
 
   // Supplier action: Complete with photo
-  const handleCompleteJobSubmit = (e: React.FormEvent) => {
+  const handleCompleteJobSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showCompleteModal) return;
 
     const photo = evidencePhotoUrl.trim() || samplePhotos[0];
     const caption = evidenceCaption.trim() || 'งานเสร็จเรียบร้อย ตรวจสอบความสะอาดพร้อมส่งมอบ';
 
-    addJobEvidence(showCompleteModal.id, {
+    await addJobEvidence(showCompleteModal.id, {
       photoUrl: photo,
       caption,
       evidenceType,
       vin: showCompleteModal.vin || showCompleteModal.carWashItems?.[0]?.vin,
     });
 
-    updateJobStatus(showCompleteModal.id, 'WAITING_APPROVAL');
+    await updateJobStatus(showCompleteModal.id, 'WAITING_APPROVAL');
 
     setShowCompleteModal(null);
     setEvidencePhotoUrl('');
@@ -219,19 +219,19 @@ function JobsContent() {
   };
 
   // Branch action: Approve
-  const handleApprove = (jobId: string) => {
-    updateJobStatus(jobId, 'APPROVED', { approvedBy: 'สาขาผู้ตรวจรับ' });
+  const handleApprove = async (jobId: string) => {
+    await updateJobStatus(jobId, 'APPROVED', { approvedBy: 'สาขาผู้ตรวจรับ' });
     if (selectedJob?.id === jobId) {
       setSelectedJob(prev => prev ? { ...prev, status: 'APPROVED', approvedAt: new Date().toISOString() } : null);
     }
   };
 
   // Branch action: Reject
-  const handleRejectSubmit = (e: React.FormEvent) => {
+  const handleRejectSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showRejectModal) return;
 
-    updateJobStatus(showRejectModal.id, 'REJECTED', {
+    await updateJobStatus(showRejectModal.id, 'REJECTED', {
       rejectReason: rejectReason || 'งานไม่ผ่านเกณฑ์ ขอให้ช่างแก้ไขงานซ้ำ'
     });
 

@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/hooks/useTheme';
 import { UserRole, CompanyCode } from '@/types';
 import { 
   Search, 
@@ -16,11 +18,14 @@ import {
   ChevronDown,
   Menu,
   X,
-  Smartphone
+  Smartphone,
+  LogOut
 } from 'lucide-react';
 
 export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobileMenuToggle }) => {
   const router = useRouter();
+  const { logout, user } = useAuth();
+  const theme = useTheme();
   const {
     currentRole,
     setCurrentRole,
@@ -52,25 +57,34 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
   });
 
   return (
-    <header className="fixed top-0 left-0 lg:left-72 right-0 h-20 bg-white/95 backdrop-blur-md border-b border-emerald-950/10 z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden">
+    <header
+      className="fixed top-0 left-0 lg:left-72 right-0 h-20 bg-white/95 backdrop-blur-md border-b z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden transition-colors duration-300"
+      style={{ borderColor: theme.borderSoft }}
+    >
       {/* Mobile Menu Toggle & Search Bar */}
       <div className="flex items-center gap-3 flex-1 max-w-xl">
         <button
           onClick={onMobileMenuToggle}
-          className="lg:hidden p-2 rounded-xl text-gray-700 hover:bg-[#f4f9f5] border border-gray-200"
+          className="lg:hidden p-2 rounded-xl text-gray-700 border border-gray-200 transition-colors duration-200"
+          style={{ }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.bgSoft; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
           aria-label="Toggle Navigation"
         >
           <Menu className="w-5 h-5" />
         </button>
 
         <form onSubmit={handleSearchSubmit} className="relative w-full">
-          <Search className="w-4 h-4 text-emerald-800/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-300" style={{ color: theme.iconColor, opacity: 0.6 }} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="ค้นหาเลข VIN / รหัสงาน (Job No.) / ทะเบียนรถ..."
-            className="w-full h-10 pl-10 pr-4 rounded-full bg-[#f4f9f5] border border-emerald-950/10 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0f5238] focus:bg-white transition-all shadow-xs"
+            className="w-full h-10 pl-10 pr-4 rounded-full border text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:bg-white transition-all shadow-xs"
+            style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
+            onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 2px ${theme.primary}`; }}
+            onBlur={(e) => { e.currentTarget.style.boxShadow = ''; }}
           />
         </form>
       </div>
@@ -78,7 +92,10 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
       {/* Control Center & Role Context Switcher */}
       <div className="flex items-center gap-3 shrink-0">
         {/* Role Selector Pill */}
-        <div className="hidden sm:flex items-center p-1 rounded-full bg-[#f4f9f5] border border-emerald-950/10 shadow-xs">
+        <div
+          className="hidden sm:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
+          style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
+        >
           {(['ADMIN', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
             const isActive = currentRole === role;
             const labels = {
@@ -95,11 +112,12 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
                     router.push('/mobile');
                   }
                 }}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${
                   isActive
-                    ? 'bg-[#0f5238] text-white shadow-xs'
+                    ? 'text-white shadow-xs'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
+                style={isActive ? { backgroundColor: theme.primary } : {}}
               >
                 {labels[role]}
               </button>
@@ -108,18 +126,24 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
         </div>
 
         {/* Company Selector Pill */}
-        <div className="hidden md:flex items-center p-1 rounded-full bg-[#f4f9f5] border border-emerald-950/10 shadow-xs">
+        <div
+          className="hidden md:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
+          style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
+        >
           {(['ALL', 'EV7', 'GI'] as const).map((comp) => {
             const isActive = currentCompany === comp;
+            // Use specific color for active company button
+            const activeColor = comp === 'GI' ? '#1e3a5f' : comp === 'EV7' ? '#0f5238' : theme.primary;
             return (
               <button
                 key={comp}
                 onClick={() => setCurrentCompany(comp)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${
                   isActive
-                    ? 'bg-emerald-700 text-white shadow-xs'
+                    ? 'text-white shadow-xs'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
+                style={isActive ? { backgroundColor: activeColor } : {}}
               >
                 {comp === 'ALL' ? 'ทุกบริษัท' : comp}
               </button>
@@ -133,7 +157,12 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             <select
               value={currentBranchId}
               onChange={(e) => setCurrentBranchId(e.target.value)}
-              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full bg-[#eaf5ee] text-[#0f5238] border border-emerald-700/20 focus:outline-none focus:ring-2 focus:ring-emerald-700 appearance-none cursor-pointer"
+              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full border appearance-none cursor-pointer focus:outline-none transition-colors duration-300"
+              style={{
+                backgroundColor: theme.bgFooter,
+                color: theme.textPrimary,
+                borderColor: `${theme.primary}33`,
+              }}
             >
               {availableBranches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -141,7 +170,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300" style={{ color: theme.iconColor }} />
           </div>
         )}
 
@@ -151,7 +180,12 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             <select
               value={currentSupplierId}
               onChange={(e) => setCurrentSupplierId(e.target.value)}
-              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full bg-[#eaf5ee] text-[#0f5238] border border-emerald-700/20 focus:outline-none focus:ring-2 focus:ring-emerald-700 appearance-none cursor-pointer"
+              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full border appearance-none cursor-pointer focus:outline-none transition-colors duration-300"
+              style={{
+                backgroundColor: theme.bgFooter,
+                color: theme.textPrimary,
+                borderColor: `${theme.primary}33`,
+              }}
             >
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -159,7 +193,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
                 </option>
               ))}
             </select>
-            <ChevronDown className="w-3.5 h-3.5 text-emerald-700 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300" style={{ color: theme.iconColor }} />
           </div>
         )}
 
@@ -167,7 +201,20 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
         <Link
           href="/mobile"
           onClick={() => setCurrentRole('SUPPLIER')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-200/80 hover:bg-[#0f5238] hover:text-white transition-all text-xs font-semibold shadow-xs"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border hover:text-white transition-all text-xs font-semibold shadow-xs"
+          style={{
+            backgroundColor: theme.badgeBg,
+            color: theme.textPrimary,
+            borderColor: `${theme.primary}22`,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary;
+            (e.currentTarget as HTMLElement).style.color = '#fff';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = theme.badgeBg;
+            (e.currentTarget as HTMLElement).style.color = theme.textPrimary;
+          }}
           title="เปิดหน้าจอมือถือสำหรับคนขับ / ช่าง Supplier"
         >
           <Smartphone className="w-3.5 h-3.5" />
@@ -177,8 +224,16 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
         {/* Pending Approval Notification Icon */}
         <button
           onClick={() => router.push('/approvals')}
-          className="relative p-2 rounded-full text-gray-600 hover:text-[#0f5238] hover:bg-[#f4f9f5] transition-colors"
+          className="relative p-2 rounded-full text-gray-600 transition-colors"
           title="งานรอตรวจรับ"
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.color = theme.textPrimary;
+            (e.currentTarget as HTMLElement).style.backgroundColor = theme.bgSoft;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.color = '';
+            (e.currentTarget as HTMLElement).style.backgroundColor = '';
+          }}
         >
           <Bell className="w-5 h-5" />
           {waitingApprovalCount > 0 && (
@@ -186,19 +241,29 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
           )}
         </button>
 
-        {/* User Profile Avatar */}
+        {/* User Profile Avatar + Logout */}
         <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#0f5238] to-[#52b788] flex items-center justify-center text-white shadow-xs font-semibold text-xs">
-            {currentRole === 'ADMIN' ? 'AD' : currentRole === 'BRANCH' ? 'BR' : 'SP'}
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-xs font-semibold text-xs transition-colors duration-300"
+            style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
+          >
+            {user?.displayName?.charAt(0)?.toUpperCase() || (currentRole === 'ADMIN' ? 'AD' : currentRole === 'BRANCH' ? 'BR' : 'SP')}
           </div>
           <div className="hidden xl:block text-left">
             <p className="text-xs font-bold text-gray-900 leading-tight">
-              {currentRole === 'ADMIN' ? 'ผู้ดูแลระบบส่วนกลาง' : currentRole === 'BRANCH' ? 'เจ้าหน้าที่สาขา' : 'คู่ค้า Supplier'}
+              {user?.displayName || (currentRole === 'ADMIN' ? 'ผู้ดูแลระบบส่วนกลาง' : currentRole === 'BRANCH' ? 'เจ้าหน้าที่สาขา' : 'คู่ค้า Supplier')}
             </p>
             <p className="text-[11px] text-gray-500">
-              {currentCompany === 'ALL' ? 'EV7 & GI Fleet' : currentCompany}
+              {user?.username || (currentCompany === 'ALL' ? 'EV7 & GI Fleet' : currentCompany)}
             </p>
           </div>
+          <button
+            onClick={logout}
+            className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            title="ออกจากระบบ"
+          >
+            <LogOut className="w-4.5 h-4.5" />
+          </button>
         </div>
       </div>
     </header>

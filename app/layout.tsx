@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AppProvider } from '@/context/AppContext';
+import { AuthProvider } from '@/context/AuthContext';
 import { AppShell } from '@/components/layout/AppShell';
 
 export const metadata: Metadata = {
@@ -24,9 +25,11 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col font-sans antialiased text-[#002114] bg-[#f4f9f5]">
-        <AppProvider>
-          <AppShell>{children}</AppShell>
-        </AppProvider>
+        <AuthProvider>
+          <AppProvider>
+            <AppShell>{children}</AppShell>
+          </AppProvider>
+        </AuthProvider>
       </body>
     </html>
   );

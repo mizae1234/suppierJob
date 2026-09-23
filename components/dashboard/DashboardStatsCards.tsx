@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/billing-utils';
+import { useTheme } from '@/hooks/useTheme';
 import { 
   FileText, 
   TrendingUp, 
@@ -37,15 +38,17 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
   invoicedCount,
   invoicedAmount,
 }) => {
+  const theme = useTheme();
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
       {/* 1. งานทั้งหมด */}
-      <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col min-h-[140px]">
+      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             งานทั้งหมด
           </span>
-          <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-800 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors duration-300" style={{ backgroundColor: theme.badgeBg, color: theme.iconColor }}>
             <FileText className="w-4 h-4" />
           </div>
         </div>
@@ -53,14 +56,14 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
           <span className="text-3xl font-bold text-gray-900 font-mono">{totalJobsCount}</span>
           <span className="text-xs text-gray-500 font-medium">รายการ</span>
         </div>
-        <p className="text-[11px] text-emerald-700 mt-1.5 flex items-center gap-1 font-medium h-4">
+        <p className="text-[11px] mt-1.5 flex items-center gap-1 font-medium h-4 transition-colors duration-300" style={{ color: theme.textMuted }}>
           <TrendingUp className="w-3 h-3" />
           <span>ระบบอัปเดตเรียลไทม์</span>
         </p>
       </div>
 
       {/* 2. รอ Supplier รับงาน */}
-      <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col min-h-[140px]">
+      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             รอ Supplier ทำ
@@ -106,7 +109,7 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
       </div>
 
       {/* 4. งานที่ขอแก้ไข (Reject) */}
-      <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col min-h-[140px]">
+      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             งานขอแก้ไข
@@ -125,26 +128,26 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
       </div>
 
       {/* 5. Approved พร้อมวางบิล */}
-      <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col min-h-[140px]">
+      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             พร้อมวางบิล
           </span>
-          <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#0f5238] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors duration-300" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
             <CheckCircle2 className="w-4 h-4" />
           </div>
         </div>
         <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold text-[#0f5238] font-mono">{approvedCount}</span>
+          <span className="text-3xl font-bold font-mono transition-colors duration-300" style={{ color: theme.textPrimary }}>{approvedCount}</span>
           <span className="text-xs text-gray-500 font-medium">งาน</span>
         </div>
-        <p className="text-[11px] text-emerald-800 font-bold mt-1.5 font-mono h-4">
+        <p className="text-[11px] font-bold mt-1.5 font-mono h-4 transition-colors duration-300" style={{ color: theme.iconColor }}>
           {formatCurrency(approvedAmount)} ประเมินแล้ว
         </p>
       </div>
 
       {/* 6. วางบิลแล้ว (Pending Payment) */}
-      <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col min-h-[140px]">
+      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             วางบิลแล้ว

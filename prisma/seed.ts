@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -140,12 +141,68 @@ async function main() {
     console.log(`  ✅ ${v.vin} — ${v.model} (${v.color})`);
   }
 
+  // ─── 5. Users ───────────────────────────────────────
+  console.log('\n👤 Creating Users...');
+
+  const usersData = [
+    {
+      username: 'admin',
+      password: 'admin1234',
+      displayName: 'ผู้ดูแลระบบ (Admin)',
+      role: 'ADMIN',
+      branchId: null as string | null,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-rm9',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาพระราม 9',
+      role: 'BRANCH',
+      branchId: branches['EV7-RM9'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-bna',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาบางนา',
+      role: 'BRANCH',
+      branchId: branches['GI-BNA'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'supplier-cleanpro',
+      password: 'sup1234',
+      displayName: 'CleanPro คาร์วอช',
+      role: 'SUPPLIER',
+      branchId: null as string | null,
+      supplierId: suppliers['SP-CLEANPRO'].id,
+    },
+  ];
+
+  for (const u of usersData) {
+    const hashedPassword = await bcrypt.hash(u.password, 10);
+    await prisma.user.upsert({
+      where: { username: u.username },
+      update: {},
+      create: {
+        username: u.username,
+        password: hashedPassword,
+        displayName: u.displayName,
+        role: u.role,
+        branchId: u.branchId,
+        supplierId: u.supplierId,
+      },
+    });
+    console.log(`  ✅ ${u.username} (${u.role})`);
+  }
+
   // ─── Summary ────────────────────────────────────────
   const counts = {
     companies: await prisma.company.count(),
     branches: await prisma.branch.count(),
     suppliers: await prisma.supplier.count(),
     vehicles: await prisma.vehicle.count(),
+    users: await prisma.user.count(),
   };
 
   console.log('\n─────────────────────────────────');
@@ -154,6 +211,7 @@ async function main() {
   console.log(`  Branches:  ${counts.branches}`);
   console.log(`  Suppliers: ${counts.suppliers}`);
   console.log(`  Vehicles:  ${counts.vehicles}`);
+  console.log(`  Users:     ${counts.users}`);
   console.log('─────────────────────────────────\n');
 }
 

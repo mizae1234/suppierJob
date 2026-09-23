@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Job } from '@/types';
 import { getJobStatusBadge, getJobVehicleDisplay, getJobTotalCost } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
+import { useTheme } from '@/hooks/useTheme';
 import { Sparkles, Truck, ArrowRight, Eye } from 'lucide-react';
 
 interface RecentJobsTableProps {
@@ -16,8 +17,10 @@ export const RecentJobsTable: React.FC<RecentJobsTableProps> = ({
   jobs,
   totalCount,
 }) => {
+  const theme = useTheme();
+
   return (
-    <div className="p-6 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-4">
+    <div className="p-6 rounded-2xl bg-white border shadow-xs flex flex-col gap-4 transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
@@ -26,7 +29,8 @@ export const RecentJobsTable: React.FC<RecentJobsTableProps> = ({
         </div>
         <Link
           href="/jobs"
-          className="text-xs font-bold text-[#0f5238] hover:underline flex items-center gap-1"
+          className="text-xs font-bold hover:underline flex items-center gap-1 transition-colors duration-300"
+          style={{ color: theme.textPrimary }}
         >
           <span>ดูงานทั้งหมด ({totalCount})</span>
           <ArrowRight className="w-3.5 h-3.5" />
@@ -63,7 +67,7 @@ export const RecentJobsTable: React.FC<RecentJobsTableProps> = ({
                     <span className="flex items-center gap-1.5 font-medium">
                       {job.jobType === 'CAR_WASH' ? (
                         <>
-                          <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                          <Sparkles className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
                           <span>Car Wash</span>
                         </>
                       ) : (
@@ -103,7 +107,10 @@ export const RecentJobsTable: React.FC<RecentJobsTableProps> = ({
                   <td className="py-3 px-3 text-center whitespace-nowrap">
                     <Link
                       href={`/jobs?jobId=${job.id}`}
-                      className="p-1.5 rounded-lg text-gray-500 hover:text-[#0f5238] hover:bg-emerald-50 transition-colors inline-block"
+                      className="p-1.5 rounded-lg text-gray-500 transition-colors inline-block"
+                      style={{ }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = theme.textPrimary; (e.currentTarget as HTMLElement).style.backgroundColor = theme.badgeBg; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = ''; (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
                       title="ดูรายละเอียด"
                     >
                       <Eye className="w-4 h-4" />

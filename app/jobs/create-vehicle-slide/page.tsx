@@ -73,7 +73,7 @@ export default function CreateVehicleSlidePage() {
     return v.vin.toLowerCase().includes(q) || v.model.toLowerCase().includes(q) || (v.licensePlate && v.licensePlate.toLowerCase().includes(q));
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVin) {
       alert('กรุณาเลือกรถ (VIN) ที่ต้องการสไลด์');
@@ -94,7 +94,7 @@ export default function CreateVehicleSlidePage() {
 
     const companyCode: CompanyCode = activeBranch?.companyId === 'comp-gi' ? 'GI' : 'EV7';
 
-    const newJob = createVehicleSlideJob({
+    const newJob = await createVehicleSlideJob({
       companyCode,
       originBranchId: currentBranchId,
       destBranchId,
@@ -109,7 +109,7 @@ export default function CreateVehicleSlidePage() {
       estimatedCost,
     });
 
-    setCreatedJob(newJob);
+    if (newJob) setCreatedJob(newJob);
   };
 
   return (

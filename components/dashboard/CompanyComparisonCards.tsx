@@ -22,7 +22,7 @@ export const CompanyComparisonCards: React.FC<CompanyComparisonCardsProps> = ({
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {/* EV7 Summary Card */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#eaf5ee] border border-emerald-950/10 shadow-xs flex flex-col justify-between gap-4">
+      <div className="p-6 rounded-2xl bg-gradient-to-br from-white to-[#eaf5ee] border border-emerald-800/10 shadow-xs flex flex-col justify-between gap-4">
         <div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -37,7 +37,7 @@ export const CompanyComparisonCards: React.FC<CompanyComparisonCardsProps> = ({
             รถในสต็อกทั้งหมด {ev7VehiclesCount} คัน • งานทั้งหมด {ev7JobsCount} งาน
           </p>
         </div>
-        <div className="flex items-center justify-between pt-3 border-t border-emerald-950/10">
+        <div className="flex items-center justify-between pt-3 border-t border-emerald-800/10">
           <span className="text-xs text-gray-600">พร้อมวางบิล:</span>
           <span className="text-sm font-bold text-[#0f5238] font-mono">
             {ev7ApprovedCount} งาน

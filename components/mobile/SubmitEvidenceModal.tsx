@@ -110,17 +110,17 @@ export const SubmitEvidenceModal: React.FC<SubmitEvidenceModalProps> = ({
 
     try {
       // 1. Add all evidences
-      selectedPhotos.forEach(photo => {
-        addJobEvidence(job.id, {
+      for (const photo of selectedPhotos) {
+        await addJobEvidence(job.id, {
           photoUrl: photo.url,
           caption: photo.caption,
           evidenceType: photo.evidenceType,
           vin: job.vin || (job.carWashItems && job.carWashItems[0]?.vin)
         });
-      });
+      }
 
       // 2. Transition job to WAITING_APPROVAL
-      updateJobStatus(job.id, 'WAITING_APPROVAL');
+      await updateJobStatus(job.id, 'WAITING_APPROVAL');
 
       if (onSuccess) {
         onSuccess();

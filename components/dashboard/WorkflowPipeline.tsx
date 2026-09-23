@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useTheme } from '@/hooks/useTheme';
 
 interface WorkflowPipelineProps {
   pendingSupplierCount: number;
@@ -17,8 +18,10 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({
   approvedCount,
   invoicedCount,
 }) => {
+  const theme = useTheme();
+
   return (
-    <div className="p-6 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-5">
+    <div className="p-6 rounded-2xl bg-white border shadow-xs flex flex-col gap-5 transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h2 className="text-base font-bold text-gray-900">
@@ -28,14 +31,14 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({
             สถานะงานซัพพลายเออร์ที่อยู่ระหว่างหมุนเวียนในระบบ ณ ขณะนี้
           </p>
         </div>
-        <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+        <span className="text-xs font-semibold px-3 py-1 rounded-full border transition-colors duration-300" style={{ color: theme.iconColor, backgroundColor: theme.badgeBg, borderColor: `${theme.primary}33` }}>
           Flow: สั่งงาน ➔ ปฏิบัติงาน ➔ ตรวจรับ ➔ วางบิล
         </span>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {/* Step 1: สั่งงานแล้ว */}
-        <div className="p-4 rounded-xl bg-[#f4f9f5] border border-emerald-950/5 flex flex-col justify-between gap-2">
+        <div className="p-4 rounded-xl border flex flex-col justify-between gap-2 transition-colors duration-300" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 font-mono">01 • DISPATCHED</span>
             <span className="w-2 h-2 rounded-full bg-blue-500" />
@@ -47,7 +50,7 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({
         </div>
 
         {/* Step 2: กำลังทำงาน */}
-        <div className="p-4 rounded-xl bg-[#f4f9f5] border border-emerald-950/5 flex flex-col justify-between gap-2">
+        <div className="p-4 rounded-xl border flex flex-col justify-between gap-2 transition-colors duration-300" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 font-mono">02 • IN PROGRESS</span>
             <span className="w-2 h-2 rounded-full bg-amber-500" />
@@ -71,19 +74,19 @@ export const WorkflowPipeline: React.FC<WorkflowPipelineProps> = ({
         </div>
 
         {/* Step 4: อนุมัติผ่าน */}
-        <div className="p-4 rounded-xl bg-[#f4f9f5] border border-emerald-950/5 flex flex-col justify-between gap-2">
+        <div className="p-4 rounded-xl border flex flex-col justify-between gap-2 transition-colors duration-300" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 font-mono">04 • APPROVED</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-600" />
+            <span className="w-2 h-2 rounded-full transition-colors duration-300" style={{ backgroundColor: theme.primary }} />
           </div>
           <div>
-            <p className="text-2xl font-bold text-[#0f5238] font-mono">{approvedCount}</p>
+            <p className="text-2xl font-bold font-mono transition-colors duration-300" style={{ color: theme.textPrimary }}>{approvedCount}</p>
             <p className="text-xs text-gray-600 font-medium">พร้อมวางบิล</p>
           </div>
         </div>
 
         {/* Step 5: วางบิลแล้ว */}
-        <div className="p-4 rounded-xl bg-[#f4f9f5] border border-emerald-950/5 flex flex-col justify-between gap-2">
+        <div className="p-4 rounded-xl border flex flex-col justify-between gap-2 transition-colors duration-300" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-gray-500 font-mono">05 • INVOICED</span>
             <span className="w-2 h-2 rounded-full bg-purple-600" />

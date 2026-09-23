@@ -111,8 +111,8 @@ export default function MobileSupplierPortalPage() {
   }, [invoices, activeSupplier]);
 
   // Handlers
-  const handleAcceptJob = (job: Job) => {
-    updateJobStatus(job.id, 'IN_PROGRESS');
+  const handleAcceptJob = async (job: Job) => {
+    await updateJobStatus(job.id, 'IN_PROGRESS');
     alert(`รับงาน ${job.jobNumber} เรียบร้อยแล้ว! สถานะเปลี่ยนเป็น "กำลังดำเนินงาน"`);
   };
 
@@ -131,8 +131,8 @@ export default function MobileSupplierPortalPage() {
     }
   };
 
-  const handleCreateInvoice = (jobIds: string[], dueDate: string, notes?: string) => {
-    const res = createInvoice({
+  const handleCreateInvoice = async (jobIds: string[], dueDate: string, notes?: string) => {
+    const res = await createInvoice({
       supplierId: activeSupplier.id,
       companyCode: 'EV7',
       jobIds,

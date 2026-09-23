@@ -7,6 +7,22 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ผู้ใช้ระบบ (Login/Logout)
+model User {
+  id          String    @id @default(uuid())
+  username    String    @unique
+  password    String    // hashed with bcrypt
+  displayName String
+  role        String    // ADMIN, BRANCH, SUPPLIER
+  branchId    String?
+  branch      Branch?   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplierId  String?
+  supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
 // ข้อมูลบริษัท เช่น EV7, GI
 model Company {
   id          String    @id @default(uuid())
@@ -32,6 +48,7 @@ model Branch {
   address     String?
   phone       String?
   vehicles    Vehicle[]
+  users       User[]
   jobs        Job[]     @relation("BranchJobs")
   originJobs  Job[]     @relation("OriginBranchJobs")
   destJobs    Job[]     @relation("DestBranchJobs")
@@ -54,6 +71,7 @@ model Supplier {
   bankName    String?
   bankAccount String?
   isActive    Boolean   @default(true)
+  users       User[]
   jobs        Job[]
   invoices    Invoice[]
   createdAt   DateTime  @default(now())

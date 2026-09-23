@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Job } from '@/types';
 import { getJobVehicleDisplay, getJobTotalCost } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
+import { useTheme } from '@/hooks/useTheme';
 import { AlertCircle, ArrowRight } from 'lucide-react';
 
 interface UrgentApprovalsSectionProps {
@@ -14,6 +15,8 @@ interface UrgentApprovalsSectionProps {
 export const UrgentApprovalsSection: React.FC<UrgentApprovalsSectionProps> = ({
   waitingJobs,
 }) => {
+  const theme = useTheme();
+
   if (waitingJobs.length === 0) return null;
 
   return (
@@ -51,11 +54,12 @@ export const UrgentApprovalsSection: React.FC<UrgentApprovalsSectionProps> = ({
           return (
             <div
               key={job.id}
-              className="p-4 rounded-xl bg-[#fbfdfc] border border-emerald-950/10 flex flex-col justify-between gap-3 hover:shadow-xs transition-shadow"
+              className="p-4 rounded-xl bg-white/80 border flex flex-col justify-between gap-3 hover:shadow-xs transition-all"
+              style={{ borderColor: theme.borderSoft }}
             >
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-[#0f5238] text-[10px] font-bold">
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors duration-300" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
                     {job.jobType === 'CAR_WASH' ? 'Car Wash' : 'Vehicle Slide'}
                   </span>
                   <span className="text-[11px] font-bold text-gray-600 font-mono">
@@ -97,12 +101,13 @@ export const UrgentApprovalsSection: React.FC<UrgentApprovalsSectionProps> = ({
 
               {/* Footer */}
               <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                <span className="text-xs font-bold text-[#0f5238] font-mono">
+                <span className="text-xs font-bold font-mono transition-colors duration-300" style={{ color: theme.textPrimary }}>
                   {formatCurrency(cost)}
                 </span>
                 <Link
                   href={`/approvals?jobId=${job.id}`}
-                  className="px-3 py-1 rounded-full bg-[#0f5238] text-white text-xs font-semibold hover:bg-[#0a3d28] transition-colors"
+                  className="px-3 py-1 rounded-full text-white text-xs font-semibold transition-colors"
+                  style={{ backgroundColor: theme.primary }}
                 >
                   ตรวจรับงาน
                 </Link>

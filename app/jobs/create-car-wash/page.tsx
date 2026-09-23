@@ -110,7 +110,7 @@ export default function CreateCarWashPage() {
   const totalEstimatedCost = selectedItems.reduce((sum, it) => sum + it.unitPrice, 0);
 
   // Form submit
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSupplierId) {
       alert('กรุณาเลือก Supplier ผู้ให้บริการ');
@@ -123,7 +123,7 @@ export default function CreateCarWashPage() {
 
     const companyCode: CompanyCode = activeBranch?.companyId === 'comp-gi' ? 'GI' : 'EV7';
 
-    const newJob = createCarWashJob({
+    const newJob = await createCarWashJob({
       companyCode,
       branchId: currentBranchId,
       supplierId: selectedSupplierId,
@@ -137,7 +137,7 @@ export default function CreateCarWashPage() {
       requestedBy,
     });
 
-    setCreatedJob(newJob);
+    if (newJob) setCreatedJob(newJob);
   };
 
   return (

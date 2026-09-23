@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useTheme } from '@/hooks/useTheme';
 import { 
   LayoutDashboard, 
   ClipboardList, 
@@ -30,6 +31,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) => {
   const pathname = usePathname();
+  const theme = useTheme();
   const { 
     currentRole, 
     setCurrentRole,
@@ -52,7 +54,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       href: '/jobs',
       icon: ClipboardList,
       badge: filteredJobs.length,
-      badgeColor: 'bg-emerald-100 text-emerald-800',
     },
     {
       label: 'สั่งล้างรถ (Car Wash)',
@@ -86,15 +87,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       href: '/suppliers',
       icon: Store,
       badge: null,
+      roleVisibility: ['ADMIN'],
     },
     {
-      label: 'จัดการบิล / Invoice',
+      label: 'ใบวางบิล / Invoice',
       href: '/invoices',
       icon: Receipt,
       badge: null,
     },
     {
-      label: 'รายงาน (Reports)',
+      label: 'รายงาน',
       href: '/reports',
       icon: BarChart3,
       badge: null,
@@ -104,7 +106,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       href: '/mobile',
       icon: Smartphone,
       badge: 'Supplier',
-      badgeColor: 'bg-emerald-100 text-[#0f5238]',
     },
     {
       label: 'ตั้งค่าระบบ',
@@ -125,21 +126,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
 
   const containerClasses = isMobile
     ? "relative h-full w-full bg-white flex flex-col justify-between select-none"
-    : "fixed left-0 top-0 h-full w-72 bg-white border-r border-emerald-950/10 shadow-[0_4px_24px_rgba(15,82,56,0.04)] z-50 flex flex-col justify-between select-none print:hidden";
+    : "fixed left-0 top-0 h-full w-72 bg-white border-r shadow-[0_4px_24px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between select-none print:hidden";
 
   return (
-    <aside className={containerClasses}>
+    <aside className={containerClasses} style={{ borderColor: theme.borderSoft }}>
       <div className="flex flex-col h-full overflow-hidden">
         {/* Brand Header */}
-        <div className="h-20 px-6 flex items-center justify-between border-b border-emerald-950/5 shrink-0">
+        <div className="h-20 px-6 flex items-center justify-between border-b shrink-0" style={{ borderColor: theme.borderSoft }}>
           <Link href="/" onClick={() => handleLinkClick('/')} className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#0f5238] to-[#2d6a4f] flex items-center justify-center shadow-[0_4px_16px_rgba(15,82,56,0.25)] text-white shrink-0">
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg text-white shrink-0 transition-colors duration-300"
+              style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})`, boxShadow: theme.activeNavShadow }}
+            >
               <Truck className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-bold text-lg tracking-tight text-[#0f5238]">VendorOps</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-[#0f5238] text-[10px] font-bold uppercase tracking-wider">
+                <span className="font-bold text-lg tracking-tight transition-colors duration-300" style={{ color: theme.textPrimary }}>VendorOps</span>
+                <span
+                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors duration-300"
+                  style={{ backgroundColor: theme.badgeBg, color: theme.badgeText }}
+                >
                   {currentCompany === 'ALL' ? 'EV7 & GI' : currentCompany}
                 </span>
               </div>
@@ -159,13 +166,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
         </div>
 
         {/* Current Context Card */}
-        <div className="px-5 py-3 border-b border-emerald-950/5 shrink-0">
-          <div className="p-3 rounded-2xl bg-[#f4f9f5] border border-emerald-950/5 flex items-center justify-between">
+        <div className="px-5 py-3 border-b shrink-0" style={{ borderColor: theme.borderSoft }}>
+          <div
+            className="p-3 rounded-2xl border flex items-center justify-between transition-colors duration-300"
+            style={{ backgroundColor: theme.bgCard, borderColor: theme.borderSoft }}
+          >
             <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-xl bg-white shadow-xs flex items-center justify-center text-[#0f5238] shrink-0">
-                {currentRole === 'ADMIN' && <ShieldCheck className="w-4 h-4 text-emerald-700" />}
-                {currentRole === 'BRANCH' && <Building2 className="w-4 h-4 text-emerald-700" />}
-                {currentRole === 'SUPPLIER' && <Wrench className="w-4 h-4 text-emerald-700" />}
+              <div className="w-8 h-8 rounded-xl bg-white shadow-xs flex items-center justify-center shrink-0">
+                {currentRole === 'ADMIN' && <ShieldCheck className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
+                {currentRole === 'BRANCH' && <Building2 className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
+                {currentRole === 'SUPPLIER' && <Wrench className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-gray-900 truncate">
@@ -173,7 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
                   {currentRole === 'BRANCH' && (activeBranch?.name || 'สาขาที่เลือก')}
                   {currentRole === 'SUPPLIER' && (activeSupplier?.name || 'คู่ค้า Supplier')}
                 </p>
-                <p className="text-[11px] text-emerald-700 font-medium">
+                <p className="text-[11px] font-medium transition-colors duration-300" style={{ color: theme.textMuted }}>
                   {currentRole === 'ADMIN' ? 'จัดการทุกสาขา & บิล' : `บทบาท: ${currentRole}`}
                 </p>
               </div>
@@ -190,7 +200,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
                 return null;
               }
 
-              // Fixed bug: exact matching for '/', and exact matching for '/jobs' so subroutes don't highlight both
               const isActive = item.href === '/'
                 ? pathname === '/'
                 : item.href === '/jobs'
@@ -204,21 +213,38 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
                   key={item.href}
                   href={item.href}
                   onClick={() => handleLinkClick(item.href)}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                     isActive
-                      ? 'bg-[#0f5238] text-white shadow-[0_4px_16px_rgba(15,82,56,0.25)] font-semibold'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-[#f4f9f5]'
+                      ? 'text-white font-semibold'
+                      : 'text-gray-600 hover:text-gray-900'
                   }`}
+                  style={isActive
+                    ? { backgroundColor: theme.activeNavBg, boxShadow: theme.activeNavShadow }
+                    : { }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = theme.bgSoft;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.backgroundColor = '';
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-emerald-800/70'}`} />
+                    <Icon
+                      className="w-4 h-4 transition-colors duration-200"
+                      style={{ color: isActive ? '#fff' : theme.iconColor }}
+                    />
                     <span>{item.label}</span>
                   </div>
                   {item.badge !== null && item.badge !== undefined && (
                     <span
                       className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        isActive ? 'bg-white/20 text-white' : item.badgeColor || 'bg-gray-100 text-gray-700'
+                        isActive ? 'bg-white/20 text-white' : item.badgeColor || ''
                       }`}
+                      style={!isActive && !item.badgeColor ? { backgroundColor: theme.badgeBg, color: theme.badgeText } : {}}
                     >
                       {item.badge}
                     </span>
@@ -230,12 +256,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
         </div>
 
         {/* Stock Sync Footer Widget */}
-        <div className="p-4 m-3 rounded-2xl bg-[#eaf5ee] border border-emerald-950/5 flex flex-col gap-1.5 shrink-0">
+        <div
+          className="p-4 m-3 rounded-2xl border flex flex-col gap-1.5 shrink-0 transition-colors duration-300"
+          style={{ backgroundColor: theme.bgFooter, borderColor: theme.borderSoft }}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#0f5238]">VIN & Stock Interface</span>
+            <span className="text-xs font-semibold transition-colors duration-300" style={{ color: theme.textPrimary }}>VIN & Stock Interface</span>
             <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: theme.primaryLight }}></span>
+              <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: theme.primary }}></span>
             </span>
           </div>
           <p className="text-[11px] text-gray-600 leading-tight">

@@ -39,15 +39,15 @@ function ApprovalsContent() {
   const [rejectingJobId, setRejectingJobId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const handleApprove = (jobId: string) => {
-    updateJobStatus(jobId, 'APPROVED', { approvedBy: 'สาขาผู้ตรวจรับ' });
+  const handleApprove = async (jobId: string) => {
+    await updateJobStatus(jobId, 'APPROVED', { approvedBy: 'สาขาผู้ตรวจรับ' });
   };
 
-  const handleRejectConfirm = (e: React.FormEvent) => {
+  const handleRejectConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rejectingJobId) return;
 
-    updateJobStatus(rejectingJobId, 'REJECTED', {
+    await updateJobStatus(rejectingJobId, 'REJECTED', {
       rejectReason: rejectReason || 'งานไม่ผ่านเกณฑ์ ขอให้ช่างแก้ไขงานซ้ำ'
     });
 

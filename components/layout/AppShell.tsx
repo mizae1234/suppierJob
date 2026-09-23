@@ -19,6 +19,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [isLoaded, currentRole, pathname, router]);
 
+  // If visiting login page, render standalone without any chrome
+  if (pathname?.startsWith('/login')) {
+    return <>{children}</>;
+  }
+
   // If visiting mobile portal, render standalone without desktop chrome
   if (pathname?.startsWith('/mobile')) {
     return <>{children}</>;

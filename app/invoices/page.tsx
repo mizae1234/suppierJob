@@ -85,7 +85,7 @@ export default function InvoiceManagementPage() {
     }
   };
 
-  const handleCreateInvoiceSubmit = (e: React.FormEvent) => {
+  const handleCreateInvoiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -94,7 +94,7 @@ export default function InvoiceManagementPage() {
       return;
     }
 
-    const res = createInvoice({
+    const res = await createInvoice({
       companyCode: invoiceCompany,
       supplierId: invoiceSupplierId,
       jobIds: selectedJobIds,
