@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password } = await request.json();
+    const { username, password, companyCode } = await request.json();
 
     if (!username || !password) {
       return NextResponse.json(
@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({
       where: { username },
       include: {
+        company: true,
         branch: {
           include: { company: true },
         },
@@ -40,17 +41,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check company match for non-admin users
+    if (companyCode && user.role !== 'ADMIN') {
+      const userCompanyCode = user.company?.code || user.branch?.company?.code;
+      if (userCompanyCode && userCompanyCode !== companyCode) {
+        return NextResponse.json(
+          { error: `ผู้ใช้นี้ไม่ได้อยู่ในบริษัท ${companyCode} กรุณาเลือกบริษัทให้ถูกต้อง` },
+          { status: 403 }
+        );
+      }
+    }
+
     // Build session data (exclude password)
     const sessionData = {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
       role: user.role,
+      companyId: user.companyId || user.branch?.companyId || null,
+      companyCode: user.company?.code || user.branch?.company?.code || null,
       branchId: user.branchId,
       branchName: user.branch?.name || null,
       branchCode: user.branch?.code || null,
-      companyId: user.branch?.companyId || null,
-      companyCode: user.branch?.company?.code || null,
       supplierId: user.supplierId,
       supplierName: user.supplier?.name || null,
     };

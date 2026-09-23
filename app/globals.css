@@ -54,6 +54,15 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
   }
+
+  /* Hide native browser password reveal button */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear,
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input::-webkit-password-toggle-button {
+    display: none !important;
+    -webkit-appearance: none;
+  }
 }
 
 @keyframes slideInRight {

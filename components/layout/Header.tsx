@@ -109,7 +109,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
                 onClick={() => {
                   setCurrentRole(role);
                   if (role === 'SUPPLIER') {
-                    router.push('/mobile');
+                    router.push('/s');
                   }
                 }}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${

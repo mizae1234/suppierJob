@@ -2,13 +2,17 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { LogIn, Eye, EyeOff, Truck, Sparkles, ArrowRight, ArrowLeft, Check, Building2, User } from 'lucide-react';
-
-type CompanyOption = 'EV7' | 'GI';
+import { LogIn, Eye, EyeOff, Truck, Sparkles, ArrowRight, ArrowLeft, Check, Building2, User, Wrench } from 'lucide-react';
 
 interface CheckedUser {
   displayName: string;
   role: string;
+}
+
+interface SupplierOption {
+  id: string;
+  code: string;
+  name: string;
 }
 
 export default function LoginPage() {
@@ -18,10 +22,11 @@ export default function LoginPage() {
   const [step, setStep] = useState<1 | 2>(1);
 
   // Step 1 fields
-  const [company, setCompany] = useState<CompanyOption | ''>('');
+  const [company, setCompany] = useState('');
   const [username, setUsername] = useState('');
   const [checkingUser, setCheckingUser] = useState(false);
   const [checkedUser, setCheckedUser] = useState<CheckedUser | null>(null);
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
 
   // Step 2 fields
   const [password, setPassword] = useState('');
@@ -31,8 +36,25 @@ export default function LoginPage() {
   // Shared
   const [error, setError] = useState('');
   const [slideDirection, setSlideDirection] = useState<'forward' | 'backward'>('forward');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  // Fetch suppliers for login selector
+  useEffect(() => {
+    fetch('/api/suppliers')
+      .then(res => res.json())
+      .then(data => {
+        if (data.suppliers) {
+          setSuppliers(data.suppliers.map((s: SupplierOption) => ({
+            id: s.id,
+            code: s.code,
+            name: s.name,
+          })));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Auto-focus password input when entering step 2
   useEffect(() => {
@@ -46,7 +68,7 @@ export default function LoginPage() {
     setError('');
 
     if (!company) {
-      setError('กรุณาเลือกบริษัท');
+      setError('กรุณาเลือกบริษัท / องค์กรของคุณ');
       return;
     }
     if (!username.trim()) {
@@ -86,7 +108,10 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
 
-    const result = await login(username.trim(), password, company as 'EV7' | 'GI');
+    // For company codes (EV7/GI), pass as company. For supplier codes, don't pass company.
+    const isCompanyCode = company === 'EV7' || company === 'GI';
+    const selectedCompany = isCompanyCode ? (company as 'EV7' | 'GI') : undefined;
+    const result = await login(username.trim(), password, selectedCompany);
 
     if (!result.success) {
       setError(result.error || 'รหัสผ่านไม่ถูกต้อง');
@@ -170,7 +195,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card Container */}
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-2xl">
           <div className="relative">
             {/* ── STEP 1: Company + Username ── */}
             <div
@@ -183,60 +208,112 @@ export default function LoginPage() {
               }`}
             >
               <h2 className="text-xl font-bold text-gray-900 mb-1">เข้าสู่ระบบ</h2>
-              <p className="text-sm text-gray-500 mb-6">ขั้นตอนที่ 1: เลือกบริษัทและกรอกชื่อผู้ใช้</p>
+              <p className="text-sm text-gray-500 mb-6">ขั้นตอนที่ 1: เลือกองค์กรและกรอกชื่อผู้ใช้</p>
 
               <div className="space-y-5">
-                {/* Company Selection */}
+                {/* Organization Dropdown */}
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
-                    เลือกบริษัท
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    เลือกองค์กรของคุณ
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setCompany('EV7')}
-                      className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
-                        company === 'EV7'
-                          ? 'border-[#0f5238] bg-emerald-50 shadow-md'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
+                      onClick={() => setDropdownOpen(!dropdownOpen)}
+                      className={`w-full h-11 px-3 rounded-xl border text-left text-sm flex items-center gap-2.5 transition-all ${
+                        company
+                          ? 'border-gray-300 bg-white'
+                          : 'border-gray-200 bg-gray-50 text-gray-400'
+                      } ${dropdownOpen ? 'ring-2 ring-[#0f5238] border-transparent' : 'hover:border-gray-300'}`}
                     >
-                      {company === 'EV7' && (
-                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#0f5238] flex items-center justify-center">
-                          <Check className="w-3 h-3 text-white" />
-                        </div>
+                      {company ? (
+                        (() => {
+                          const isEV7 = company === 'EV7';
+                          const isGI = company === 'GI';
+                          const sup = suppliers.find(s => s.code === company);
+                          return (
+                            <>
+                              <div className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${
+                                isEV7 ? 'bg-gradient-to-br from-emerald-600 to-emerald-800'
+                                : isGI ? 'bg-gradient-to-br from-blue-600 to-blue-800'
+                                : 'bg-gradient-to-br from-amber-500 to-orange-600'
+                              }`}>
+                                {isEV7 ? 'EV7' : isGI ? 'GI' : <Wrench className="w-3 h-3" />}
+                              </div>
+                              <span className="text-gray-900 font-medium truncate">
+                                {isEV7 ? 'EV7 — อีวี เซเว่น' : isGI ? 'GI — เจเนอรัล อินเทลลิเจนท์' : sup?.name || company}
+                              </span>
+                            </>
+                          );
+                        })()
+                      ) : (
+                        <>
+                          <Building2 className="w-4 h-4 text-gray-400" />
+                          <span>— กรุณาเลือก —</span>
+                        </>
                       )}
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white font-bold text-xs">
-                        EV7
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm font-semibold text-gray-900">EV7</p>
-                        <p className="text-[10px] text-gray-500 leading-tight">อีวี เซเว่น</p>
-                      </div>
+                      <svg className={`w-4 h-4 ml-auto text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setCompany('GI')}
-                      className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 ${
-                        company === 'GI'
-                          ? 'border-[#0f5238] bg-emerald-50 shadow-md'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {company === 'GI' && (
-                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#0f5238] flex items-center justify-center">
-                          <Check className="w-3 h-3 text-white" />
+                    {/* Dropdown Menu */}
+                    {dropdownOpen && (
+                      <div className="absolute z-50 mt-1.5 w-full bg-white rounded-xl border border-gray-200 shadow-xl max-h-64 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
+                        {/* Companies Group */}
+                        <div className="px-3 py-2 border-b border-gray-100">
+                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">บริษัท</p>
                         </div>
-                      )}
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-bold text-xs">
-                        GI
+                        <button
+                          type="button"
+                          onClick={() => { setCompany('EV7'); setDropdownOpen(false); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${company === 'EV7' ? 'bg-emerald-50' : ''}`}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">EV7</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">EV7</p>
+                            <p className="text-[10px] text-gray-500">อีวี เซเว่น</p>
+                          </div>
+                          {company === 'EV7' && <Check className="w-4 h-4 text-emerald-600" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setCompany('GI'); setDropdownOpen(false); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${company === 'GI' ? 'bg-blue-50' : ''}`}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">GI</p>
+                            <p className="text-[10px] text-gray-500">เจเนอรัล อินเทลลิเจนท์</p>
+                          </div>
+                          {company === 'GI' && <Check className="w-4 h-4 text-blue-600" />}
+                        </button>
+
+                        {/* Suppliers Group */}
+                        {suppliers.length > 0 && (
+                          <>
+                            <div className="px-3 py-2 border-t border-b border-gray-100">
+                              <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Supplier / คู่ค้า</p>
+                            </div>
+                            {suppliers.map(sup => (
+                              <button
+                                key={sup.code}
+                                type="button"
+                                onClick={() => { setCompany(sup.code); setDropdownOpen(false); }}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${company === sup.code ? 'bg-amber-50' : ''}`}
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white flex-shrink-0">
+                                  <Wrench className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{sup.name}</p>
+                                  <p className="text-[10px] text-gray-500">{sup.code}</p>
+                                </div>
+                                {company === sup.code && <Check className="w-4 h-4 text-amber-600" />}
+                              </button>
+                            ))}
+                          </>
+                        )}
                       </div>
-                      <div className="text-center">
-                        <p className="text-sm font-semibold text-gray-900">GI</p>
-                        <p className="text-[10px] text-gray-500 leading-tight">เจเนอรัล อินเทลลิเจนท์</p>
-                      </div>
-                    </button>
+                    )}
                   </div>
                 </div>
 

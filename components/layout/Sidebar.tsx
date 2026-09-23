@@ -103,7 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
     },
     {
       label: 'โหมดมือถือ (Mobile App)',
-      href: '/mobile',
+      href: '/s',
       icon: Smartphone,
       badge: 'Supplier',
     },
@@ -116,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
   ];
 
   const handleLinkClick = (href: string) => {
-    if (href === '/mobile') {
+    if (href === '/s') {
       setCurrentRole('SUPPLIER');
     }
     if (isMobile && onClose) {

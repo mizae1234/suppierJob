@@ -61,15 +61,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isLoading) return;
 
     const isLoginPage = pathname === '/login';
+    const isSupplierRoute = pathname?.startsWith('/s');
 
     if (!user && !isLoginPage) {
       router.replace('/login');
     } else if (user && isLoginPage) {
       // Redirect based on role after login
       if (user.role === 'SUPPLIER') {
-        router.replace('/mobile');
+        router.replace('/s');
       } else {
         router.replace('/');
+      }
+    } else if (user && !isLoginPage) {
+      // Prevent supplier from accessing admin routes
+      if (user.role === 'SUPPLIER' && !isSupplierRoute) {
+        router.replace('/s');
       }
     }
   }, [user, isLoading, pathname, router]);
@@ -79,7 +85,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, companyCode: company }),
       });
 
       const data = await res.json();
