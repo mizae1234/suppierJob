@@ -35,10 +35,34 @@ export default function LoginPage() {
 
   // Shared
   const [error, setError] = useState('');
-  const [slideDirection, setSlideDirection] = useState<'forward' | 'backward'>('forward');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  const startTransition = (newStep: 1 | 2) => {
+    setIsTransitioning(true);
+    setStep(newStep);
+
+    if (transitionTimeoutRef.current) {
+      clearTimeout(transitionTimeoutRef.current);
+    }
+    transitionTimeoutRef.current = setTimeout(() => {
+      setIsTransitioning(false);
+      if (newStep === 2) {
+        passwordRef.current?.focus();
+      }
+    }, 380);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Fetch suppliers for login selector
   useEffect(() => {
@@ -55,13 +79,6 @@ export default function LoginPage() {
       })
       .catch(() => {});
   }, []);
-
-  // Auto-focus password input when entering step 2
-  useEffect(() => {
-    if (step === 2) {
-      setTimeout(() => passwordRef.current?.focus(), 300);
-    }
-  }, [step]);
 
   // Step 1: Validate username
   const handleNext = async () => {
@@ -89,9 +106,8 @@ export default function LoginPage() {
 
       if (res.ok && data.success) {
         setCheckedUser(data.user);
-        setSlideDirection('forward');
         setError('');
-        setStep(2);
+        startTransition(2);
       } else {
         setError(data.error || 'ไม่พบชื่อผู้ใช้นี้ในระบบ');
       }
@@ -121,10 +137,9 @@ export default function LoginPage() {
 
   // Go back to step 1
   const handleBack = () => {
-    setSlideDirection('backward');
     setError('');
     setPassword('');
-    setStep(1);
+    startTransition(1);
   };
 
   if (authLoading) {
@@ -166,45 +181,57 @@ export default function LoginPage() {
           <div className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
               step === 1 
-                ? 'bg-white text-[#0f5238] shadow-lg scale-110' 
-                : 'bg-emerald-400 text-white'
+                ? 'bg-white text-[#0f5238] shadow-lg shadow-black/10 scale-110' 
+                : 'bg-emerald-400 text-white shadow-sm'
             }`}>
-              {step === 2 ? <Check className="w-4 h-4" /> : '1'}
+              <div className="relative w-4 h-4 flex items-center justify-center">
+                <span className={`absolute transition-all duration-300 font-bold ${
+                  step === 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
+                }`}>
+                  1
+                </span>
+                <Check className={`w-4 h-4 absolute transition-all duration-300 ${
+                  step === 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'
+                }`} />
+              </div>
             </div>
-            <span className={`text-xs font-medium transition-colors ${step === 1 ? 'text-white' : 'text-emerald-300'}`}>
+            <span className={`text-xs font-medium transition-colors duration-300 ${step === 1 ? 'text-white font-semibold' : 'text-emerald-200'}`}>
               ผู้ใช้
             </span>
           </div>
 
-          <div className={`w-12 h-0.5 rounded transition-colors duration-300 ${
-            step === 2 ? 'bg-emerald-400' : 'bg-white/20'
-          }`} />
+          {/* Animated Connecting Bar */}
+          <div className="relative w-12 h-1 bg-white/20 rounded-full overflow-hidden">
+            <div 
+              className={`absolute left-0 top-0 bottom-0 bg-emerald-400 rounded-full transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                step === 2 ? 'w-full' : 'w-0'
+              }`} 
+            />
+          </div>
 
           <div className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
               step === 2 
-                ? 'bg-white text-[#0f5238] shadow-lg scale-110' 
+                ? 'bg-white text-[#0f5238] shadow-lg shadow-black/10 scale-110' 
                 : 'bg-white/20 text-white/50'
             }`}>
               2
             </div>
-            <span className={`text-xs font-medium transition-colors ${step === 2 ? 'text-white' : 'text-white/40'}`}>
+            <span className={`text-xs font-medium transition-colors duration-300 ${step === 2 ? 'text-white font-semibold' : 'text-white/40'}`}>
               รหัสผ่าน
             </span>
           </div>
         </div>
 
         {/* Card Container */}
-        <div className="bg-white rounded-3xl shadow-2xl">
-          <div className="relative">
+        <div className={`bg-white rounded-3xl shadow-2xl transition-all ${isTransitioning ? 'overflow-hidden' : 'overflow-visible'}`}>
+          <div className="grid grid-cols-1 grid-rows-1">
             {/* ── STEP 1: Company + Username ── */}
             <div
-              className={`p-8 transition-all duration-400 ease-in-out ${
+              className={`col-start-1 row-start-1 p-8 transition-all duration-[380ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
                 step === 1 
-                  ? 'opacity-100 translate-x-0' 
-                  : slideDirection === 'forward'
-                    ? 'opacity-0 -translate-x-full absolute inset-0 pointer-events-none'
-                    : 'opacity-0 translate-x-full absolute inset-0 pointer-events-none'
+                  ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto' 
+                  : 'opacity-0 -translate-x-12 scale-[0.98] pointer-events-none'
               }`}
             >
               <h2 className="text-xl font-bold text-gray-900 mb-1">เข้าสู่ระบบ</h2>
@@ -220,7 +247,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setDropdownOpen(!dropdownOpen)}
-                      className={`w-full h-11 px-3 rounded-xl border text-left text-sm flex items-center gap-2.5 transition-all ${
+                      className={`w-full h-11 px-3 rounded-xl border text-left text-sm flex items-center gap-2.5 transition-all cursor-pointer ${
                         company
                           ? 'border-gray-300 bg-white'
                           : 'border-gray-200 bg-gray-50 text-gray-400'
@@ -265,7 +292,7 @@ export default function LoginPage() {
                         <button
                           type="button"
                           onClick={() => { setCompany('EV7'); setDropdownOpen(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${company === 'EV7' ? 'bg-emerald-50' : ''}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'EV7' ? 'bg-emerald-50' : ''}`}
                         >
                           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">EV7</div>
                           <div className="flex-1 min-w-0">
@@ -277,7 +304,7 @@ export default function LoginPage() {
                         <button
                           type="button"
                           onClick={() => { setCompany('GI'); setDropdownOpen(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${company === 'GI' ? 'bg-blue-50' : ''}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'GI' ? 'bg-blue-50' : ''}`}
                         >
                           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
                           <div className="flex-1 min-w-0">
@@ -298,7 +325,7 @@ export default function LoginPage() {
                                 key={sup.code}
                                 type="button"
                                 onClick={() => { setCompany(sup.code); setDropdownOpen(false); }}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${company === sup.code ? 'bg-amber-50' : ''}`}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === sup.code ? 'bg-amber-50' : ''}`}
                               >
                                 <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white flex-shrink-0">
                                   <Wrench className="w-3.5 h-3.5" />
@@ -352,7 +379,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleNext}
                   disabled={checkingUser || !company || !username.trim()}
-                  className="w-full h-12 rounded-xl bg-[#0f5238] text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-[#0a3d28] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20"
+                  className="w-full h-12 rounded-xl bg-[#0f5238] text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-[#0a3d28] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 cursor-pointer"
                 >
                   {checkingUser ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -368,12 +395,10 @@ export default function LoginPage() {
 
             {/* ── STEP 2: Password ── */}
             <div
-              className={`p-8 transition-all duration-400 ease-in-out ${
+              className={`col-start-1 row-start-1 p-8 transition-all duration-[380ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
                 step === 2 
-                  ? 'opacity-100 translate-x-0' 
-                  : slideDirection === 'forward'
-                    ? 'opacity-0 translate-x-full absolute inset-0 pointer-events-none'
-                    : 'opacity-0 -translate-x-full absolute inset-0 pointer-events-none'
+                  ? 'opacity-100 translate-x-0 scale-100 pointer-events-auto' 
+                  : 'opacity-0 translate-x-12 scale-[0.98] pointer-events-none'
               }`}
             >
               {/* User info chip + back button */}
@@ -391,7 +416,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={handleBack}
-                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#0f5238] transition-colors"
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#0f5238] transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>เปลี่ยนผู้ใช้</span>
@@ -425,7 +450,7 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
                       tabIndex={-1}
                     >
                       {showPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
@@ -444,7 +469,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting || !password}
-                  className="w-full h-12 rounded-xl bg-[#0f5238] text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-[#0a3d28] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20"
+                  className="w-full h-12 rounded-xl bg-[#0f5238] text-white font-semibold text-sm flex items-center justify-center gap-2 hover:bg-[#0a3d28] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-emerald-900/20 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
