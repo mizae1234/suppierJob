@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Supplier, Job, Invoice } from '@/types';
 import { calculateBillingSummary, formatCurrency } from '@/lib/billing-utils';
+import { useToast } from '@/components/ui/Toast';
 import { CheckSquare, Square, Receipt, CheckCircle2, FileText, ChevronRight } from 'lucide-react';
 
 interface BillingTabProps {
@@ -44,9 +45,11 @@ export const BillingTab: React.FC<BillingTabProps> = ({
   // Due date: 30 days from now
   const defaultDueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+  const { showToast } = useToast();
+
   const handleCreate = () => {
     if (selectedJobIds.length === 0) {
-      alert('กรุณาเลือกงานอย่างน้อย 1 รายการเพื่อออกใบวางบิล');
+      showToast('กรุณาเลือกงานอย่างน้อย 1 รายการเพื่อออกใบวางบิล', 'warning');
       return;
     }
     onCreateInvoice(selectedJobIds, defaultDueDate, notes);

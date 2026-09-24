@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import {
   ArrowLeft,
@@ -39,6 +40,8 @@ export default function SupplierSubmitPage() {
     );
   }
 
+  const { showToast } = useToast();
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     try {
@@ -46,7 +49,7 @@ export default function SupplierSubmitPage() {
       await addJobEvidence(job.id, {
         photoUrl: '/evidence/completion-photo.jpg',
         caption: caption || 'งานเสร็จเรียบร้อย',
-        evidenceType: 'COMPLETION',
+        evidenceType: 'AFTER',
         vin: job.vin || job.carWashItems?.[0]?.vin,
       });
 
@@ -54,7 +57,7 @@ export default function SupplierSubmitPage() {
       await updateJobStatus(job.id, 'WAITING_APPROVAL');
       setSubmitted(true);
     } catch (error) {
-      alert('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง');
+      showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
     } finally {
       setIsSubmitting(false);
     }

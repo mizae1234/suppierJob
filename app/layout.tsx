@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { AppProvider } from '@/context/AppContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { ToastProvider } from '@/components/ui/Toast';
 
 export const metadata: Metadata = {
   title: 'ระบบจัดการงาน Supplier (EV7 & GI Fleet)',
@@ -26,7 +27,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans antialiased text-[#002114] bg-[#f4f9f5]">
         <AuthProvider>
           <AppProvider>
-            {children}
+            <ToastProvider>
+              {children}
+            </ToastProvider>
           </AppProvider>
         </AuthProvider>
       </body>

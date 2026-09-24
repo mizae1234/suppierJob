@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Job, JobEvidence } from '@/types';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/ui/Toast';
 import { 
   X, 
   Camera, 
@@ -99,10 +100,12 @@ export const SubmitEvidenceModal: React.FC<SubmitEvidenceModalProps> = ({
     setSelectedPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const { showToast } = useToast();
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedPhotos.length === 0) {
-      alert('กรุณาแนบรูปภาพหลักฐานอย่างน้อย 1 ภาพ');
+      showToast('กรุณาแนบรูปภาพหลักฐานอย่างน้อย 1 ภาพ', 'warning');
       return;
     }
 
@@ -128,7 +131,7 @@ export const SubmitEvidenceModal: React.FC<SubmitEvidenceModalProps> = ({
       onClose();
     } catch (err) {
       console.error(err);
-      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+      showToast('เกิดข้อผิดพลาดในการบันทึกข้อมูล', 'error');
     } finally {
       setIsSubmitting(false);
     }

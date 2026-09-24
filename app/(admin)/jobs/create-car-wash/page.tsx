@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/ui/Toast';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { 
@@ -114,15 +115,17 @@ export default function CreateCarWashPage() {
 
   const totalEstimatedCost = selectedItems.reduce((sum, it) => sum + it.unitPrice, 0);
 
+  const { showToast } = useToast();
+
   // Form submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSupplierId) {
-      alert('กรุณาเลือก Supplier ผู้ให้บริการ');
+      showToast('กรุณาเลือก Supplier ผู้ให้บริการ', 'warning');
       return;
     }
     if (selectedItems.length === 0) {
-      alert('กรุณาเลือก VIN อย่างน้อย 1 คัน');
+      showToast('กรุณาเลือก VIN อย่างน้อย 1 คัน', 'warning');
       return;
     }
 

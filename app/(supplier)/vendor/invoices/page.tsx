@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
@@ -50,6 +51,8 @@ export default function SupplierInvoicesPage() {
     );
   };
 
+  const { showToast } = useToast();
+
   const handleCreateInvoice = async () => {
     if (selectedJobIds.length === 0) return;
     setIsCreating(true);
@@ -71,7 +74,7 @@ export default function SupplierInvoicesPage() {
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
       } else {
-        alert(result.error || 'เกิดข้อผิดพลาด');
+        showToast(result.error || 'เกิดข้อผิดพลาด', 'error');
       }
     } finally {
       setIsCreating(false);
@@ -211,7 +214,7 @@ export default function SupplierInvoicesPage() {
                     {formatCurrency(inv.totalAmount)}
                   </p>
                   <p className="text-[10px] text-gray-400">
-                    {inv.status === 'PENDING' ? '⏳ รอชำระ' : '✅ ชำระแล้ว'}
+                    {inv.status === 'SUBMITTED' ? '⏳ รอชำระ' : inv.status === 'PAID' ? '✅ ชำระแล้ว' : inv.status}
                   </p>
                 </div>
               </div>

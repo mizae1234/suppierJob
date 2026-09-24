@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/ui/Toast';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { 
@@ -77,22 +78,24 @@ export default function CreateVehicleSlidePage() {
     return v.vin.toLowerCase().includes(q) || v.model.toLowerCase().includes(q) || (v.licensePlate && v.licensePlate.toLowerCase().includes(q));
   });
 
+  const { showToast } = useToast();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedVin) {
-      alert('กรุณาเลือกรถ (VIN) ที่ต้องการสไลด์');
+      showToast('กรุณาเลือกรถ (VIN) ที่ต้องการสไลด์', 'warning');
       return;
     }
     if (!destBranchId) {
-      alert('กรุณาเลือกสาขาปลายทาง');
+      showToast('กรุณาเลือกสาขาปลายทาง', 'warning');
       return;
     }
     if (destBranchId === selectedOriginBranchId) {
-      alert('สาขาปลายทางต้องไม่ซ้ำกับสาขาต้นทาง');
+      showToast('สาขาปลายทางต้องไม่ซ้ำกับสาขาต้นทาง', 'error');
       return;
     }
     if (!selectedSupplierId) {
-      alert('กรุณาเลือก Supplier รถสไลด์');
+      showToast('กรุณาเลือก Supplier รถสไลด์', 'warning');
       return;
     }
 
