@@ -41,6 +41,14 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCompanyOpen, setIsCompanyOpen] = useState(false);
+
+  const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
+    { value: 'ALL', label: 'ทุกบริษัท', color: '#0f5238', dot: '#52b788' },
+    { value: 'EV7', label: 'EV7', color: '#0f5238', dot: '#2d6a4f' },
+    { value: 'GI', label: 'GI Fleet', color: '#1e3a5f', dot: '#3b82f6' },
+  ];
+  const activeCompanyOption = companyOptions.find(o => o.value === currentCompany) || companyOptions[0];
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,7 +105,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
           className="hidden sm:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
           style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
         >
-          {(['MASTER', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
+          {(['MASTER', 'SUPPLIER'] as UserRole[]).map((role) => {
             const isActive = currentRole === role;
             const labels: Record<string, string> = {
               MASTER: 'Master',
@@ -128,32 +136,109 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
         </div>
         )}
 
-        {/* Company Selector Pill — only MASTER can switch */}
+        {/* Company & Branch Selector Dropdown — only MASTER can switch */}
         {currentRole === 'MASTER' && (
-        <div
-          className="hidden md:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
-          style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
-        >
-          {(['ALL', 'EV7', 'GI'] as const).map((comp) => {
-            const isActive = currentCompany === comp;
-            // Use specific color for active company button
-            const activeColor = comp === 'GI' ? '#1e3a5f' : comp === 'EV7' ? '#0f5238' : theme.primary;
-            return (
-              <button
-                key={comp}
-                onClick={() => setCurrentCompany(comp)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 ${
-                  isActive
-                    ? 'text-white shadow-xs'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-                style={isActive ? { backgroundColor: activeColor } : {}}
+          <div className="hidden md:flex items-center relative">
+            {/* Trigger Button */}
+            <button
+              onClick={() => setIsCompanyOpen(!isCompanyOpen)}
+              onBlur={() => setTimeout(() => setIsCompanyOpen(false), 200)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white transition-all duration-200 hover:opacity-90 shadow-sm max-w-[220px]"
+              style={{ backgroundColor: activeCompanyOption.color }}
+            >
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeCompanyOption.dot }} />
+              <span className="truncate">
+                {currentBranchId && currentCompany !== 'ALL'
+                  ? branches.find(b => b.id === currentBranchId)?.name || activeCompanyOption.label
+                  : activeCompanyOption.label
+                }
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 text-white/70 shrink-0 transition-transform duration-200 ${isCompanyOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {isCompanyOpen && (
+              <div 
+                className="absolute top-full right-0 mt-2 w-56 rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden animate-slide-down z-50"
               >
-                {comp === 'ALL' ? 'ทุกบริษัท' : comp}
-              </button>
-            );
-          })}
-        </div>
+                {/* ทุกบริษัท option */}
+                <button
+                  onMouseDown={(e) => { 
+                    e.preventDefault(); 
+                    setCurrentCompany('ALL');
+                    setCurrentBranchId('');
+                    setIsCompanyOpen(false); 
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold transition-colors ${
+                    currentCompany === 'ALL'
+                      ? 'bg-emerald-50 text-gray-900'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />
+                  <span className="flex-1 text-left">ทุกบริษัท</span>
+                  {currentCompany === 'ALL' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                </button>
+
+                <div className="h-px bg-gray-100" />
+
+                {/* EV7 & GI with branches */}
+                {companyOptions.filter(o => o.value !== 'ALL').map((opt) => {
+                  const isCompanySelected = currentCompany === opt.value;
+                  const companyBranches = branches.filter(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
+                  
+                  return (
+                    <div key={opt.value}>
+                      {/* Company header */}
+                      <button
+                        onMouseDown={(e) => { 
+                          e.preventDefault(); 
+                          setCurrentCompany(opt.value);
+                          setCurrentBranchId('');
+                          setIsCompanyOpen(false); 
+                        }}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold transition-colors ${
+                          isCompanySelected
+                            ? 'bg-gray-50 text-gray-900'
+                            : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: opt.dot }} />
+                        <span className="flex-1 text-left">{opt.label}</span>
+                        {isCompanySelected && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                      </button>
+                      
+                      {/* Branch sub-items */}
+                      {companyBranches.map((branch) => (
+                        <button
+                          key={branch.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setCurrentCompany(opt.value);
+                            setCurrentBranchId(branch.id);
+                            setIsCompanyOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-2 pl-9 pr-4 py-2 text-[11px] transition-colors ${
+                            currentBranchId === branch.id && isCompanySelected
+                              ? 'bg-gray-50 text-gray-900 font-semibold'
+                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 font-medium'
+                          }`}
+                        >
+                          <Building className="w-3 h-3 shrink-0 opacity-50" />
+                          <span className="flex-1 text-left truncate">{branch.name}</span>
+                          {currentBranchId === branch.id && isCompanySelected && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                      
+                      <div className="h-px bg-gray-100 last:hidden" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Branch Selector Dropdown (When Role is BRANCH) */}

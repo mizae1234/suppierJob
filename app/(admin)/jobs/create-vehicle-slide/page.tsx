@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useToast } from '@/components/ui/Toast';
@@ -25,9 +25,11 @@ export default function CreateVehicleSlidePage() {
   const router = useRouter();
   const { 
     currentRole,
+    currentCompany,
     currentBranchId, 
     activeBranch, 
     branches, 
+    companies,
     suppliers, 
     vehicles, 
     createVehicleSlideJob 
@@ -36,9 +38,25 @@ export default function CreateVehicleSlidePage() {
   // Slide suppliers
   const slideSuppliers = suppliers.filter(s => s.services.includes('VEHICLE_SLIDE'));
 
-  // Branch selection — Admin can pick any branch as origin
-  const [selectedOriginBranchId, setSelectedOriginBranchId] = useState<string>(currentBranchId || branches[0]?.id || '');
+  // Branches filtered by selected company context
+  const availableBranches = useMemo(() => {
+    if (currentCompany === 'ALL') return branches;
+    const companyObj = companies.find(c => c.code === currentCompany);
+    if (!companyObj) return branches;
+    return branches.filter(b => b.companyId === companyObj.id);
+  }, [branches, companies, currentCompany]);
+
+  // Branch selection — Admin/Master pick from available branches
+  const [selectedOriginBranchId, setSelectedOriginBranchId] = useState<string>(currentBranchId || availableBranches[0]?.id || branches[0]?.id || '');
   const originBranchObj = branches.find(b => b.id === selectedOriginBranchId);
+
+  // Auto-switch branch when company changes
+  useEffect(() => {
+    if (currentRole === 'BRANCH') return;
+    if (availableBranches.length > 0 && !availableBranches.find(b => b.id === selectedOriginBranchId)) {
+      setSelectedOriginBranchId(availableBranches[0].id);
+    }
+  }, [availableBranches, selectedOriginBranchId, currentRole]);
 
   // Vehicles at selected origin branch
   const branchStockVehicles = useMemo(() => {
@@ -48,7 +66,7 @@ export default function CreateVehicleSlidePage() {
   // Form State
   const [selectedVin, setSelectedVin] = useState<string>(branchStockVehicles[0]?.vin || '');
   const [destBranchId, setDestBranchId] = useState<string>(
-    branches.find(b => b.id !== selectedOriginBranchId)?.id || ''
+    availableBranches.find(b => b.id !== selectedOriginBranchId)?.id || branches.find(b => b.id !== selectedOriginBranchId)?.id || ''
   );
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(slideSuppliers[0]?.id || '');
   const [pickupDateTime, setPickupDateTime] = useState<string>(
@@ -99,7 +117,8 @@ export default function CreateVehicleSlidePage() {
       return;
     }
 
-    const companyCode: CompanyCode = originBranchObj?.companyId === 'comp-gi' ? 'GI' : 'EV7';
+    const matchedCompany = companies.find(c => c.id === originBranchObj?.companyId);
+    const companyCode: CompanyCode = (matchedCompany?.code as CompanyCode) || 'EV7';
 
     const newJob = await createVehicleSlideJob({
       companyCode,
@@ -146,8 +165,25 @@ export default function CreateVehicleSlidePage() {
             <MapPin className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-900">ต้นทาง: {activeBranch?.name}</p>
-            <p className="text-[11px] text-emerald-700">มีรถพร้อมสไลด์: {branchStockVehicles.length} คัน</p>
+            {(currentRole === 'ADMIN' || currentRole === 'MASTER') ? (
+              <>
+                <select
+                  value={selectedOriginBranchId}
+                  onChange={(e) => setSelectedOriginBranchId(e.target.value)}
+                  className="text-xs font-bold text-gray-900 bg-transparent border-none outline-none cursor-pointer pr-4"
+                >
+                  {availableBranches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-emerald-700">มีรถพร้อมสไลด์: {branchStockVehicles.length} คัน</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-bold text-gray-900">ต้นทาง: {activeBranch?.name}</p>
+                <p className="text-[11px] text-emerald-700">มีรถพร้อมสไลด์: {branchStockVehicles.length} คัน</p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -286,7 +322,7 @@ export default function CreateVehicleSlidePage() {
                   required
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
                 >
-                  {branches.map(b => (
+                  {availableBranches.map(b => (
                     <option key={b.id} value={b.id} disabled={b.id === selectedOriginBranchId}>
                       {b.name} {b.id === selectedOriginBranchId ? '(สาขาต้นทาง)' : ''}
                     </option>

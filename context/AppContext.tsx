@@ -178,7 +178,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ─── Filtered data ──────────────────────────────
   const filteredJobs = jobs.filter(job => {
     if (currentCompany !== 'ALL' && job.companyCode !== currentCompany) return false;
-    if (currentRole === 'MASTER') return true;
+    if (currentRole === 'MASTER') {
+      // If MASTER has selected a specific branch, filter by it
+      if (currentBranchId) {
+        return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;
+      }
+      return true;
+    }
     if (currentRole === 'ADMIN') return true;
     if (currentRole === 'BRANCH') {
       return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;
@@ -189,6 +195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const filteredVehicles = vehicles.filter(v => {
     if (currentCompany !== 'ALL' && v.companyCode !== currentCompany) return false;
+    if (currentRole === 'MASTER' && currentBranchId) return v.currentBranchId === currentBranchId;
     if (currentRole === 'BRANCH') return v.currentBranchId === currentBranchId;
     return true;
   });

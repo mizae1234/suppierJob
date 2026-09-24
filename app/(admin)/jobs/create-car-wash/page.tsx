@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useToast } from '@/components/ui/Toast';
+import { useTheme } from '@/hooks/useTheme';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { 
@@ -18,7 +19,9 @@ import {
   CheckCircle2, 
   ArrowLeft,
   Search,
-  Plus
+  Plus,
+  Building,
+  ChevronDown
 } from 'lucide-react';
 
 export default function CreateCarWashPage() {
@@ -29,10 +32,12 @@ export default function CreateCarWashPage() {
     currentBranchId, 
     activeBranch, 
     branches,
+    companies,
     suppliers, 
     vehicles, 
     createCarWashJob 
   } = useApp();
+  const theme = useTheme();
 
   // Wash Suppliers
   const washSuppliers = suppliers.filter(s => s.services.includes('CAR_WASH'));
@@ -40,10 +45,35 @@ export default function CreateCarWashPage() {
   // Selected supplier
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(washSuppliers[0]?.id || '');
   const [requestedBy, setRequestedBy] = useState<string>('ผู้จัดการสาขา');
+  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
+  const [openWashTypeVin, setOpenWashTypeVin] = useState<string | null>(null);
 
-  // Branch selection — Admin can pick any branch, Branch role uses their own
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(currentBranchId || branches[0]?.id || '');
+  const washTypeOptions = [
+    { value: 'STANDARD', label: 'Standard (฿180)' },
+    { value: 'DEEP_CLEAN', label: 'Deep Clean (฿350)' },
+    { value: 'POLISH', label: 'ขัดเคลือบเงา (฿650)' },
+  ];
+
+  // Branches filtered by selected company context
+  const availableBranches = useMemo(() => {
+    if (currentCompany === 'ALL') return branches;
+    const companyObj = companies.find(c => c.code === currentCompany);
+    if (!companyObj) return branches;
+    return branches.filter(b => b.companyId === companyObj.id);
+  }, [branches, companies, currentCompany]);
+
+  // Branch selection — Admin/Master pick from available branches, Branch role uses their own
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(currentBranchId || availableBranches[0]?.id || branches[0]?.id || '');
   const selectedBranch = branches.find(b => b.id === selectedBranchId);
+
+  // Auto-switch branch when company changes
+  useEffect(() => {
+    if (currentRole === 'BRANCH') return; // Branch users don't switch
+    if (availableBranches.length > 0 && !availableBranches.find(b => b.id === selectedBranchId)) {
+      setSelectedBranchId(availableBranches[0].id);
+      setSelectedItems([]);
+    }
+  }, [availableBranches, selectedBranchId, currentRole]);
 
   // Branch vehicles (only vehicles currently in stock at selected branch)
   const branchStockVehicles = useMemo(() => {
@@ -129,7 +159,8 @@ export default function CreateCarWashPage() {
       return;
     }
 
-    const companyCode: CompanyCode = selectedBranch?.companyId === 'comp-gi' ? 'GI' : 'EV7';
+    const matchedCompany = companies.find(c => c.id === selectedBranch?.companyId);
+    const companyCode: CompanyCode = (matchedCompany?.code as CompanyCode) || 'EV7';
 
     const newJob = await createCarWashJob({
       companyCode,
@@ -161,7 +192,7 @@ export default function CreateCarWashPage() {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Sparkles className="w-6 h-6 text-emerald-600" />
+              <Sparkles className="w-6 h-6" style={{ color: theme.primary }} />
               <span>สร้างคำสั่งสั่งล้างรถ (Car Wash Order)</span>
             </h1>
             <p className="text-xs text-gray-500 mt-0.5">
@@ -171,25 +202,60 @@ export default function CreateCarWashPage() {
         </div>
 
         {/* Current Branch Badge */}
-        <div className="p-3 rounded-2xl bg-[#eaf5ee] border border-emerald-950/10 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-[#0f5238] shadow-xs">
+        <div className="p-3 rounded-2xl border flex items-center gap-3 relative" style={{ backgroundColor: theme.bgFooter, borderColor: theme.borderSoft }}>
+          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs" style={{ color: theme.primary }}>
             <Car className="w-4 h-4" />
           </div>
-          <div>
-            {currentRole === 'ADMIN' ? (
-              <select
-                value={selectedBranchId}
-                onChange={(e) => { setSelectedBranchId(e.target.value); setSelectedItems([]); }}
-                className="text-xs font-bold text-gray-900 bg-transparent border-none outline-none cursor-pointer pr-4"
-              >
-                {branches.map(b => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+          <div className="flex-1 min-w-0">
+            {(currentRole === 'ADMIN' || currentRole === 'MASTER') ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)}
+                  onBlur={() => setTimeout(() => setIsBranchDropdownOpen(false), 200)}
+                  className="flex items-center gap-2 text-xs font-bold cursor-pointer"
+                  style={{ color: theme.primary }}
+                >
+                  <span className="truncate">{availableBranches.find(b => b.id === selectedBranchId)?.name || 'เลือกสาขา'}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isBranchDropdownOpen ? 'rotate-180' : ''}`} style={{ color: theme.textMuted }} />
+                </button>
+
+                {/* Custom Branch Dropdown */}
+                {isBranchDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-64 rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden z-50">
+                    {availableBranches.map((branch) => {
+                      const isSelected = selectedBranchId === branch.id;
+                      return (
+                        <button
+                          type="button"
+                          key={branch.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSelectedBranchId(branch.id);
+                            setSelectedItems([]);
+                            setIsBranchDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-gray-50 text-gray-900 font-bold'
+                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium'
+                          }`}
+                        >
+                          <Building className="w-3.5 h-3.5 shrink-0 opacity-50" />
+                          <span className="flex-1 text-left truncate">{branch.name}</span>
+                          {isSelected && (
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: theme.primary }} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             ) : (
               <p className="text-xs font-bold text-gray-900">{activeBranch?.name || 'สาขา'}</p>
             )}
-            <p className="text-[11px] text-emerald-700">รถในสต็อกสาขานี้: {branchStockVehicles.length} คัน</p>
+            <p className="text-[11px]" style={{ color: theme.textMuted }}>รถในสต็อกสาขานี้: {branchStockVehicles.length} คัน</p>
           </div>
         </div>
       </div>
@@ -199,9 +265,9 @@ export default function CreateCarWashPage() {
         {/* Left Column: Supplier & Available Stock Selector */}
         <div className="lg:col-span-1 flex flex-col gap-5">
           {/* Step 1: Choose Supplier */}
-          <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3">
+          <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col gap-3">
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">1</span>
+              <span className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>1</span>
               <span>เลือก Supplier คู่ค้า</span>
             </h2>
 
@@ -228,7 +294,7 @@ export default function CreateCarWashPage() {
                       <p className="text-[11px] text-gray-500 mt-0.5">โทร: {sup.phone}</p>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-[#0f5238] font-semibold text-[10px]">
+                  <span className="px-2 py-0.5 rounded font-semibold text-[10px]" style={{ backgroundColor: theme.bgSoft, color: theme.primary }}>
                     คาร์วอช
                   </span>
                 </label>
@@ -250,10 +316,10 @@ export default function CreateCarWashPage() {
           </div>
 
           {/* Step 2: Select VINs from Branch Stock */}
-          <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3">
+          <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">2</span>
+                <span className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>2</span>
                 <span>เลือกรถในสต็อกสาขา</span>
               </h2>
               <span className="text-xs text-gray-500">เลือกแล้ว {selectedItems.length} คัน</span>
@@ -316,11 +382,11 @@ export default function CreateCarWashPage() {
 
         {/* Right Column: Per-VIN Operation Dates & Order Breakdown */}
         <div className="lg:col-span-2 flex flex-col gap-5">
-          <div className="p-6 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-4">
+          <div className="p-6 rounded-2xl bg-white border shadow-xs flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
                 <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">3</span>
+                  <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>3</span>
                   <span>รายการและกำหนดวันปฏิบัติงานจริงของแต่ละ VIN</span>
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -328,7 +394,7 @@ export default function CreateCarWashPage() {
                 </p>
               </div>
 
-              <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full">
+              <span className="text-xs font-bold px-3 py-1 rounded-full" style={{ color: theme.primary, backgroundColor: theme.bgSoft }}>
                 รวม {selectedItems.length} คัน
               </span>
             </div>
@@ -385,15 +451,46 @@ export default function CreateCarWashPage() {
                         <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
                           ประเภทการล้าง:
                         </label>
-                        <select
-                          value={item.washType}
-                          onChange={(e) => updateItemField(item.vin, 'washType', e.target.value)}
-                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs font-semibold focus:ring-1 focus:ring-[#0f5238]"
-                        >
-                          <option value="STANDARD">Standard (฿180)</option>
-                          <option value="DEEP_CLEAN">Deep Clean (฿350)</option>
-                          <option value="POLISH">ขัดเคลือบเงา (฿650)</option>
-                        </select>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setOpenWashTypeVin(openWashTypeVin === item.vin ? null : item.vin)}
+                            onBlur={() => setTimeout(() => setOpenWashTypeVin(null), 200)}
+                            className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-1 cursor-pointer hover:border-gray-300 transition-colors"
+                            style={{ color: theme.primary }}
+                          >
+                            <span className="truncate">{washTypeOptions.find(o => o.value === item.washType)?.label || 'Standard (฿180)'}</span>
+                            <ChevronDown className={`w-3 h-3 shrink-0 text-gray-400 transition-transform duration-200 ${openWashTypeVin === item.vin ? 'rotate-180' : ''}`} />
+                          </button>
+                          {openWashTypeVin === item.vin && (
+                            <div className="absolute top-full left-0 mt-1 w-full rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden z-50">
+                              {washTypeOptions.map((opt) => {
+                                const isSelected = item.washType === opt.value;
+                                return (
+                                  <button
+                                    type="button"
+                                    key={opt.value}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      updateItemField(item.vin, 'washType', opt.value);
+                                      setOpenWashTypeVin(null);
+                                    }}
+                                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-gray-50 text-gray-900 font-bold'
+                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium'
+                                    }`}
+                                  >
+                                    <span>{opt.label}</span>
+                                    {isSelected && (
+                                      <Check className="w-3.5 h-3.5" style={{ color: theme.primary }} />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Remarks */}
@@ -431,10 +528,10 @@ export default function CreateCarWashPage() {
 
             {/* Bottom Summary Bar */}
             {selectedItems.length > 0 && (
-              <div className="p-4 rounded-2xl bg-[#f4f9f5] border border-emerald-950/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
+              <div className="p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2" style={{ backgroundColor: theme.bgCard, borderColor: theme.borderSoft }}>
                 <div>
                   <span className="text-xs text-gray-500">ยอดรวมค่าบริการโดยประมาณ:</span>
-                  <div className="text-2xl font-bold text-[#0f5238]">
+                  <div className="text-2xl font-bold" style={{ color: theme.primary }}>
                     ฿{totalEstimatedCost.toLocaleString()}
                   </div>
                 </div>
@@ -442,7 +539,8 @@ export default function CreateCarWashPage() {
                 <div className="flex items-center gap-3">
                   <button
                     type="submit"
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#0f5238] text-white text-xs font-bold hover:bg-[#0a3d28] shadow-md transition-all"
+                    className="flex items-center gap-2 px-6 py-2.5 rounded-full text-white text-xs font-bold shadow-md transition-all hover:opacity-90 cursor-pointer"
+                    style={{ backgroundColor: theme.primary }}
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>บันทึก Order & ออกใบสั่งงาน</span>
@@ -461,7 +559,7 @@ export default function CreateCarWashPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-3 no-print">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <CheckCircle2 className="w-5 h-5" style={{ color: theme.primary }} />
                 <h3 className="text-base font-bold text-gray-900">
                   บันทึกคำสั่งล้างรถสำเร็จ (Car Wash Order Created)
                 </h3>
@@ -469,7 +567,8 @@ export default function CreateCarWashPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-bold hover:opacity-90 transition-colors"
+                  style={{ backgroundColor: theme.primary }}
                 >
                   <Printer className="w-4 h-4" />
                   <span>พิมพ์ / Export PDF</span>
