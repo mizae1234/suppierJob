@@ -146,11 +146,29 @@ async function main() {
 
   const usersData = [
     {
-      username: 'admin',
-      password: 'admin1234',
-      displayName: 'ผู้ดูแลระบบ (Admin)',
-      role: 'ADMIN',
+      username: 'master',
+      password: 'master1234',
+      displayName: 'ผู้ดูแลระบบสูงสุด (Master)',
+      role: 'MASTER',
       companyId: null as string | null,
+      branchId: null as string | null,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'admin-ev7',
+      password: 'ev71234',
+      displayName: 'ผู้ดูแล EV7 (Admin EV7)',
+      role: 'ADMIN',
+      companyId: ev7.id,
+      branchId: null as string | null,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'admin-gi',
+      password: 'gi1234',
+      displayName: 'ผู้ดูแล GI (Admin GI)',
+      role: 'ADMIN',
+      companyId: gi.id,
       branchId: null as string | null,
       supplierId: null as string | null,
     },

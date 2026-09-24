@@ -23,6 +23,7 @@ import {
 export default function CreateVehicleSlidePage() {
   const router = useRouter();
   const { 
+    currentRole,
     currentBranchId, 
     activeBranch, 
     branches, 
@@ -34,15 +35,19 @@ export default function CreateVehicleSlidePage() {
   // Slide suppliers
   const slideSuppliers = suppliers.filter(s => s.services.includes('VEHICLE_SLIDE'));
 
-  // Vehicles at this branch
+  // Branch selection — Admin can pick any branch as origin
+  const [selectedOriginBranchId, setSelectedOriginBranchId] = useState<string>(currentBranchId || branches[0]?.id || '');
+  const originBranchObj = branches.find(b => b.id === selectedOriginBranchId);
+
+  // Vehicles at selected origin branch
   const branchStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.currentBranchId === currentBranchId && v.status === 'AVAILABLE');
-  }, [vehicles, currentBranchId]);
+    return vehicles.filter(v => v.currentBranchId === selectedOriginBranchId && v.status === 'AVAILABLE');
+  }, [vehicles, selectedOriginBranchId]);
 
   // Form State
   const [selectedVin, setSelectedVin] = useState<string>(branchStockVehicles[0]?.vin || '');
   const [destBranchId, setDestBranchId] = useState<string>(
-    branches.find(b => b.id !== currentBranchId)?.id || ''
+    branches.find(b => b.id !== selectedOriginBranchId)?.id || ''
   );
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(slideSuppliers[0]?.id || '');
   const [pickupDateTime, setPickupDateTime] = useState<string>(
@@ -64,7 +69,6 @@ export default function CreateVehicleSlidePage() {
   const [createdJob, setCreatedJob] = useState<Job | null>(null);
 
   const selectedVehicle = vehicles.find(v => v.vin === selectedVin);
-  const originBranch = branches.find(b => b.id === currentBranchId);
   const destBranch = branches.find(b => b.id === destBranchId);
 
   const filteredVehicles = branchStockVehicles.filter(v => {
@@ -83,7 +87,7 @@ export default function CreateVehicleSlidePage() {
       alert('กรุณาเลือกสาขาปลายทาง');
       return;
     }
-    if (destBranchId === currentBranchId) {
+    if (destBranchId === selectedOriginBranchId) {
       alert('สาขาปลายทางต้องไม่ซ้ำกับสาขาต้นทาง');
       return;
     }
@@ -92,11 +96,11 @@ export default function CreateVehicleSlidePage() {
       return;
     }
 
-    const companyCode: CompanyCode = activeBranch?.companyId === 'comp-gi' ? 'GI' : 'EV7';
+    const companyCode: CompanyCode = originBranchObj?.companyId === 'comp-gi' ? 'GI' : 'EV7';
 
     const newJob = await createVehicleSlideJob({
       companyCode,
-      originBranchId: currentBranchId,
+      originBranchId: selectedOriginBranchId,
       destBranchId,
       supplierId: selectedSupplierId,
       vin: selectedVin,
@@ -248,12 +252,24 @@ export default function CreateVehicleSlidePage() {
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
                   สาขาต้นทาง (Origin Branch):
                 </label>
-                <input
-                  type="text"
-                  disabled
-                  value={originBranch?.name || ''}
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-600 font-medium"
-                />
+                {currentRole === 'ADMIN' ? (
+                  <select
+                    value={selectedOriginBranchId}
+                    onChange={(e) => { setSelectedOriginBranchId(e.target.value); setSelectedVin(''); }}
+                    className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
+                  >
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    disabled
+                    value={originBranchObj?.name || ''}
+                    className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-600 font-medium"
+                  />
+                )}
               </div>
 
               {/* Destination Branch */}
@@ -268,8 +284,8 @@ export default function CreateVehicleSlidePage() {
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
                 >
                   {branches.map(b => (
-                    <option key={b.id} value={b.id} disabled={b.id === currentBranchId}>
-                      {b.name} {b.id === currentBranchId ? '(สาขาต้นทาง)' : ''}
+                    <option key={b.id} value={b.id} disabled={b.id === selectedOriginBranchId}>
+                      {b.name} {b.id === selectedOriginBranchId ? '(สาขาต้นทาง)' : ''}
                     </option>
                   ))}
                 </select>
@@ -392,7 +408,7 @@ export default function CreateVehicleSlidePage() {
               <div>
                 <span className="text-xs text-gray-500">เส้นทาง:</span>
                 <p className="text-xs font-bold text-gray-800">
-                  {originBranch?.name} &rarr; {destBranch?.name}
+                  {originBranchObj?.name} &rarr; {destBranch?.name}
                 </p>
               </div>
 

@@ -155,9 +155,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (user.supplierId) setCurrentSupplierId(user.supplierId);
 
     // Set company based on user's role + login selection
-    if (user.role === 'ADMIN') {
-      // If admin selected a specific company at login, use it; otherwise show ALL
+    if (user.role === 'MASTER') {
+      // Master can see everything, allow switching companies
       setCurrentCompany(selectedCompany || 'ALL');
+    } else if (user.role === 'ADMIN') {
+      // Admin is locked to their company
+      if (user.companyCode) {
+        setCurrentCompany(user.companyCode as CompanyCode);
+      } else {
+        setCurrentCompany(selectedCompany || 'ALL');
+      }
     } else if (user.companyCode) {
       setCurrentCompany(user.companyCode as CompanyCode);
     }
@@ -171,6 +178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ─── Filtered data ──────────────────────────────
   const filteredJobs = jobs.filter(job => {
     if (currentCompany !== 'ALL' && job.companyCode !== currentCompany) return false;
+    if (currentRole === 'MASTER') return true;
     if (currentRole === 'ADMIN') return true;
     if (currentRole === 'BRANCH') {
       return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;

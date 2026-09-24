@@ -41,7 +41,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
           <span>ข้อมูลประจำวัน: {formatThaiDate(new Date())}</span>
           <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
           <span>
-            {currentRole === 'ADMIN' && 'โหมดภาพรวมทุกสาขา (Central Admin)'}
+            {currentRole === 'MASTER' && 'โหมดภาพรวมทุกสาขา (Master)'}
+            {currentRole === 'ADMIN' && `ผู้ดูแลเฉพาะ ${currentCompany}`}
             {currentRole === 'BRANCH' && `สาขา: ${activeBranchName || 'ที่เลือก'}`}
             {currentRole === 'SUPPLIER' && 'โหมดคู่ค้าซัพพลายเออร์'}
           </span>

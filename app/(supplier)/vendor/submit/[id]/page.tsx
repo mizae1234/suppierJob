@@ -32,7 +32,7 @@ export default function SupplierSubmitPage() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">ไม่พบงานที่ระบุ</p>
-        <Link href="/s/jobs" className="text-sm font-semibold mt-2 inline-block" style={{ color: theme.primary }}>
+        <Link href="/vendor/jobs" className="text-sm font-semibold mt-2 inline-block" style={{ color: theme.primary }}>
           ← กลับไปรายการงาน
         </Link>
       </div>
@@ -74,7 +74,7 @@ export default function SupplierSubmitPage() {
           รอสาขาตรวจรับ — คุณจะได้รับแจ้งเตือนเมื่อมีการอนุมัติ
         </p>
         <Link
-          href="/s/jobs"
+          href="/vendor/jobs"
           className="inline-flex items-center gap-2 px-6 py-3 rounded-full text-white text-sm font-semibold"
           style={{ backgroundColor: theme.primary }}
         >
@@ -88,7 +88,7 @@ export default function SupplierSubmitPage() {
     <div className="flex flex-col gap-5 max-w-lg mx-auto">
       {/* Back Link */}
       <Link
-        href="/s/jobs?tab=progress"
+        href="/vendor/jobs?tab=progress"
         className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 transition-colors"
       >
         <ArrowLeft className="w-4 h-4" />

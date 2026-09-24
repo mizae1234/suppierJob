@@ -1,6 +1,6 @@
 export type CompanyCode = 'EV7' | 'GI';
 
-export type UserRole = 'ADMIN' | 'BRANCH' | 'SUPPLIER';
+export type UserRole = 'MASTER' | 'ADMIN' | 'BRANCH' | 'SUPPLIER';
 
 export type JobType = 'CAR_WASH' | 'VEHICLE_SLIDE';
 

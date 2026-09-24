@@ -60,14 +60,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       href: '/jobs/create-car-wash',
       icon: Sparkles,
       badge: null,
-      roleVisibility: ['ADMIN', 'BRANCH'],
+      roleVisibility: ['MASTER', 'ADMIN', 'BRANCH'],
     },
     {
       label: 'ขอรถสไลด์ (Slide)',
       href: '/jobs/create-vehicle-slide',
       icon: Truck,
       badge: null,
-      roleVisibility: ['ADMIN', 'BRANCH'],
+      roleVisibility: ['MASTER', 'ADMIN', 'BRANCH'],
     },
     {
       label: 'รอตรวจรับงาน',
@@ -87,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       href: '/suppliers',
       icon: Store,
       badge: null,
-      roleVisibility: ['ADMIN'],
+      roleVisibility: ['MASTER'],
     },
     {
       label: 'ใบวางบิล / Invoice',
@@ -106,12 +106,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       href: '/vendor',
       icon: Smartphone,
       badge: 'Supplier',
+      roleVisibility: ['MASTER'],
     },
     {
       label: 'ตั้งค่าระบบ',
       href: '/settings',
       icon: Settings,
       badge: null,
+      roleVisibility: ['MASTER'],
     },
   ];
 
@@ -173,18 +175,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
           >
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="w-8 h-8 rounded-xl bg-white shadow-xs flex items-center justify-center shrink-0">
+                {currentRole === 'MASTER' && <ShieldCheck className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
                 {currentRole === 'ADMIN' && <ShieldCheck className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
                 {currentRole === 'BRANCH' && <Building2 className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
                 {currentRole === 'SUPPLIER' && <Wrench className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-gray-900 truncate">
-                  {currentRole === 'ADMIN' && 'โหมดส่วนกลาง (Central Admin)'}
+                  {currentRole === 'MASTER' && 'โหมดควบคุมสูงสุด (Master)'}
+                  {currentRole === 'ADMIN' && `ผู้ดูแล ${currentCompany}`}
                   {currentRole === 'BRANCH' && (activeBranch?.name || 'สาขาที่เลือก')}
                   {currentRole === 'SUPPLIER' && (activeSupplier?.name || 'คู่ค้า Supplier')}
                 </p>
                 <p className="text-[11px] font-medium transition-colors duration-300" style={{ color: theme.textMuted }}>
-                  {currentRole === 'ADMIN' ? 'จัดการทุกสาขา & บิล' : `บทบาท: ${currentRole}`}
+                  {currentRole === 'MASTER' ? 'จัดการทุกสาขา & บิล & Supplier' : currentRole === 'ADMIN' ? `จัดการเฉพาะ ${currentCompany}` : `บทบาท: ${currentRole}`}
                 </p>
               </div>
             </div>

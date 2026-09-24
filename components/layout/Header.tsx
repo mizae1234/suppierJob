@@ -92,13 +92,15 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
       {/* Control Center & Role Context Switcher */}
       <div className="flex items-center gap-3 shrink-0">
         {/* Role Selector Pill */}
+        {currentRole === 'MASTER' && (
         <div
           className="hidden sm:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
           style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
         >
-          {(['ADMIN', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
+          {(['MASTER', 'ADMIN', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
             const isActive = currentRole === role;
-            const labels = {
+            const labels: Record<string, string> = {
+              MASTER: 'Master',
               ADMIN: 'Admin ส่วนกลาง',
               BRANCH: 'สาขา (Branch)',
               SUPPLIER: 'Supplier คู่ค้า',
@@ -124,8 +126,10 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             );
           })}
         </div>
+        )}
 
-        {/* Company Selector Pill */}
+        {/* Company Selector Pill — only MASTER can switch */}
+        {currentRole === 'MASTER' && (
         <div
           className="hidden md:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
           style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
@@ -150,6 +154,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             );
           })}
         </div>
+        )}
 
         {/* Branch Selector Dropdown (When Role is BRANCH) */}
         {currentRole === 'BRANCH' && (
@@ -247,11 +252,11 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
             className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-xs font-semibold text-xs transition-colors duration-300"
             style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
           >
-            {user?.displayName?.charAt(0)?.toUpperCase() || (currentRole === 'ADMIN' ? 'AD' : currentRole === 'BRANCH' ? 'BR' : 'SP')}
+            {user?.displayName?.charAt(0)?.toUpperCase() || (currentRole === 'MASTER' ? 'M' : currentRole === 'ADMIN' ? 'AD' : currentRole === 'BRANCH' ? 'BR' : 'SP')}
           </div>
           <div className="hidden xl:block text-left">
             <p className="text-xs font-bold text-gray-900 leading-tight">
-              {user?.displayName || (currentRole === 'ADMIN' ? 'ผู้ดูแลระบบส่วนกลาง' : currentRole === 'BRANCH' ? 'เจ้าหน้าที่สาขา' : 'คู่ค้า Supplier')}
+              {user?.displayName || (currentRole === 'MASTER' ? 'Master' : currentRole === 'ADMIN' ? 'ผู้ดูแลระบบ' : currentRole === 'BRANCH' ? 'เจ้าหน้าที่สาขา' : 'คู่ค้า Supplier')}
             </p>
             <p className="text-[11px] text-gray-500">
               {user?.username || (currentCompany === 'ALL' ? 'EV7 & GI Fleet' : currentCompany)}

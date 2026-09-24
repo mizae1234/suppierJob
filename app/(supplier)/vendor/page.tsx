@@ -146,7 +146,7 @@ export default function SupplierDashboardPage() {
                   </p>
                 </div>
                 <Link
-                  href={`/s/jobs?tab=new`}
+                  href={`/vendor/jobs?tab=new`}
                   className="px-3 py-1 rounded-full text-white text-xs font-semibold"
                   style={{ backgroundColor: theme.primary }}
                 >
@@ -174,7 +174,7 @@ export default function SupplierDashboardPage() {
             </p>
             <p className="text-xs text-gray-500 mb-3">มูลค่ารวมที่พร้อมออกใบวางบิล</p>
             <Link
-              href="/s/invoices"
+              href="/vendor/invoices"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-xs font-semibold"
               style={{ backgroundColor: theme.primary }}
             >
@@ -190,7 +190,7 @@ export default function SupplierDashboardPage() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-gray-900">งานล่าสุดของฉัน</h3>
           <Link
-            href="/s/jobs"
+            href="/vendor/jobs"
             className="text-xs font-semibold flex items-center gap-1"
             style={{ color: theme.primary }}
           >

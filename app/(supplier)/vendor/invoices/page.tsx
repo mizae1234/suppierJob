@@ -54,9 +54,17 @@ export default function SupplierInvoicesPage() {
     if (selectedJobIds.length === 0) return;
     setIsCreating(true);
     try {
+      // Derive companyCode from first selected job
+      const firstJob = approvedJobs.find(j => selectedJobIds.includes(j.id));
+      const companyCode = firstJob?.companyCode || 'EV7';
+      // Default due date: 30 days from now
+      const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
       const result = await createInvoice({
         supplierId: supplierId!,
+        companyCode: companyCode as 'EV7' | 'GI',
         jobIds: selectedJobIds,
+        dueDate,
       });
       if (result.success) {
         setSelectedJobIds([]);

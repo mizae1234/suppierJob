@@ -27,6 +27,7 @@ export default function CreateCarWashPage() {
     currentCompany, 
     currentBranchId, 
     activeBranch, 
+    branches,
     suppliers, 
     vehicles, 
     createCarWashJob 
@@ -39,10 +40,14 @@ export default function CreateCarWashPage() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(washSuppliers[0]?.id || '');
   const [requestedBy, setRequestedBy] = useState<string>('ผู้จัดการสาขา');
 
-  // Branch vehicles (only vehicles currently in stock at this branch)
+  // Branch selection — Admin can pick any branch, Branch role uses their own
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(currentBranchId || branches[0]?.id || '');
+  const selectedBranch = branches.find(b => b.id === selectedBranchId);
+
+  // Branch vehicles (only vehicles currently in stock at selected branch)
   const branchStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.currentBranchId === currentBranchId);
-  }, [vehicles, currentBranchId]);
+    return vehicles.filter(v => v.currentBranchId === selectedBranchId);
+  }, [vehicles, selectedBranchId]);
 
   // VIN search
   const [vinSearch, setVinSearch] = useState('');
@@ -121,11 +126,11 @@ export default function CreateCarWashPage() {
       return;
     }
 
-    const companyCode: CompanyCode = activeBranch?.companyId === 'comp-gi' ? 'GI' : 'EV7';
+    const companyCode: CompanyCode = selectedBranch?.companyId === 'comp-gi' ? 'GI' : 'EV7';
 
     const newJob = await createCarWashJob({
       companyCode,
-      branchId: currentBranchId,
+      branchId: selectedBranchId,
       supplierId: selectedSupplierId,
       items: selectedItems.map(it => ({
         vin: it.vin,
@@ -168,7 +173,19 @@ export default function CreateCarWashPage() {
             <Car className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-900">{activeBranch?.name || 'สาขา'}</p>
+            {currentRole === 'ADMIN' ? (
+              <select
+                value={selectedBranchId}
+                onChange={(e) => { setSelectedBranchId(e.target.value); setSelectedItems([]); }}
+                className="text-xs font-bold text-gray-900 bg-transparent border-none outline-none cursor-pointer pr-4"
+              >
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs font-bold text-gray-900">{activeBranch?.name || 'สาขา'}</p>
+            )}
             <p className="text-[11px] text-emerald-700">รถในสต็อกสาขานี้: {branchStockVehicles.length} คัน</p>
           </div>
         </div>

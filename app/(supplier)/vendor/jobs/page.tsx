@@ -180,7 +180,7 @@ export default function SupplierJobsPage() {
                   {/* IN_PROGRESS: Submit Evidence */}
                   {job.status === 'IN_PROGRESS' && (
                     <Link
-                      href={`/s/submit/${job.id}`}
+                      href={`/vendor/submit/${job.id}`}
                       className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all"
                       style={{ backgroundColor: '#f59e0b' }}
                     >
@@ -192,7 +192,7 @@ export default function SupplierJobsPage() {
                   {/* REJECTED: Re-submit */}
                   {job.status === 'REJECTED' && (
                     <Link
-                      href={`/s/submit/${job.id}`}
+                      href={`/vendor/submit/${job.id}`}
                       className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold transition-all"
                     >
                       <Camera className="w-4 h-4" />
