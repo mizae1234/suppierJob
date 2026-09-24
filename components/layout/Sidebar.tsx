@@ -102,13 +102,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
       badge: null,
     },
     {
-      label: 'โหมดมือถือ (Mobile App)',
-      href: '/vendor',
-      icon: Smartphone,
-      badge: 'Supplier',
-      roleVisibility: ['MASTER'],
-    },
-    {
       label: 'ตั้งค่าระบบ',
       href: '/settings',
       icon: Settings,

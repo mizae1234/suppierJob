@@ -97,7 +97,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
           className="hidden sm:flex items-center p-1 rounded-full border shadow-xs transition-colors duration-300"
           style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
         >
-          {(['MASTER', 'ADMIN', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
+          {(['MASTER', 'BRANCH', 'SUPPLIER'] as UserRole[]).map((role) => {
             const isActive = currentRole === role;
             const labels: Record<string, string> = {
               MASTER: 'Master',
@@ -202,29 +202,7 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
           </div>
         )}
 
-        {/* Mobile Portal Shortcut Button */}
-        <Link
-          href="/mobile"
-          onClick={() => setCurrentRole('SUPPLIER')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border hover:text-white transition-all text-xs font-semibold shadow-xs"
-          style={{
-            backgroundColor: theme.badgeBg,
-            color: theme.textPrimary,
-            borderColor: `${theme.primary}22`,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary;
-            (e.currentTarget as HTMLElement).style.color = '#fff';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor = theme.badgeBg;
-            (e.currentTarget as HTMLElement).style.color = theme.textPrimary;
-          }}
-          title="เปิดหน้าจอมือถือสำหรับคนขับ / ช่าง Supplier"
-        >
-          <Smartphone className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">โหมดมือถือ (Mobile)</span>
-        </Link>
+
 
         {/* Pending Approval Notification Icon */}
         <button

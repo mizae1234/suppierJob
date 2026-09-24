@@ -4,31 +4,31 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
-import { Job, JobStatus, JobType, CompanyCode } from '@/types';
+import { Job, JobStatus, JobType } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
-import { 
-  Search, 
-  Filter, 
-  Sparkles, 
-  Truck, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  Eye, 
-  X, 
-  Upload, 
-  Check, 
-  RotateCcw,
-  Receipt,
-  FileDown,
+import {
+  JobFilters,
+  JobTable,
+  JobKanbanBoard,
+  CompleteJobModal,
+  RejectJobModal,
+  PhotoLightbox,
+  STATUS_MAP,
+  SAMPLE_PHOTOS,
+} from '@/components/jobs';
+import {
+  Sparkles,
+  Truck,
+  AlertCircle,
+  X,
+  Upload,
+  Check,
   Building2,
   Calendar,
   Phone,
   User,
-  ExternalLink,
   LayoutList,
   Kanban,
-  Layers,
   ChevronLeft,
   ChevronRight,
   Printer,
@@ -36,10 +36,8 @@ import {
   CheckCheck,
   MapPin,
   ArrowRight,
-  ShieldCheck,
   ImageIcon,
   ZoomIn,
-  Car
 } from 'lucide-react';
 
 function JobsContent() {
@@ -73,34 +71,8 @@ function JobsContent() {
   );
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
-
   const [showCompleteModal, setShowCompleteModal] = useState<Job | null>(null);
-  const [evidencePhotoUrl, setEvidencePhotoUrl] = useState('');
-  const [evidenceCaption, setEvidenceCaption] = useState('');
-  const [evidenceType, setEvidenceType] = useState<'AFTER' | 'BEFORE' | 'DROPOFF'>('AFTER');
-
-  // Reject modal
   const [showRejectModal, setShowRejectModal] = useState<Job | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-
-  // Sample photo helpers
-  const samplePhotos = [
-    'https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1601362840469-51e4d8d58785?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=800&q=80',
-    'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=800&q=80'
-  ];
-
-  // Status mapping
-  const statusMap: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-    PENDING_SUPPLIER: { label: 'รอ Supplier รับงาน', bg: 'bg-blue-100', text: 'text-blue-800', dot: 'bg-blue-500' },
-    IN_PROGRESS: { label: 'กำลังทำงาน', bg: 'bg-amber-100', text: 'text-amber-800', dot: 'bg-amber-500' },
-    WAITING_APPROVAL: { label: 'รอตรวจรับ', bg: 'bg-orange-100', text: 'text-orange-900 font-bold', dot: 'bg-orange-500' },
-    APPROVED: { label: 'Approved พร้อมวางบิล', bg: 'bg-emerald-100', text: 'text-emerald-900 font-bold', dot: 'bg-emerald-600' },
-    REJECTED: { label: 'ขอแก้ไข', bg: 'bg-red-100', text: 'text-red-800 font-bold', dot: 'bg-red-500' },
-    INVOICED: { label: 'วางบิลแล้ว', bg: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' },
-    CANCELLED: { label: 'ยกเลิก', bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' },
-  };
 
   // Active job synchronized with filteredJobs
   const activeJob = useMemo(() => {
@@ -195,29 +167,23 @@ function JobsContent() {
     }
   };
 
-  // Supplier action: Complete with photo
-  const handleCompleteJobSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Supplier action: Complete with photo (delegated to modal component)
+  const handleCompleteJobSubmit = async (data: { photoUrl: string; caption: string; evidenceType: 'AFTER' | 'BEFORE' | 'DROPOFF' }) => {
     if (!showCompleteModal) return;
 
-    const photo = evidencePhotoUrl.trim() || samplePhotos[0];
-    const caption = evidenceCaption.trim() || 'งานเสร็จเรียบร้อย ตรวจสอบความสะอาดพร้อมส่งมอบ';
-
     await addJobEvidence(showCompleteModal.id, {
-      photoUrl: photo,
-      caption,
-      evidenceType,
+      photoUrl: data.photoUrl,
+      caption: data.caption,
+      evidenceType: data.evidenceType,
       vin: showCompleteModal.vin || showCompleteModal.carWashItems?.[0]?.vin,
     });
 
     await updateJobStatus(showCompleteModal.id, 'WAITING_APPROVAL');
 
-    setShowCompleteModal(null);
-    setEvidencePhotoUrl('');
-    setEvidenceCaption('');
     if (selectedJob?.id === showCompleteModal.id) {
       setSelectedJob(null);
     }
+    setShowCompleteModal(null);
   };
 
   // Branch action: Approve
@@ -228,80 +194,17 @@ function JobsContent() {
     }
   };
 
-  // Branch action: Reject
-  const handleRejectSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Branch action: Reject (delegated to modal component)
+  const handleRejectSubmit = async (reason: string) => {
     if (!showRejectModal) return;
 
-    await updateJobStatus(showRejectModal.id, 'REJECTED', {
-      rejectReason: rejectReason || 'งานไม่ผ่านเกณฑ์ ขอให้ช่างแก้ไขงานซ้ำ'
-    });
+    await updateJobStatus(showRejectModal.id, 'REJECTED', { rejectReason: reason });
 
-    setShowRejectModal(null);
-    setRejectReason('');
     if (selectedJob?.id === showRejectModal.id) {
       setSelectedJob(null);
     }
+    setShowRejectModal(null);
   };
-
-  // Kanban Columns Definition
-  const kanbanColumns: Array<{
-    id: JobStatus;
-    title: string;
-    badgeBg: string;
-    badgeText: string;
-    borderColor: string;
-    dotColor: string;
-  }> = [
-    {
-      id: 'PENDING_SUPPLIER',
-      title: 'รอ Supplier รับงาน',
-      badgeBg: 'bg-blue-100',
-      badgeText: 'text-blue-800',
-      borderColor: 'border-t-blue-500',
-      dotColor: 'bg-blue-500',
-    },
-    {
-      id: 'IN_PROGRESS',
-      title: 'กำลังปฏิบัติงาน',
-      badgeBg: 'bg-amber-100',
-      badgeText: 'text-amber-800',
-      borderColor: 'border-t-amber-500',
-      dotColor: 'bg-amber-500',
-    },
-    {
-      id: 'WAITING_APPROVAL',
-      title: 'รอสาขาตรวจรับ',
-      badgeBg: 'bg-amber-200',
-      badgeText: 'text-amber-900 font-bold',
-      borderColor: 'border-t-orange-500',
-      dotColor: 'bg-orange-500 animate-pulse',
-    },
-    {
-      id: 'APPROVED',
-      title: 'Approved (พร้อมวางบิล)',
-      badgeBg: 'bg-emerald-100',
-      badgeText: 'text-emerald-900 font-bold',
-      borderColor: 'border-t-emerald-600',
-      dotColor: 'bg-emerald-600',
-    },
-    {
-      id: 'REJECTED',
-      title: 'ขอให้แก้ไข (Reject)',
-      badgeBg: 'bg-red-100',
-      badgeText: 'text-red-800 font-bold',
-      borderColor: 'border-t-red-500',
-      dotColor: 'bg-red-500',
-    },
-    {
-      id: 'INVOICED',
-      title: 'วางบิลแล้ว',
-      badgeBg: 'bg-purple-100',
-      badgeText: 'text-purple-800 font-bold',
-      borderColor: 'border-t-purple-600',
-      dotColor: 'bg-purple-600',
-    },
-  ];
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -351,581 +254,63 @@ function JobsContent() {
         </div>
       </div>
 
-      {/* Filter Toolbar Card */}
-      <div className="p-4 rounded-2xl bg-white border shadow-xs flex flex-col lg:flex-row items-center gap-3" style={{ borderColor: theme.borderSoft }}>
-        {/* Search */}
-        <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ค้นหา Job No., VIN, ทะเบียนรถ, สาขา, Supplier..."
-            className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 text-xs text-gray-900 focus:outline-none focus:ring-2"
-            style={{ backgroundColor: theme.bgSoft, '--tw-ring-color': theme.primary } as React.CSSProperties}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
-          {/* Type Filter */}
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as any)}
-            className="h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2"
-            style={{ backgroundColor: theme.bgSoft, '--tw-ring-color': theme.primary } as React.CSSProperties}
-          >
-            <option value="ALL">ทุกประเภทงาน</option>
-            <option value="CAR_WASH">Car Wash (สั่งล้างรถ)</option>
-            <option value="VEHICLE_SLIDE">Vehicle Slide (รถสไลด์)</option>
-          </select>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2"
-            style={{ backgroundColor: theme.bgSoft, '--tw-ring-color': theme.primary } as React.CSSProperties}
-          >
-            <option value="ALL">ทุกสถานะ</option>
-            <option value="PENDING_SUPPLIER">รอ Supplier รับงาน</option>
-            <option value="IN_PROGRESS">กำลังปฏิบัติงาน</option>
-            <option value="WAITING_APPROVAL">รอสาขาตรวจรับ</option>
-            <option value="APPROVED">Approved (พร้อมวางบิล)</option>
-            <option value="REJECTED">ขอแก้ไข (Reject)</option>
-            <option value="INVOICED">วางบิลแล้ว</option>
-          </select>
-
-          {/* Supplier Filter */}
-          <select
-            value={supplierFilter}
-            onChange={(e) => setSupplierFilter(e.target.value)}
-            className="h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2"
-            style={{ backgroundColor: theme.bgSoft, '--tw-ring-color': theme.primary } as React.CSSProperties}
-          >
-            <option value="ALL">ทุก Supplier</option>
-            {suppliers.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      <JobFilters
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        typeFilter={typeFilter}
+        onTypeFilterChange={setTypeFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        supplierFilter={supplierFilter}
+        onSupplierFilterChange={setSupplierFilter}
+        suppliers={suppliers}
+        theme={theme}
+      />
 
       {/* Jobs Content: Table vs Kanban */}
       {viewMode === 'TABLE' ? (
-        /* Jobs Data Table Card */
-        <div className="bg-white rounded-2xl border shadow-xs overflow-hidden" style={{ borderColor: theme.borderSoft }}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-wider" style={{ backgroundColor: theme.bgSoft }}>
-                  <th className="py-3.5 px-4">เลขที่ใบสั่งงาน</th>
-                  <th className="py-3.5 px-4">ประเภท</th>
-                  <th className="py-3.5 px-4">สังกัด / สาขา</th>
-                  <th className="py-3.5 px-4">Supplier คู่ค้า</th>
-                  <th className="py-3.5 px-4">รายการรถ (VIN)</th>
-                  <th className="py-3.5 px-4">สถานะงาน</th>
-                  <th className="py-3.5 px-4 text-right">ค่าบริการ</th>
-                  <th className="py-3.5 px-4 text-center">การปฏิบัติการ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-xs">
-                {displayedJobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-gray-400">
-                      ไม่พบรายการงานที่ตรงกับเงื่อนไขการค้นหา
-                    </td>
-                  </tr>
-                ) : (
-                  displayedJobs.map(job => {
-                    const currentStatus = statusMap[job.status] || { label: job.status, bg: 'bg-gray-100', text: 'text-gray-700' };
-
-                    return (
-                      <tr key={job.id} className="hover:bg-[#fbfdfc] transition-colors">
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="font-bold text-gray-900">{job.jobNumber}</div>
-                          <div className="text-[11px] text-gray-400">{formatThaiDate(job.createdAt)}</div>
-                        </td>
-
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className="flex items-center gap-1.5 font-semibold text-gray-800">
-                            {job.jobType === 'CAR_WASH' ? (
-                              <>
-                                <Sparkles className="w-4 h-4" style={{ color: theme.iconColor }} />
-                                <span>Car Wash</span>
-                              </>
-                            ) : (
-                              <>
-                                <Truck className="w-4 h-4" style={{ color: theme.iconColor }} />
-                                <span>Slide Transport</span>
-                              </>
-                            )}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">
-                              {job.companyCode}
-                            </span>
-                            <span className="text-gray-800 font-medium">{job.branchName}</span>
-                          </div>
-                        </td>
-
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className="text-gray-800 font-medium">{job.supplierName}</span>
-                        </td>
-
-                        <td className="py-3.5 px-4">
-                          {job.jobType === 'CAR_WASH' ? (
-                            <div>
-                              <span className="font-semibold text-gray-900">
-                                จำนวน {job.carWashItems?.length || 0} คัน
-                              </span>
-                              <div className="text-[11px] text-gray-500 font-mono truncate max-w-[180px]">
-                                {job.carWashItems?.map(i => i.vin.slice(-6)).join(', ')}
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="font-mono font-semibold text-gray-900">
-                                {job.vin}
-                              </span>
-                              <div className="text-[11px] text-gray-500">
-                                ไปยัง: {job.destBranchName}
-                              </div>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="py-3.5 px-4 whitespace-nowrap">
-                          <span className={`px-2.5 py-1 rounded-full text-[11px] ${currentStatus.bg} ${currentStatus.text}`}>
-                            {currentStatus.label}
-                          </span>
-                        </td>
-
-                        <td className="py-3.5 px-4 text-right font-bold text-gray-900 whitespace-nowrap">
-                          ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
-                        </td>
-
-                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {/* View Detail Button */}
-                            <button
-                              onClick={() => setSelectedJob(job)}
-                              className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
-                              style={{ backgroundColor: theme.bgSoft, color: theme.textPrimary }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.badgeBg; }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.bgSoft; }}
-                            >
-                              ดูข้อมูล
-                            </button>
-
-                            {/* Role-based Context Actions */}
-                            {currentRole === 'SUPPLIER' && job.status === 'PENDING_SUPPLIER' && (
-                              <button
-                                onClick={() => handleAcceptJob(job.id)}
-                                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                              >
-                                รับงาน
-                              </button>
-                            )}
-
-                            {currentRole === 'SUPPLIER' && job.status === 'IN_PROGRESS' && (
-                              <button
-                                onClick={() => setShowCompleteModal(job)}
-                                className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors"
-                              >
-                                ส่งงาน / แนบรูป
-                              </button>
-                            )}
-
-                            {currentRole !== 'SUPPLIER' && job.status === 'WAITING_APPROVAL' && (
-                              <>
-                                <button
-                                  onClick={() => handleApprove(job.id)}
-                                  className="px-2 py-1 rounded-lg text-xs font-semibold text-white transition-colors"
-                                  style={{ backgroundColor: theme.primary }}
-                                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primaryHover; }}
-                                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary; }}
-                                  title="Approve งาน"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => setShowRejectModal(job)}
-                                  className="px-2 py-1 rounded-lg text-xs font-semibold bg-red-100 hover:bg-red-200 text-red-700 transition-colors"
-                                  title="Reject ให้แก้ไข"
-                                >
-                                  Reject
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <JobTable
+          jobs={displayedJobs}
+          currentRole={currentRole}
+          theme={theme}
+          onViewDetail={setSelectedJob}
+          onAcceptJob={handleAcceptJob}
+          onCompleteJob={setShowCompleteModal}
+          onApproveJob={(id) => handleApprove(id)}
+          onRejectJob={setShowRejectModal}
+        />
       ) : (
-        /* Kanban Board View */
-        <div className="overflow-x-auto pb-6">
-          <div className="flex gap-4 min-w-[1500px]">
-            {kanbanColumns.map(col => {
-              const colJobs = displayedJobs.filter(j => j.status === col.id);
-              const colTotal = colJobs.reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
-
-              return (
-                <div
-                  key={col.id}
-                  className={`flex-1 min-w-[280px] max-w-[340px] rounded-3xl border border-gray-200 border-t-4 ${col.borderColor} p-4 flex flex-col gap-3 shadow-xs`}
-                  style={{ backgroundColor: theme.bgSoft }}
-                >
-                  {/* Column Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${col.dotColor}`} />
-                      <h3 className="font-bold text-xs text-gray-800 tracking-tight">
-                        {col.title}
-                      </h3>
-                    </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${col.badgeBg} ${col.badgeText}`}>
-                      {colJobs.length}
-                    </span>
-                  </div>
-
-                  {/* Column Summary Info */}
-                  <div className="text-[11px] text-gray-500 flex items-center justify-between border-b border-gray-200/80 pb-2">
-                    <span>ยอดรวมกลุ่มนี้:</span>
-                    <span className="font-bold text-gray-800">฿{colTotal.toLocaleString()}</span>
-                  </div>
-
-                  {/* Column Cards List */}
-                  <div className="flex flex-col gap-3 overflow-y-auto max-h-[calc(100vh-320px)] pr-1">
-                    {colJobs.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-gray-400 rounded-2xl border border-dashed border-gray-200 bg-white/60">
-                        ไม่มีงานในสถานะนี้
-                      </div>
-                    ) : (
-                      colJobs.map(job => (
-                        <div
-                          key={job.id}
-                          onClick={() => setSelectedJob(job)}
-                          className="p-4 rounded-2xl bg-white border border-gray-200/80 shadow-xs hover:shadow-md transition-all flex flex-col gap-2.5 cursor-pointer group"
-                        >
-                          {/* Card Top: Type & Company */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
-                                {job.companyCode}
-                              </span>
-                              <span className="text-[11px] font-semibold text-gray-700 flex items-center gap-1">
-                                {job.jobType === 'CAR_WASH' ? (
-                                  <>
-                                    <Sparkles className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
-                                    <span>Car Wash</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Truck className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
-                                    <span>Slide</span>
-                                  </>
-                                )}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-gray-400 font-mono">
-                              {formatThaiDate(job.createdAt)}
-                            </span>
-                          </div>
-
-                          {/* Job Number */}
-                          <div className="font-bold text-xs text-gray-900 transition-colors" style={{ '--hover-color': theme.textPrimary } as React.CSSProperties}>
-                            {job.jobNumber}
-                          </div>
-
-                          {/* Vehicle Details */}
-                          <div className="p-2 rounded-xl bg-[#fbfdfc] border border-gray-100 text-xs">
-                            {job.jobType === 'CAR_WASH' ? (
-                              <div>
-                                <p className="font-semibold text-gray-800">
-                                  จำนวน {job.carWashItems?.length || 0} คัน
-                                </p>
-                                <p className="text-[11px] text-gray-500 truncate font-mono mt-0.5">
-                                  {job.carWashItems?.map(i => i.vin.slice(-6)).join(', ')}
-                                </p>
-                              </div>
-                            ) : (
-                              <div>
-                                <p className="font-mono font-semibold text-gray-800 text-[11px]">
-                                  {job.vin}
-                                </p>
-                                <p className="text-[11px] text-gray-500 mt-0.5">
-                                  ไปยัง: {job.destBranchName}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Branch & Supplier */}
-                          <div className="text-[11px] text-gray-500 flex flex-col gap-0.5">
-                            <p className="truncate">สาขา: <span className="font-medium text-gray-800">{job.branchName}</span></p>
-                            <p className="truncate">คู่ค้า: <span className="font-medium text-gray-800">{job.supplierName}</span></p>
-                          </div>
-
-                          {/* Evidence Photo Preview */}
-                          {job.evidences.length > 0 && (
-                            <div className="flex items-center gap-2 pt-1">
-                              <div className="w-12 h-9 rounded-lg overflow-hidden border border-gray-200 shrink-0">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={job.evidences[0].photoUrl} alt="evidence" className="w-full h-full object-cover" />
-                              </div>
-                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ color: theme.textPrimary, backgroundColor: theme.bgSoft }}>
-                                มีรูปหลักฐาน ({job.evidences.length})
-                              </span>
-                            </div>
-                          )}
-
-                          {/* Price & Actions Row */}
-                          <div
-                            className="pt-2 border-t border-gray-100 flex items-center justify-between"
-                            onClick={e => e.stopPropagation()}
-                          >
-                            <span className="font-bold text-xs" style={{ color: theme.textPrimary }}>
-                              ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
-                            </span>
-
-                            <div className="flex items-center gap-1">
-                              {currentRole === 'SUPPLIER' && job.status === 'PENDING_SUPPLIER' && (
-                                <button
-                                  onClick={() => handleAcceptJob(job.id)}
-                                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
-                                >
-                                  รับงาน
-                                </button>
-                              )}
-
-                              {currentRole === 'SUPPLIER' && job.status === 'IN_PROGRESS' && (
-                                <button
-                                  onClick={() => setShowCompleteModal(job)}
-                                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                                >
-                                  ส่งงาน
-                                </button>
-                              )}
-
-                              {currentRole !== 'SUPPLIER' && job.status === 'WAITING_APPROVAL' && (
-                                <>
-                                  <button
-                                    onClick={() => handleApprove(job.id)}
-                                    className="px-2 py-1 rounded-lg text-[10px] font-bold text-white shadow-xs"
-                                    style={{ backgroundColor: theme.primary }}
-                                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primaryHover; }}
-                                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary; }}
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={() => setShowRejectModal(job)}
-                                    className="px-1.5 py-1 rounded-lg text-[10px] font-bold bg-red-50 hover:bg-red-100 text-red-700 border border-red-200"
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-
-                              <button
-                                onClick={() => setSelectedJob(job)}
-                                className="px-2 py-1 rounded-lg text-[10px] font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700"
-                              >
-                                ดู
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <JobKanbanBoard
+          jobs={displayedJobs}
+          currentRole={currentRole}
+          theme={theme}
+          onViewDetail={setSelectedJob}
+          onAcceptJob={handleAcceptJob}
+          onCompleteJob={setShowCompleteModal}
+          onApproveJob={(id) => handleApprove(id)}
+          onRejectJob={setShowRejectModal}
+        />
       )}
 
-      {/* Complete Job & Attach Evidence Modal */}
+      {/* Complete Job Modal */}
       {showCompleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-gray-100 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
-                  <Upload className="w-4 h-4" />
-                </div>
-                <h3 className="text-base font-bold text-gray-900">
-                  แนบรูปหลักฐาน & ส่งงานเรียบร้อย
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowCompleteModal(null)}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCompleteJobSubmit} className="flex flex-col gap-4">
-              <div>
-                <p className="text-xs text-gray-600">
-                  รหัสงาน: <span className="font-bold text-gray-900">{showCompleteModal.jobNumber}</span>
-                </p>
-                <p className="text-xs text-gray-600">
-                  ประเภท: <span className="font-bold text-gray-900">{showCompleteModal.jobType}</span>
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  เลือกรูปตัวอย่าง หรือระบุ URL รูปถ่ายงาน:
-                </label>
-                <input
-                  type="url"
-                  value={evidencePhotoUrl}
-                  onChange={(e) => setEvidencePhotoUrl(e.target.value)}
-                  placeholder="https://... หรือเลือกจากตัวอย่างด้านล่าง"
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs outline-none focus:ring-2"
-                  style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
-                />
-                {/* Quick preset chips */}
-                <div className="flex gap-2 mt-2">
-                  {samplePhotos.map((url, i) => (
-                    <button
-                      type="button"
-                      key={i}
-                      onClick={() => setEvidencePhotoUrl(url)}
-                      className="w-14 h-10 rounded-lg overflow-hidden border border-gray-200 relative shrink-0 focus:ring-2"
-                      style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="sample" className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  ประเภทรูปถ่าย:
-                </label>
-                <select
-                  value={evidenceType}
-                  onChange={(e) => setEvidenceType(e.target.value as any)}
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs outline-none font-medium focus:ring-2"
-                  style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
-                >
-                  <option value="AFTER">รูปหลังทำความสะอาดเสร็จ (After Wash)</option>
-                  <option value="BEFORE">รูปก่อนเริ่มงาน (Before)</option>
-                  <option value="DROPOFF">รูปส่งมอบรถที่ปลายทาง (Delivery Dropoff)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  คำอธิบายเพิ่มเติม:
-                </label>
-                <textarea
-                  rows={2}
-                  value={evidenceCaption}
-                  onChange={(e) => setEvidenceCaption(e.target.value)}
-                  placeholder="เช่น ทำความสะอาดภายนอกและภายในเรียบร้อย พร้อมส่งมอบ"
-                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs outline-none focus:ring-2"
-                  style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setShowCompleteModal(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-100"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-xs"
-                  style={{ backgroundColor: theme.primary }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primaryHover; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary; }}
-                >
-                  ส่งงานให้สาขาตรวจรับ
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <CompleteJobModal
+          job={showCompleteModal}
+          theme={theme}
+          onClose={() => setShowCompleteModal(null)}
+          onSubmit={handleCompleteJobSubmit}
+        />
       )}
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-100 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
-                  <AlertCircle className="w-4 h-4" />
-                </div>
-                <h3 className="text-base font-bold text-gray-900">
-                  ไม่อนุมัติ / ขอให้แก้ไขงาน (Reject)
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowRejectModal(null)}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleRejectSubmit} className="flex flex-col gap-3">
-              <p className="text-xs text-gray-600">
-                Job No.: <span className="font-bold text-gray-900">{showRejectModal.jobNumber}</span>
-              </p>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  ระบุเหตุผลที่ต้องการให้ Supplier แก้ไข:
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="เช่น พบคราบน้ำมันที่ขอบประตู หรือมีรอยเปื้อนบริเวณเบาะหลัง..."
-                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-red-600 outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setShowRejectModal(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-100"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-700 shadow-xs"
-                >
-                  ยืนยันการ Reject
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <RejectJobModal
+          job={showRejectModal}
+          onClose={() => setShowRejectModal(null)}
+          onSubmit={handleRejectSubmit}
+        />
       )}
+
 
       {/* Job Detail Slide-Over Drawer */}
       {selectedJob && activeJob && (
@@ -968,9 +353,9 @@ function JobsContent() {
                   </div>
 
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                    statusMap[activeJob.status]?.bg || 'bg-gray-100'
-                  } ${statusMap[activeJob.status]?.text || 'text-gray-700'}`}>
-                    {statusMap[activeJob.status]?.label || activeJob.status}
+                    STATUS_MAP[activeJob.status]?.bg || 'bg-gray-100'
+                  } ${STATUS_MAP[activeJob.status]?.text || 'text-gray-700'}`}>
+                    {STATUS_MAP[activeJob.status]?.label || activeJob.status}
                   </span>
                 </div>
 
@@ -1425,29 +810,7 @@ function JobsContent() {
         </div>
       )}
 
-      {/* Enlarged Photo Lightbox Modal */}
-      {previewPhotoUrl && (
-        <div 
-          onClick={() => setPreviewPhotoUrl(null)}
-          className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
-        >
-          <div className="relative max-w-4xl max-h-[90vh] bg-black rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-            <button 
-              type="button"
-              onClick={() => setPreviewPhotoUrl(null)}
-              className="absolute top-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src={previewPhotoUrl} 
-              alt="หลักฐานขยาย" 
-              className="w-full h-auto max-h-[85vh] object-contain" 
-            />
-          </div>
-        </div>
-      )}
+      <PhotoLightbox photoUrl={previewPhotoUrl} onClose={() => setPreviewPhotoUrl(null)} />
     </div>
   );
 }
