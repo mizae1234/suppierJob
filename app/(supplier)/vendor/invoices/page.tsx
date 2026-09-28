@@ -100,7 +100,7 @@ export default function SupplierInvoicesPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5 sm:gap-6 pb-20 sm:pb-12">
       <div>
         <h1 className="text-xl font-bold text-gray-900">ใบวางบิล</h1>
         <p className="text-sm text-gray-500">จัดการใบวางบิลและออกบิลจากงานที่ผ่านการตรวจรับ</p>
@@ -211,48 +211,108 @@ export default function SupplierInvoicesPage() {
 
       {/* Existing Invoices */}
       {myInvoices.length > 0 && (
-        <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs">
-          <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-gray-500" />
-            ใบวางบิลที่ออกแล้ว ({myInvoices.length})
-          </h3>
-          <div className="flex flex-col divide-y divide-gray-50">
-            {myInvoices.map(inv => (
-              <div key={inv.id} className="flex items-center justify-between py-3">
-                <div>
-                  <p className="text-xs font-bold text-gray-900 font-mono">
-                    {inv.invoiceNumber}
-                  </p>
-                  <p className="text-[11px] text-gray-500">
-                    {inv.companyCode} • {inv.jobIds?.length || 0} งาน
-                    {isAll && inv.supplierId && (
-                      <span className="ml-1 text-[10px] text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded font-medium">
-                        • {suppliers.find(s => s.id === inv.supplierId)?.name || 'Supplier'}
+        <div className="p-4 sm:p-5 rounded-2xl bg-white border border-gray-100 shadow-xs">
+          <div className="flex items-center justify-between mb-3.5">
+            <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-gray-500" />
+              <span>ใบวางบิลที่ออกแล้ว</span>
+              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600">
+                {myInvoices.length}
+              </span>
+            </h3>
+          </div>
+
+          <div className="flex flex-col gap-2.5 sm:gap-3">
+            {myInvoices.map(inv => {
+              const supplierObj = suppliers.find(s => s.id === inv.supplierId);
+              const isPaid = inv.status === 'PAID';
+              const isSubmitted = inv.status === 'SUBMITTED';
+
+              return (
+                <div
+                  key={inv.id}
+                  className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white hover:bg-gray-50/70 border border-gray-100 hover:border-gray-200 transition-all shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  {/* Top/Left Section: Invoice Header, Badges, Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between sm:justify-start gap-2 mb-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] font-mono text-white shadow-2xs ${
+                            inv.companyCode === 'GI' ? 'bg-blue-600' : 'bg-emerald-700'
+                          }`}
+                        >
+                          {inv.companyCode}
+                        </span>
+                        <p className="text-xs sm:text-sm font-bold text-gray-900 font-mono tracking-tight">
+                          {inv.invoiceNumber}
+                        </p>
+                      </div>
+
+                      {/* Status Badge (mobile view - top right) */}
+                      <span
+                        className={`sm:hidden px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                          isPaid
+                            ? 'bg-emerald-100 text-[#0f5238]'
+                            : isSubmitted
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {isSubmitted ? '⏳ รอชำระ' : isPaid ? '✅ ชำระแล้ว' : inv.status}
                       </span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-sm font-bold font-mono" style={{ color: theme.primary }}>
-                      {formatCurrency(inv.totalAmount)}
-                    </p>
-                    <p className="text-[10px] text-gray-400">
-                      {inv.status === 'SUBMITTED' ? '⏳ รอชำระ' : inv.status === 'PAID' ? '✅ ชำระแล้ว' : inv.status}
-                    </p>
+                    </div>
+
+                    {/* Metadata line: Job count & Supplier */}
+                    <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
+                      <span className="font-medium text-gray-700">{inv.jobIds?.length || 0} งาน</span>
+                      {inv.invoiceDate && (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span>{formatThaiDate(inv.invoiceDate)}</span>
+                        </>
+                      )}
+                      {isAll && inv.supplierId && (
+                        <>
+                          <span className="text-gray-300">•</span>
+                          <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md font-medium truncate max-w-[200px]">
+                            {supplierObj?.name || 'Supplier'}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedInvoice(inv)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-50 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 text-xs font-semibold transition-all cursor-pointer shadow-xs border border-gray-100"
-                    title="ดูใบวางบิล / พิมพ์"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>ดูบิล / พิมพ์</span>
-                  </button>
+
+                  {/* Bottom/Right Section: Amount & Action Button */}
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2.5 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                    <div className="flex sm:flex-col items-baseline sm:items-end gap-1.5 sm:gap-0">
+                      <span className="text-[10px] text-gray-400 font-medium sm:hidden">ยอดรวมสุทธิ:</span>
+                      <p className="text-base sm:text-base font-bold font-mono text-[#0f5238]">
+                        {formatCurrency(inv.totalAmount)}
+                      </p>
+                      {/* Status Badge (desktop view) */}
+                      <span
+                        className={`hidden sm:inline-block text-[10px] font-semibold mt-0.5 ${
+                          isPaid ? 'text-emerald-700' : isSubmitted ? 'text-amber-600' : 'text-gray-400'
+                        }`}
+                      >
+                        {isSubmitted ? '⏳ รอชำระ' : isPaid ? '✅ ชำระแล้ว' : inv.status}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedInvoice(inv)}
+                      className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:py-2 rounded-xl bg-gray-50 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 active:scale-[0.98] text-xs font-semibold transition-all cursor-pointer shadow-2xs border border-gray-200 shrink-0 whitespace-nowrap"
+                      title="ดูใบวางบิล / พิมพ์"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                      <span className="whitespace-nowrap">ดูบิล / พิมพ์</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
