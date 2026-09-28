@@ -21,7 +21,9 @@ import {
   Search,
   Plus,
   Building,
-  ChevronDown
+  ChevronDown,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 export default function CreateCarWashPage() {
@@ -44,9 +46,12 @@ export default function CreateCarWashPage() {
 
   // Selected supplier
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(washSuppliers[0]?.id || '');
+  const selectedSupplier = washSuppliers.find(s => s.id === selectedSupplierId);
   const [requestedBy, setRequestedBy] = useState<string>('ผู้จัดการสาขา');
   const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
   const [openWashTypeVin, setOpenWashTypeVin] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const washTypeOptions = [
     { value: 'STANDARD', label: 'Standard (฿180)' },
@@ -147,8 +152,8 @@ export default function CreateCarWashPage() {
 
   const { showToast } = useToast();
 
-  // Form submit
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Form submit - opens alert confirmation modal
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSupplierId) {
       showToast('กรุณาเลือก Supplier ผู้ให้บริการ', 'warning');
@@ -159,24 +164,39 @@ export default function CreateCarWashPage() {
       return;
     }
 
-    const matchedCompany = companies.find(c => c.id === selectedBranch?.companyId);
-    const companyCode: CompanyCode = (matchedCompany?.code as CompanyCode) || 'EV7';
+    setShowConfirmModal(true);
+  };
 
-    const newJob = await createCarWashJob({
-      companyCode,
-      branchId: selectedBranchId,
-      supplierId: selectedSupplierId,
-      items: selectedItems.map(it => ({
-        vin: it.vin,
-        actualWashDate: it.actualWashDate,
-        washType: it.washType,
-        unitPrice: it.unitPrice,
-        remarks: it.remarks,
-      })),
-      requestedBy,
-    });
+  // Confirm and save order
+  const handleConfirmOrder = async () => {
+    setIsSubmitting(true);
+    try {
+      const matchedCompany = companies.find(c => c.id === selectedBranch?.companyId);
+      const companyCode: CompanyCode = (matchedCompany?.code as CompanyCode) || 'EV7';
 
-    if (newJob) setCreatedJob(newJob);
+      const newJob = await createCarWashJob({
+        companyCode,
+        branchId: selectedBranchId,
+        supplierId: selectedSupplierId,
+        items: selectedItems.map(it => ({
+          vin: it.vin,
+          actualWashDate: it.actualWashDate,
+          washType: it.washType,
+          unitPrice: it.unitPrice,
+          remarks: it.remarks,
+        })),
+        requestedBy,
+      });
+
+      setShowConfirmModal(false);
+      showToast('บันทึก Order และออกใบสั่งงานสำเร็จเรียบร้อย!', 'success');
+      if (newJob) setCreatedJob(newJob);
+    } catch (err) {
+      console.error(err);
+      showToast('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -551,6 +571,88 @@ export default function CreateCarWashPage() {
           </div>
         </div>
       </form>
+
+      {/* Confirmation Alert Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 border border-gray-100">
+            {/* Header Icon & Title */}
+            <div className="flex flex-col items-center text-center gap-2 pt-1">
+              <div 
+                className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner"
+                style={{ backgroundColor: `${theme.primary}15`, color: theme.primary }}
+              >
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  ยืนยันการบันทึก Order
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  กรุณาตรวจสอบข้อมูลก่อนออกใบสั่งงานล้างรถ
+                </p>
+              </div>
+            </div>
+
+            {/* Summary Information Card */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-xs flex flex-col gap-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                <span className="text-gray-500">สาขาผู้สั่งงาน:</span>
+                <span className="font-bold text-gray-900">{selectedBranch?.name || '-'}</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                <span className="text-gray-500">Supplier ผู้ให้บริการ:</span>
+                <span className="font-bold text-gray-900">{selectedSupplier?.name || '-'}</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                <span className="text-gray-500">ผู้สั่งงาน:</span>
+                <span className="font-medium text-gray-800">{requestedBy}</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                <span className="text-gray-500">จำนวนรถทั้งหมด:</span>
+                <span className="font-bold text-gray-900">{selectedItems.length} คัน</span>
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-gray-600 font-medium">ยอดรวมค่าบริการโดยประมาณ:</span>
+                <span className="text-base font-bold" style={{ color: theme.primary }}>
+                  ฿{totalEstimatedCost.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                disabled={isSubmitting}
+                className="w-full py-2.5 px-4 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmOrder}
+                disabled={isSubmitting}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md hover:opacity-90 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: theme.primary }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>กำลังบันทึก...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>ยืนยันสั่งงาน</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PDF Export & Order Confirmation Modal */}
       {createdJob && (

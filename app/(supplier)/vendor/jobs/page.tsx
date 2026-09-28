@@ -61,7 +61,7 @@ export default function SupplierJobsPage() {
     await addJobEvidence(job.id, {
       photoUrl: '/placeholder-evidence.jpg',
       caption: 'งานเสร็จเรียบร้อย',
-      evidenceType: 'COMPLETION',
+      evidenceType: 'AFTER',
       vin: job.vin || job.carWashItems?.[0]?.vin,
     });
     await updateJobStatus(job.id, 'WAITING_APPROVAL');
