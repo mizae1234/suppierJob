@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { Supplier } from '@/types';
 import { 
@@ -15,11 +16,13 @@ import {
   Plus, 
   X,
   FileText,
-  Building
+  Building,
+  ExternalLink
 } from 'lucide-react';
 
 export default function SupplierManagementPage() {
-  const { suppliers, jobs } = useApp();
+  const router = useRouter();
+  const { suppliers, jobs, currentRole, setCurrentRole, setCurrentSupplierId } = useApp();
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
 
   return (
@@ -115,10 +118,24 @@ export default function SupplierManagementPage() {
                   <span className="text-gray-400 text-[11px]">เสร็จสิ้นแล้ว:</span>
                   <p className="font-bold text-[#0f5238]">{completedJobs.length} งาน</p>
                 </div>
-                <div>
+                <div className="flex items-center gap-1.5">
+                  {currentRole === 'MASTER' && (
+                    <button
+                      onClick={() => {
+                        setCurrentSupplierId(supplier.id);
+                        setCurrentRole('SUPPLIER');
+                        router.push('/vendor');
+                      }}
+                      title="เข้าดูในมุมมอง Supplier เจ้านี้"
+                      className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all text-xs flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span className="hidden sm:inline">ดูมุมมองนี้</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelectedSupplier(supplier)}
-                    className="px-3 py-1.5 rounded-xl bg-[#f4f9f5] hover:bg-emerald-100 text-[#0f5238] font-bold transition-colors text-xs"
+                    className="px-3 py-1.5 rounded-xl bg-[#f4f9f5] hover:bg-emerald-100 text-[#0f5238] font-bold transition-colors text-xs cursor-pointer"
                   >
                     รายละเอียด
                   </button>

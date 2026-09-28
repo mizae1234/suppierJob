@@ -297,7 +297,7 @@ export default function LoginPage() {
                                   {isEV7 ? 'EV7' : isGI ? 'GI' : <Wrench className="w-3 h-3" />}
                                 </div>
                                 <span className="text-gray-900 font-medium truncate">
-                                  {isEV7 ? 'EV7 — อีวี เซเว่น' : isGI ? 'GI — เจเนอรัล อินเทลลิเจนท์' : sup?.name || company}
+                                  {isEV7 ? 'EV7 — อีวี เซเว่น' : isGI ? 'GI — โกลด์ อินทิเกรท (Gold Integrate)' : sup?.name || company}
                                 </span>
                               </>
                             );
@@ -362,7 +362,7 @@ export default function LoginPage() {
                             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-900">GI</p>
-                              <p className="text-[10px] text-gray-500">เจเนอรัล อินเทลลิเจนท์</p>
+                              <p className="text-[10px] text-gray-500">โกลด์ อินทิเกรท (Gold Integrate)</p>
                             </div>
                             {company === 'GI' && <Check className="w-4 h-4 text-blue-600" />}
                           </button>

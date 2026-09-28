@@ -19,16 +19,19 @@ import {
 } from 'lucide-react';
 
 export default function SupplierDashboardPage() {
-  const { jobs, invoices, activeSupplier } = useApp();
+  const { jobs, invoices, activeSupplier, currentSupplierId } = useApp();
   const { user } = useAuth();
   const theme = useTheme();
 
+  const isMaster = user?.role === 'MASTER';
+  const isAll = (!activeSupplier || currentSupplierId === 'ALL') && isMaster;
   const supplierId = activeSupplier?.id || user?.supplierId;
 
-  // Filter jobs for this supplier
+  // Filter jobs for this supplier (or all for Master)
   const myJobs = useMemo(() => {
+    if (isAll) return jobs;
     return jobs.filter(j => j.supplierId === supplierId);
-  }, [jobs, supplierId]);
+  }, [jobs, supplierId, isAll]);
 
   const stats = useMemo(() => {
     const newJobs = myJobs.filter(j => j.status === 'PENDING_SUPPLIER');
@@ -50,8 +53,9 @@ export default function SupplierDashboardPage() {
   }, [myJobs]);
 
   const myInvoices = useMemo(() => {
+    if (isAll) return invoices;
     return invoices.filter(i => i.supplierId === supplierId);
-  }, [invoices, supplierId]);
+  }, [invoices, supplierId, isAll]);
 
   const counterCards = [
     {
@@ -229,6 +233,11 @@ export default function SupplierDashboardPage() {
                       <p className="text-xs font-bold text-gray-900 font-mono">{job.jobNumber}</p>
                       <p className="text-[11px] text-gray-500">
                         {job.companyCode} • {job.branchName}
+                        {isAll && (
+                          <span className="ml-1 text-[10px] text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded font-medium">
+                            • {job.supplierName}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>

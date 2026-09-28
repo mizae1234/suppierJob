@@ -161,7 +161,7 @@ DATABASE_URL=&quot;sqlserver://localhost:1433;database=SupplierJobDB;user=sa;pas
             >
               <option value="ALL">ทุกบริษัท (All)</option>
               <option value="EV7">EV7 (บริษัท อีวี เซเว่น จำกัด)</option>
-              <option value="GI">GI (บริษัท เจเนอรัล อินเทลลิเจนท์ จำกัด)</option>
+              <option value="GI">GI (บริษัท โกลด์ อินทิเกรท จำกัด / Gold Integrate)</option>
             </select>
           </div>
 

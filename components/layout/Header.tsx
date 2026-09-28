@@ -45,7 +45,7 @@ export const Header: React.FC = () => {
   const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
     { value: 'ALL', label: 'ทุกบริษัท', color: '#0f5238', dot: '#52b788' },
     { value: 'EV7', label: 'EV7', color: '#0f5238', dot: '#2d6a4f' },
-    { value: 'GI', label: 'GI Fleet', color: '#1e3a5f', dot: '#3b82f6' },
+    { value: 'GI', label: 'GI', color: '#1e3a5f', dot: '#3b82f6' },
   ];
   const activeCompanyOption = companyOptions.find(o => o.value === currentCompany) || companyOptions[0];
 
@@ -187,6 +187,7 @@ export const Header: React.FC = () => {
                 onClick={() => {
                   setCurrentRole(role);
                   if (role === 'SUPPLIER') {
+                    setCurrentSupplierId('');
                     router.push('/vendor');
                   }
                 }}
@@ -338,7 +339,7 @@ export const Header: React.FC = () => {
               {user?.displayName || (currentRole === 'MASTER' ? 'Master' : currentRole === 'ADMIN' ? 'ผู้ดูแลระบบ' : currentRole === 'BRANCH' ? 'เจ้าหน้าที่สาขา' : 'คู่ค้า Supplier')}
             </p>
             <p className="text-[11px] text-gray-500">
-              {user?.username || (currentCompany === 'ALL' ? 'EV7 & GI Fleet' : currentCompany)}
+              {user?.username || (currentCompany === 'ALL' ? 'EV7 & GI' : currentCompany)}
             </p>
           </div>
           <button

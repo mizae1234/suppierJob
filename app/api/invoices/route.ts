@@ -123,6 +123,13 @@ export async function POST(request: NextRequest) {
           notes,
           jobs: { connect: jobIds.map((id: string) => ({ id })) },
         },
+        include: {
+          supplier: { select: { code: true, name: true, bankName: true, bankAccount: true } },
+          company: { select: { code: true, name: true } },
+          jobs: {
+            select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true },
+          },
+        },
       });
 
       // Update all jobs to INVOICED
@@ -138,7 +145,26 @@ export async function POST(request: NextRequest) {
       return inv;
     });
 
-    return NextResponse.json({ success: true, invoice }, { status: 201 });
+    const formatted = {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      supplierId: invoice.supplierId,
+      supplierName: invoice.supplier?.name || '',
+      companyId: invoice.companyId,
+      companyCode: invoice.company?.code,
+      status: invoice.status,
+      invoiceDate: invoice.invoiceDate.toISOString().slice(0, 10),
+      dueDate: invoice.dueDate?.toISOString().slice(0, 10) || null,
+      subtotal: invoice.subtotal,
+      vatAmount: invoice.vatAmount,
+      totalAmount: invoice.totalAmount,
+      jobIds: invoice.jobs.map(j => j.id),
+      jobs: invoice.jobs,
+      notes: invoice.notes,
+      createdAt: invoice.createdAt.toISOString(),
+    };
+
+    return NextResponse.json({ success: true, invoice: formatted }, { status: 201 });
   } catch (error) {
     console.error('POST /api/invoices error:', error);
     return NextResponse.json(

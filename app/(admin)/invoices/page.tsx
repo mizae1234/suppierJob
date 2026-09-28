@@ -290,7 +290,7 @@ export default function InvoiceManagementPage() {
                           : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                       }`}
                     >
-                      บริษัท GI Fleet
+                      บริษัท GI (Gold Integrate)
                     </button>
                   </div>
                 </div>
@@ -490,7 +490,7 @@ export default function InvoiceManagementPage() {
                 <p className="font-bold text-gray-900 text-sm">
                   {selectedInvoice.companyCode === 'EV7'
                     ? 'บริษัท อีวี เซเว่น จำกัด (EV7 Co., Ltd.)'
-                    : 'บริษัท เจเนอรัล อินเทลลิเจนท์ จำกัด (GI Fleet)'}
+                    : 'บริษัท โกลด์ อินทิเกรท จำกัด (Gold Integrate)'}
                 </p>
                 <p className="text-gray-600 mt-0.5">
                   สังกัด: {selectedInvoice.companyCode} Central Fleet Management

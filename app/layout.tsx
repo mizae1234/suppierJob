@@ -5,7 +5,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/components/ui/Toast';
 
 export const metadata: Metadata = {
-  title: 'ระบบจัดการงาน Supplier (EV7 & GI Fleet)',
+  title: 'ระบบจัดการงาน Supplier (EV7 & GI)',
   description: 'Supplier Job Management สำหรับบริหารงานสั่งล้างรถ ขอรถสไลด์ ตรวจรับงาน และออกใบวางบิล โดยใช้ VIN เป็นข้อมูลหลัก',
 };
 

@@ -21,10 +21,12 @@ async function main() {
 
   const gi = await prisma.company.upsert({
     where: { code: 'GI' },
-    update: {},
+    update: {
+      name: 'บริษัท โกลด์ อินทิเกรท จำกัด (Gold Integrate)',
+    },
     create: {
       code: 'GI',
-      name: 'บริษัท เจเนอรัล อินเทลลิเจนท์ จำกัด (GI Fleet)',
+      name: 'บริษัท โกลด์ อินทิเกรท จำกัด (Gold Integrate)',
       taxId: '0105564098765',
       address: '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี สมุทรปราการ 10540',
     },

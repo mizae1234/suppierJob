@@ -40,6 +40,11 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;

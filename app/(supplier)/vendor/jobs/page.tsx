@@ -24,19 +24,22 @@ import {
 type TabKey = 'new' | 'progress' | 'waiting' | 'approved' | 'rejected';
 
 export default function SupplierJobsPage() {
-  const { jobs, updateJobStatus, addJobEvidence, activeSupplier } = useApp();
+  const { jobs, updateJobStatus, addJobEvidence, activeSupplier, currentSupplierId } = useApp();
   const { user } = useAuth();
   const theme = useTheme();
   const searchParams = useSearchParams();
 
+  const isMaster = user?.role === 'MASTER';
+  const isAll = (!activeSupplier || currentSupplierId === 'ALL') && isMaster;
+  const supplierId = activeSupplier?.id || user?.supplierId;
+
   const initialTab = (searchParams.get('tab') as TabKey) || 'new';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
-  const supplierId = activeSupplier?.id || user?.supplierId;
-
   const myJobs = useMemo(() => {
+    if (isAll) return jobs;
     return jobs.filter(j => j.supplierId === supplierId);
-  }, [jobs, supplierId]);
+  }, [jobs, supplierId, isAll]);
 
   const tabConfig: { key: TabKey; label: string; status: JobStatus[]; icon: React.ElementType; color: string }[] = [
     { key: 'new', label: 'งานใหม่', status: ['PENDING_SUPPLIER'], icon: ClipboardList, color: '#3b82f6' },
@@ -84,7 +87,7 @@ export default function SupplierJobsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 isActive
                   ? 'bg-white shadow-sm text-gray-900'
                   : 'text-gray-500 hover:text-gray-700'
@@ -134,6 +137,11 @@ export default function SupplierJobsPage() {
                       <p className="text-[11px] text-gray-500">
                         {job.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'} •{' '}
                         <span className="font-medium">{job.companyCode}</span> • {job.branchName}
+                        {isAll && (
+                          <span className="ml-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium">
+                            🏢 {job.supplierName}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -168,11 +176,11 @@ export default function SupplierJobsPage() {
                     <>
                       <button
                         onClick={() => handleAcceptJob(job.id)}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all"
+                        className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
                         style={{ backgroundColor: theme.primary }}
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        รับงาน
+                        <span>รับงาน</span>
                       </button>
                     </>
                   )}
@@ -181,11 +189,11 @@ export default function SupplierJobsPage() {
                   {job.status === 'IN_PROGRESS' && (
                     <Link
                       href={`/vendor/submit/${job.id}`}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
                       style={{ backgroundColor: '#f59e0b' }}
                     >
                       <Camera className="w-4 h-4" />
-                      ส่งงาน + แนบรูป
+                      <span>ส่งงาน + แนบรูป</span>
                     </Link>
                   )}
 
@@ -193,10 +201,10 @@ export default function SupplierJobsPage() {
                   {job.status === 'REJECTED' && (
                     <Link
                       href={`/vendor/submit/${job.id}`}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold transition-all"
+                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-600 text-white text-sm font-semibold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
                     >
                       <Camera className="w-4 h-4" />
-                      แก้ไขงาน + ส่งใหม่
+                      <span>แก้ไขงาน + ส่งใหม่</span>
                     </Link>
                   )}
 

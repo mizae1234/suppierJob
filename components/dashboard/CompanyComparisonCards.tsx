@@ -51,10 +51,10 @@ export const CompanyComparisonCards: React.FC<CompanyComparisonCardsProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full bg-blue-700 text-white font-bold text-xs font-mono">
-                GI Fleet
+                GI
               </span>
               <h4 className="text-base font-bold text-gray-900">
-                บริษัท เจเนอรัล อินเทลลิเจนท์ จำกัด
+                บริษัท โกลด์ อินทิเกรท จำกัด (Gold Integrate)
               </h4>
             </div>
             <span className="text-xs text-gray-500">2 Hubs</span>
