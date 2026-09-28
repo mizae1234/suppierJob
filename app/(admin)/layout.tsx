@@ -1,35 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import React from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   return (
     <div className="min-h-screen bg-[#f4f9f5] flex flex-col">
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar — hidden on mobile */}
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      {/* Mobile Drawer */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div 
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity" 
-            onClick={() => setIsMobileMenuOpen(false)} 
-          />
-          <div className="fixed inset-y-0 left-0 w-72 bg-white shadow-2xl z-50 flex flex-col">
-            <Sidebar isMobile onClose={() => setIsMobileMenuOpen(false)} />
-          </div>
-        </div>
-      )}
-
       {/* Top Header */}
-      <Header onMobileMenuToggle={() => setIsMobileMenuOpen(prev => !prev)} />
+      <Header />
 
       {/* Main Content Area */}
       <main className="lg:pl-72 pt-20 flex-1 flex flex-col">
@@ -37,6 +22,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </div>
       </main>
+
+      {/* Mobile Bottom Tab Bar */}
+      <MobileBottomNav />
     </div>
   );
 }

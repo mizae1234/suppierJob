@@ -71,17 +71,14 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
         const Icon = card.icon;
         const count = values[card.key];
         const sub = subtext[card.key];
-        const Wrapper = card.href ? Link : 'div';
-        const wrapperProps = card.href ? { href: card.href } : {};
+        const cardHref = 'href' in card ? (card as { href: string }).href : undefined;
 
-        return (
-          <Wrapper
-            key={card.key}
-            {...(wrapperProps as Record<string, string>)}
-            className={`p-4 rounded-2xl bg-white border border-gray-100 shadow-xs flex flex-col gap-3 transition-all duration-200 ${
-              card.href ? 'hover:shadow-md hover:border-gray-200 cursor-pointer' : ''
-            }`}
-          >
+        const className = `p-4 rounded-2xl bg-white border border-gray-100 shadow-xs flex flex-col gap-3 transition-all duration-200 ${
+          cardHref ? 'hover:shadow-md hover:border-gray-200 cursor-pointer' : ''
+        }`;
+
+        const content = (
+          <>
             {/* Top: icon + dot */}
             <div className="flex items-center justify-between">
               <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-500">
@@ -106,7 +103,21 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
 
             {/* Label */}
             <p className="text-[11px] font-medium text-gray-500 leading-tight">{card.label}</p>
-          </Wrapper>
+          </>
+        );
+
+        if (cardHref) {
+          return (
+            <Link key={card.key} href={cardHref} className={className}>
+              {content}
+            </Link>
+          );
+        }
+
+        return (
+          <div key={card.key} className={className}>
+            {content}
+          </div>
         );
       })}
     </div>

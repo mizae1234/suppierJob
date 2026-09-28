@@ -16,13 +16,12 @@ import {
   Shield, 
   Check, 
   ChevronDown,
-  Menu,
   X,
   Smartphone,
   LogOut
 } from 'lucide-react';
 
-export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobileMenuToggle }) => {
+export const Header: React.FC = () => {
   const router = useRouter();
   const { logout, user } = useAuth();
   const theme = useTheme();
@@ -64,23 +63,92 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
     return compCode === currentCompany;
   });
 
+  // Shared company/branch options renderer (used in both desktop dropdown & tablet bottom sheet)
+  const renderCompanyOptions = () => (
+    <>
+      {/* ทุกบริษัท */}
+      <button
+        onMouseDown={(e) => { 
+          e.preventDefault(); 
+          setCurrentCompany('ALL');
+          setCurrentBranchId('');
+          setIsCompanyOpen(false); 
+        }}
+        className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-semibold transition-colors ${
+          currentCompany === 'ALL'
+            ? 'bg-emerald-50 text-gray-900'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+        }`}
+      >
+        <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />
+        <span className="flex-1 text-left">ทุกบริษัท</span>
+        {currentCompany === 'ALL' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+      </button>
+
+      <div className="h-px bg-gray-100" />
+
+      {companyOptions.filter(o => o.value !== 'ALL').map((opt) => {
+        const isCompanySelected = currentCompany === opt.value;
+        const companyBranches = branches.filter(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
+        
+        return (
+          <div key={opt.value}>
+            <button
+              onMouseDown={(e) => { 
+                e.preventDefault(); 
+                setCurrentCompany(opt.value);
+                setCurrentBranchId('');
+                setIsCompanyOpen(false); 
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-bold transition-colors ${
+                isCompanySelected
+                  ? 'bg-gray-50 text-gray-900'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: opt.dot }} />
+              <span className="flex-1 text-left">{opt.label}</span>
+              {isCompanySelected && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+            </button>
+            
+            {companyBranches.map((branch) => (
+              <button
+                key={branch.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setCurrentCompany(opt.value);
+                  setCurrentBranchId(branch.id);
+                  setIsCompanyOpen(false);
+                }}
+                className={`w-full flex items-center gap-2 pl-9 pr-4 py-2.5 text-[11px] transition-colors ${
+                  currentBranchId === branch.id && isCompanySelected
+                    ? 'bg-gray-50 text-gray-900 font-semibold'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 font-medium'
+                }`}
+              >
+                <Building className="w-3 h-3 shrink-0 opacity-50" />
+                <span className="flex-1 text-left truncate">{branch.name}</span>
+                {currentBranchId === branch.id && isCompanySelected && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                )}
+              </button>
+            ))}
+            
+            <div className="h-px bg-gray-100 last:hidden" />
+          </div>
+        );
+      })}
+    </>
+  );
+
   return (
     <header
       className="fixed top-0 left-0 lg:left-72 right-0 h-20 bg-white/95 backdrop-blur-md border-b z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden transition-colors duration-300"
       style={{ borderColor: theme.borderSoft }}
     >
-      {/* Mobile Menu Toggle & Search Bar */}
+      {/* Search Bar */}
       <div className="flex items-center gap-3 flex-1 max-w-xl">
-        <button
-          onClick={onMobileMenuToggle}
-          className="lg:hidden p-2 rounded-xl text-gray-700 border border-gray-200 transition-colors duration-200"
-          style={{ }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.bgSoft; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; }}
-          aria-label="Toggle Navigation"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+        {/* Hamburger removed — using MobileBottomNav instead */}
 
         <form onSubmit={handleSearchSubmit} className="relative w-full">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-300" style={{ color: theme.iconColor, opacity: 0.6 }} />
@@ -156,87 +224,35 @@ export const Header: React.FC<{ onMobileMenuToggle?: () => void }> = ({ onMobile
               <ChevronDown className={`w-3.5 h-3.5 text-white/70 shrink-0 transition-transform duration-200 ${isCompanyOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Dropdown Menu */}
+            {/* Desktop: Dropdown Panel (lg+) */}
             {isCompanyOpen && (
-              <div 
-                className="absolute top-full right-0 mt-2 w-56 rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden animate-slide-down z-50"
-              >
-                {/* ทุกบริษัท option */}
-                <button
-                  onMouseDown={(e) => { 
-                    e.preventDefault(); 
-                    setCurrentCompany('ALL');
-                    setCurrentBranchId('');
-                    setIsCompanyOpen(false); 
-                  }}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold transition-colors ${
-                    currentCompany === 'ALL'
-                      ? 'bg-emerald-50 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`}
+              <>
+                {/* Desktop dropdown */}
+                <div 
+                  className="hidden lg:block absolute top-full right-0 mt-2 w-56 rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden animate-slide-down z-50"
                 >
-                  <span className="w-2 h-2 rounded-full shrink-0 bg-emerald-500" />
-                  <span className="flex-1 text-left">ทุกบริษัท</span>
-                  {currentCompany === 'ALL' && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                </button>
+                  {renderCompanyOptions()}
+                </div>
 
-                <div className="h-px bg-gray-100" />
-
-                {/* EV7 & GI with branches */}
-                {companyOptions.filter(o => o.value !== 'ALL').map((opt) => {
-                  const isCompanySelected = currentCompany === opt.value;
-                  const companyBranches = branches.filter(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
-                  
-                  return (
-                    <div key={opt.value}>
-                      {/* Company header */}
-                      <button
-                        onMouseDown={(e) => { 
-                          e.preventDefault(); 
-                          setCurrentCompany(opt.value);
-                          setCurrentBranchId('');
-                          setIsCompanyOpen(false); 
-                        }}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold transition-colors ${
-                          isCompanySelected
-                            ? 'bg-gray-50 text-gray-900'
-                            : 'text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: opt.dot }} />
-                        <span className="flex-1 text-left">{opt.label}</span>
-                        {isCompanySelected && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                      </button>
-                      
-                      {/* Branch sub-items */}
-                      {companyBranches.map((branch) => (
-                        <button
-                          key={branch.id}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            setCurrentCompany(opt.value);
-                            setCurrentBranchId(branch.id);
-                            setIsCompanyOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-2 pl-9 pr-4 py-2 text-[11px] transition-colors ${
-                            currentBranchId === branch.id && isCompanySelected
-                              ? 'bg-gray-50 text-gray-900 font-semibold'
-                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 font-medium'
-                          }`}
-                        >
-                          <Building className="w-3 h-3 shrink-0 opacity-50" />
-                          <span className="flex-1 text-left truncate">{branch.name}</span>
-                          {currentBranchId === branch.id && isCompanySelected && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                          )}
-                        </button>
-                      ))}
-                      
-                      <div className="h-px bg-gray-100 last:hidden" />
+                {/* Tablet: Bottom Sheet (md to lg) */}
+                <div className="lg:hidden fixed inset-0 z-[100]">
+                  <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onMouseDown={() => setIsCompanyOpen(false)} />
+                  <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-[101] animate-slide-up">
+                    <div className="flex justify-center pt-3 pb-1">
+                      <div className="w-10 h-1 rounded-full bg-gray-300" />
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="flex items-center justify-between px-5 pb-3 border-b border-gray-100">
+                      <h3 className="text-sm font-bold text-gray-900">เลือกบริษัท / สาขา</h3>
+                      <button onMouseDown={() => setIsCompanyOpen(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="max-h-[60vh] overflow-y-auto pb-safe">
+                      {renderCompanyOptions()}
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}

@@ -115,3 +115,31 @@
     display: none !important;
   }
 }
+
+/* ─── Mobile Bottom Nav ─────────── */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Safe area padding for iOS notch / home bar */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Main content bottom padding when bottom nav is visible */
+@media (max-width: 1023px) {
+  main {
+    padding-bottom: 5rem !important;
+  }
+}

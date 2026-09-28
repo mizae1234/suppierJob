@@ -24,12 +24,7 @@ import {
   Smartphone
 } from 'lucide-react';
 
-interface SidebarProps {
-  onClose?: () => void;
-  isMobile?: boolean;
-}
-
-export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) => {
+export const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const theme = useTheme();
   const { 
@@ -114,14 +109,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
     if (href === '/vendor') {
       setCurrentRole('SUPPLIER');
     }
-    if (isMobile && onClose) {
-      onClose();
-    }
   };
 
-  const containerClasses = isMobile
-    ? "relative h-full w-full bg-white flex flex-col justify-between select-none"
-    : "fixed left-0 top-0 h-full w-72 bg-white border-r shadow-[0_4px_24px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between select-none print:hidden";
+  const containerClasses = "fixed left-0 top-0 h-full w-72 bg-white border-r shadow-[0_4px_24px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between select-none print:hidden";
 
   return (
     <aside className={containerClasses} style={{ borderColor: theme.borderSoft }}>
@@ -149,15 +139,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose, isMobile = false }) =
             </div>
           </Link>
 
-          {isMobile && onClose && (
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100"
-              aria-label="Close menu"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
+
         </div>
 
         {/* Current Context Card */}
