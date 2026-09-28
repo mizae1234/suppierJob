@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -23,7 +23,7 @@ import {
 
 type TabKey = 'new' | 'progress' | 'waiting' | 'approved' | 'rejected';
 
-export default function SupplierJobsPage() {
+function SupplierJobsPageContent() {
   const { jobs, updateJobStatus, addJobEvidence, activeSupplier, currentSupplierId } = useApp();
   const { user } = useAuth();
   const theme = useTheme();
@@ -232,5 +232,13 @@ export default function SupplierJobsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SupplierJobsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-gray-500">กำลังโหลด...</div>}>
+      <SupplierJobsPageContent />
+    </Suspense>
   );
 }

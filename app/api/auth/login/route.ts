@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { createSessionToken } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,8 +68,8 @@ export async function POST(request: NextRequest) {
       supplierName: user.supplier?.name || null,
     };
 
-    // Set session cookie (base64 encoded JSON)
-    const sessionToken = Buffer.from(JSON.stringify(sessionData)).toString('base64');
+    // Set cryptographically signed session cookie
+    const sessionToken = await createSessionToken(sessionData as any);
 
     const response = NextResponse.json({
       success: true,

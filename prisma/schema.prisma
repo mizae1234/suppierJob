@@ -100,6 +100,10 @@ model Vehicle {
   carWashItems    CarWashItem[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
+  @@index([companyId])
+  @@index([currentBranchId])
+  @@index([status])
 }
 
 // งานสั่งงาน Supplier
@@ -152,6 +156,14 @@ model Job {
 
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
+
+  @@index([companyId, status])
+  @@index([supplierId, status])
+  @@index([branchId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([vin])
+  @@index([invoiceId])
 }
 
 // รายการคันรถใน Car Wash Order
@@ -166,6 +178,9 @@ model CarWashItem {
   unitPrice       Float    @default(150.0)
   status          String   @default("PENDING")
   remarks         String?
+
+  @@index([jobId])
+  @@index([vin])
 }
 
 // รูปภาพหลักฐานงาน
@@ -178,6 +193,8 @@ model JobEvidence {
   caption      String?
   evidenceType String   // BEFORE, AFTER, PICKUP, DROPOFF
   uploadedAt   DateTime @default(now())
+
+  @@index([jobId])
 }
 
 // ใบวางบิล Invoice
@@ -198,4 +215,8 @@ model Invoice {
   jobs          Job[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  @@index([companyId, status])
+  @@index([supplierId, status])
+  @@index([createdAt])
 }

@@ -127,7 +127,7 @@ DATABASE_URL=&quot;sqlserver://localhost:1433;database=SupplierJobDB;user=sa;pas
               onClick={() => {
                 setCurrentRole(item.role);
                 if (item.role === 'SUPPLIER') {
-                  router.push('/mobile');
+                  router.push('/vendor');
                 }
               }}
               className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-2 ${

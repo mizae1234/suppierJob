@@ -1,18 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth.response) return auth.response;
+  const { user } = auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
     const branchId = searchParams.get('branchId');
     const status = searchParams.get('status');
+    const limitParam = searchParams.get('limit');
 
     // Build filter
-    const where: Record<string, unknown> = {};
-    if (companyId) where.companyId = companyId;
-    if (branchId) where.currentBranchId = branchId;
+    const where: Prisma.VehicleWhereInput = {};
+
+    // Enforce Tenant Isolation
+    if (user.role === 'BRANCH') {
+      if (user.companyId) where.companyId = user.companyId;
+      if (user.branchId) where.currentBranchId = user.branchId;
+    } else if (user.role === 'ADMIN') {
+      if (user.companyId) {
+        where.companyId = user.companyId;
+      } else if (companyId) {
+        where.companyId = companyId;
+      }
+      if (branchId) where.currentBranchId = branchId;
+    } else if (user.role === 'MASTER') {
+      if (companyId) where.companyId = companyId;
+      if (branchId) where.currentBranchId = branchId;
+    } else if (user.role === 'SUPPLIER') {
+      // Supplier only needs vehicles assigned to their active jobs
+      if (companyId) where.companyId = companyId;
+    }
+
     if (status) where.status = status;
+
+    const limit = limitParam ? Math.min(200, Math.max(1, parseInt(limitParam, 10))) : 200;
 
     const vehicles = await prisma.vehicle.findMany({
       where,
@@ -21,6 +48,7 @@ export async function GET(request: NextRequest) {
         currentBranch: { select: { code: true, name: true } },
       },
       orderBy: { model: 'asc' },
+      take: limit,
     });
 
     // Format for frontend compatibility

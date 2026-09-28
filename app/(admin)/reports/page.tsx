@@ -35,28 +35,42 @@ export default function ReportsPage() {
   const ev7Pct = totalExpense > 0 ? Math.round((ev7Expense / totalExpense) * 100) : 0;
   const giPct = totalExpense > 0 ? Math.round((giExpense / totalExpense) * 100) : 0;
 
-  // Export to CSV helper
+  // Export to CSV helper (Sanitized against Formula Injection & UTF-8 BOM for Thai Excel)
   const handleExportCSV = () => {
+    const sanitizeCell = (val: string | number | null | undefined): string => {
+      if (val === null || val === undefined) return '""';
+      let str = String(val);
+      // Neutralize spreadsheet formula triggers (=, +, -, @)
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = "'" + str;
+      }
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
     const headers = ['JobNumber', 'JobType', 'Company', 'Branch', 'Supplier', 'Status', 'Cost', 'CreatedAt'];
     const rows = jobs.map(j => [
-      j.jobNumber,
-      j.jobType,
-      j.companyCode,
-      `"${j.branchName}"`,
-      `"${j.supplierName}"`,
-      j.status,
-      j.actualCost || j.estimatedCost,
-      j.createdAt
+      sanitizeCell(j.jobNumber),
+      sanitizeCell(j.jobType),
+      sanitizeCell(j.companyCode),
+      sanitizeCell(j.branchName),
+      sanitizeCell(j.supplierName),
+      sanitizeCell(j.status),
+      sanitizeCell(j.actualCost || j.estimatedCost || 0),
+      sanitizeCell(j.createdAt),
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    // Prepend UTF-8 BOM (\uFEFF) for correct Thai encoding in Excel
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.href = url;
     link.setAttribute('download', `Supplier_Jobs_Report_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (

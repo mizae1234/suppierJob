@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSessionUser } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
-  const sessionCookie = request.cookies.get('session');
+  const user = await getSessionUser(request);
 
-  if (!sessionCookie?.value) {
+  if (!user) {
     return NextResponse.json(
-      { error: 'ไม่ได้เข้าสู่ระบบ' },
+      { error: 'ไม่ได้เข้าสู่ระบบ หรือ Session ไม่ถูกต้อง' },
       { status: 401 }
     );
   }
 
-  try {
-    const sessionData = JSON.parse(
-      Buffer.from(sessionCookie.value, 'base64').toString('utf-8')
-    );
-
-    return NextResponse.json({ user: sessionData });
-  } catch {
-    return NextResponse.json(
-      { error: 'Session ไม่ถูกต้อง' },
-      { status: 401 }
-    );
-  }
+  return NextResponse.json({ user });
 }
+

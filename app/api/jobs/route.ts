@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
 
-// GET: ดึงรายการ Jobs (กรองได้ตาม company, branch, supplier, status)
+// GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth.response) return auth.response;
+  const { user } = auth;
+
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
@@ -10,33 +16,89 @@ export async function GET(request: NextRequest) {
     const supplierId = searchParams.get('supplierId');
     const status = searchParams.get('status');
     const jobType = searchParams.get('jobType');
+    const q = searchParams.get('q');
+    const pageParam = searchParams.get('page');
+    const limitParam = searchParams.get('limit');
 
-    const where: Record<string, unknown> = {};
-    if (companyId) where.companyId = companyId;
-    if (branchId) where.branchId = branchId;
-    if (supplierId) where.supplierId = supplierId;
+    const where: Prisma.JobWhereInput = {};
+
+    // ─── Enforce Tenant & Role Isolation ─────────────────
+    if (user.role === 'SUPPLIER') {
+      // Supplier must only see their own jobs
+      where.supplierId = user.supplierId || 'none';
+    } else if (user.role === 'BRANCH') {
+      // Branch user can only see jobs involving their branch
+      if (user.branchId) {
+        where.OR = [
+          { branchId: user.branchId },
+          { originBranchId: user.branchId },
+          { destBranchId: user.branchId },
+        ];
+      }
+      if (user.companyId) {
+        where.companyId = user.companyId;
+      }
+    } else if (user.role === 'ADMIN') {
+      // Admin is constrained to their assigned company if present
+      if (user.companyId) {
+        where.companyId = user.companyId;
+      } else if (companyId) {
+        where.companyId = companyId;
+      }
+    } else {
+      // MASTER can filter freely
+      if (companyId) where.companyId = companyId;
+    }
+
+    // Additional query filters (if allowed)
+    if (branchId && user.role !== 'BRANCH') where.branchId = branchId;
+    if (supplierId && user.role !== 'SUPPLIER') where.supplierId = supplierId;
     if (status) where.status = status;
     if (jobType) where.jobType = jobType;
 
-    const jobs = await prisma.job.findMany({
-      where,
-      include: {
-        company: { select: { code: true, name: true } },
-        branch: { select: { code: true, name: true } },
-        supplier: { select: { code: true, name: true } },
-        vehicle: true,
-        originBranch: { select: { code: true, name: true } },
-        destBranch: { select: { code: true, name: true } },
-        carWashItems: {
-          include: {
-            vehicle: { select: { model: true, color: true, licensePlate: true } },
-          },
+    // Search query
+    if (q) {
+      where.AND = [
+        {
+          OR: [
+            { jobNumber: { contains: q } },
+            { vin: { contains: q } },
+            { vehicle: { licensePlate: { contains: q } } },
+            { vehicle: { model: { contains: q } } },
+          ],
         },
-        evidences: true,
-        invoice: { select: { invoiceNumber: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+      ];
+    }
+
+    // Pagination
+    const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
+    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10))) : (page ? 20 : 150);
+    const skip = page ? (page - 1) * limit : undefined;
+
+    const [total, jobs] = await Promise.all([
+      prisma.job.count({ where }),
+      prisma.job.findMany({
+        where,
+        include: {
+          company: { select: { code: true, name: true } },
+          branch: { select: { code: true, name: true } },
+          supplier: { select: { code: true, name: true } },
+          vehicle: true,
+          originBranch: { select: { code: true, name: true } },
+          destBranch: { select: { code: true, name: true } },
+          carWashItems: {
+            include: {
+              vehicle: { select: { model: true, color: true, licensePlate: true } },
+            },
+          },
+          evidences: true,
+          invoice: { select: { invoiceNumber: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
 
     // Format for frontend compatibility
     const formatted = jobs.map(job => ({
@@ -102,7 +164,12 @@ export async function GET(request: NextRequest) {
       updatedAt: job.updatedAt.toISOString(),
     }));
 
-    return NextResponse.json({ jobs: formatted });
+    return NextResponse.json({
+      jobs: formatted,
+      total,
+      page: page || 1,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     console.error('GET /api/jobs error:', error);
     return NextResponse.json(
@@ -114,6 +181,10 @@ export async function GET(request: NextRequest) {
 
 // POST: สร้าง Job ใหม่ (Car Wash / Vehicle Slide)
 export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request, ['MASTER', 'ADMIN', 'BRANCH']);
+  if (auth.response) return auth.response;
+  const { user } = auth;
+
   try {
     const body = await request.json();
     const { jobType, companyId, branchId, supplierId, requestedBy } = body;
@@ -126,27 +197,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Role-specific company validation
+    if (user.role === 'ADMIN' && user.companyId && user.companyId !== companyId) {
+      return NextResponse.json(
+        { error: 'คุณไม่มีสิทธิ์สร้างงานให้บริษัทอื่น' },
+        { status: 403 }
+      );
+    }
+
+    if (user.role === 'BRANCH') {
+      if (user.companyId && user.companyId !== companyId) {
+        return NextResponse.json(
+          { error: 'คุณไม่มีสิทธิ์สร้างงานให้บริษัทอื่น' },
+          { status: 403 }
+        );
+      }
+      if (user.branchId && user.branchId !== branchId) {
+        return NextResponse.json(
+          { error: 'คุณสามารถสร้างงานได้เฉพาะสาขาตนเองเท่านั้น' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Get company code for job number
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) {
       return NextResponse.json({ error: 'ไม่พบบริษัทนี้' }, { status: 404 });
     }
 
-    // Generate job number
+    // Generate collision-resistant job number e.g. CW-EV7-2609-847291
     const dateStr = new Date().toISOString().slice(2, 7).replace('-', '');
-    const randomSeq = String(Math.floor(Math.random() * 900) + 100);
+    const uniqueSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
     const prefix = jobType === 'CAR_WASH' ? 'CW' : 'VS';
-    const jobNumber = `${prefix}-${company.code}-${dateStr}-${randomSeq}`;
+    const jobNumber = `${prefix}-${company.code}-${dateStr}-${uniqueSuffix}`;
 
     if (jobType === 'CAR_WASH') {
       // ─── Car Wash ─────────────────────
-      const { items } = body; // items: [{ vin, actualWashDate, washType, unitPrice, remarks }]
+      const { items } = body;
 
-      if (!items || items.length === 0) {
+      if (!items || !Array.isArray(items) || items.length === 0) {
         return NextResponse.json({ error: 'กรุณาเลือกรถอย่างน้อย 1 คัน' }, { status: 400 });
       }
 
-      const totalCost = items.reduce((sum: number, it: { unitPrice: number }) => sum + it.unitPrice, 0);
+      const totalCost = items.reduce((sum: number, it: { unitPrice?: number }) => sum + (it.unitPrice || 150), 0);
 
       const job = await prisma.job.create({
         data: {
@@ -156,7 +250,7 @@ export async function POST(request: NextRequest) {
           companyId,
           branchId,
           supplierId,
-          requestedBy: requestedBy || '',
+          requestedBy: requestedBy || user.displayName || '',
           estimatedCost: totalCost,
           carWashItems: {
             create: items.map((it: { vin: string; actualWashDate: string; washType?: string; unitPrice?: number; remarks?: string }) => ({
@@ -182,7 +276,20 @@ export async function POST(request: NextRequest) {
 
     } else if (jobType === 'VEHICLE_SLIDE') {
       // ─── Vehicle Slide ────────────────
-      const { vin, originBranchId, destBranchId, customDestAddress, customDestLat, customDestLng, pickupDateTime, deliveryDateTime, contactPerson, contactPhone, transferReason, estimatedCost } = body;
+      const { 
+        vin, 
+        originBranchId, 
+        destBranchId, 
+        customDestAddress, 
+        customDestLat, 
+        customDestLng, 
+        pickupDateTime, 
+        deliveryDateTime, 
+        contactPerson, 
+        contactPhone, 
+        transferReason, 
+        estimatedCost 
+      } = body;
 
       if (!vin || !originBranchId || (!destBranchId && !customDestAddress)) {
         return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
@@ -207,8 +314,8 @@ export async function POST(request: NextRequest) {
           contactPerson,
           contactPhone,
           transferReason,
-          requestedBy: requestedBy || '',
-          estimatedCost: estimatedCost || 0,
+          requestedBy: requestedBy || user.displayName || '',
+          estimatedCost: estimatedCost ? parseFloat(estimatedCost) : 0,
         },
       });
 
