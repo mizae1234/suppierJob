@@ -201,6 +201,24 @@ async function main() {
       branchId: null as string | null,
       supplierId: suppliers['SP-CLEANPRO'].id,
     },
+    {
+      username: 'supplier-slideex',
+      password: 'sup1234',
+      displayName: 'Slide Express Logistics',
+      role: 'SUPPLIER',
+      companyId: null as string | null,
+      branchId: null as string | null,
+      supplierId: suppliers['SP-SLIDEEX'].id,
+    },
+    {
+      username: 'supplier-washhub',
+      password: 'sup1234',
+      displayName: 'Wash Hub Premium Service (วอชฮับ)',
+      role: 'SUPPLIER',
+      companyId: null as string | null,
+      branchId: null as string | null,
+      supplierId: suppliers['SP-WASHHUB'].id,
+    },
   ];
 
   for (const u of usersData) {
