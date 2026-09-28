@@ -182,10 +182,10 @@ export async function POST(request: NextRequest) {
 
     } else if (jobType === 'VEHICLE_SLIDE') {
       // ─── Vehicle Slide ────────────────
-      const { vin, originBranchId, destBranchId, pickupDateTime, deliveryDateTime, contactPerson, contactPhone, transferReason, estimatedCost } = body;
+      const { vin, originBranchId, destBranchId, customDestAddress, customDestLat, customDestLng, pickupDateTime, deliveryDateTime, contactPerson, contactPhone, transferReason, estimatedCost } = body;
 
-      if (!vin || !originBranchId || !destBranchId) {
-        return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ' }, { status: 400 });
+      if (!vin || !originBranchId || (!destBranchId && !customDestAddress)) {
+        return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
       }
 
       const job = await prisma.job.create({
@@ -198,7 +198,10 @@ export async function POST(request: NextRequest) {
           supplierId,
           vin,
           originBranchId,
-          destBranchId,
+          destBranchId: destBranchId || null,
+          customDestAddress: customDestAddress || null,
+          customDestLat: customDestLat ? parseFloat(customDestLat) : null,
+          customDestLng: customDestLng ? parseFloat(customDestLng) : null,
           pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
           deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
           contactPerson,

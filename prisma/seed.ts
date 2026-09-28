@@ -37,12 +37,12 @@ async function main() {
 
   const branchesData = [
     // EV7
-    { companyId: ev7.id, code: 'EV7-RM9', name: 'EV7 สาขาพระราม 9 (สำนักงานใหญ่)', address: '99/9 ถ.พระราม 9 แขวงบางกะปิ เขตห้วยขวาง กทม.', phone: '02-719-8888' },
-    { companyId: ev7.id, code: 'EV7-RNG', name: 'EV7 สาขารังสิต คลอง 1', address: '15/2 ถ.พหลโยธิน ต.ประชาธิปัตย์ อ.ธัญบุรี ปทุมธานี', phone: '02-998-1122' },
-    { companyId: ev7.id, code: 'EV7-CNX', name: 'EV7 สาขาเชียงใหม่ ซุปเปอร์ไฮเวย์', address: '244 หมู่ 4 ถ.เชียงใหม่-ลำปาง ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่', phone: '053-245-566' },
+    { companyId: ev7.id, code: 'EV7-RM9', name: 'EV7 สาขาพระราม 9 (สำนักงานใหญ่)', address: '99/9 ถ.พระราม 9 แขวงบางกะปิ เขตห้วยขวาง กทม.', phone: '02-719-8888', latitude: 13.7563, longitude: 100.5648 },
+    { companyId: ev7.id, code: 'EV7-RNG', name: 'EV7 สาขารังสิต คลอง 1', address: '15/2 ถ.พหลโยธิน ต.ประชาธิปัตย์ อ.ธัญบุรี ปทุมธานี', phone: '02-998-1122', latitude: 13.9622, longitude: 100.6168 },
+    { companyId: ev7.id, code: 'EV7-CNX', name: 'EV7 สาขาเชียงใหม่ ซุปเปอร์ไฮเวย์', address: '244 หมู่ 4 ถ.เชียงใหม่-ลำปาง ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่', phone: '053-245-566', latitude: 18.7953, longitude: 98.9796 },
     // GI
-    { companyId: gi.id, code: 'GI-BNA', name: 'GI Hub บางนา-สุวรรณภูมิ', address: '888 ถ.บางนา-ตราด กม.18 ต.บางโฉลง อ.บางพลี สมุทรปราการ', phone: '02-334-5500' },
-    { companyId: gi.id, code: 'GI-CHON', name: 'GI Hub แหลมฉบัง ชลบุรี', address: '123/45 นิคมอุตสาหกรรมแหลมฉบัง ต.ทุ่งสุขลา อ.ศรีราชา จ.ชลบุรี', phone: '038-490-123' },
+    { companyId: gi.id, code: 'GI-BNA', name: 'GI Hub บางนา-สุวรรณภูมิ', address: '888 ถ.บางนา-ตราด กม.18 ต.บางโฉลง อ.บางพลี สมุทรปราการ', phone: '02-334-5500', latitude: 13.6270, longitude: 100.6802 },
+    { companyId: gi.id, code: 'GI-CHON', name: 'GI Hub แหลมฉบัง ชลบุรี', address: '123/45 นิคมอุตสาหกรรมแหลมฉบัง ต.ทุ่งสุขลา อ.ศรีราชา จ.ชลบุรี', phone: '038-490-123', latitude: 13.0827, longitude: 100.9017 },
   ];
 
   const branches: Record<string, { id: string }> = {};

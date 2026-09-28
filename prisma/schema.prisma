@@ -50,6 +50,8 @@ model Branch {
   name        String    // พระราม 9, รังสิต, เชียงใหม่
   address     String?
   phone       String?
+  latitude    Float?    // พิกัด GPS สำหรับคำนวณระยะทาง
+  longitude   Float?
   vehicles    Vehicle[]
   users       User[]
   jobs        Job[]     @relation("BranchJobs")
@@ -120,6 +122,9 @@ model Job {
   originBranch     Branch?       @relation("OriginBranchJobs", fields: [originBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   destBranchId     String?
   destBranch       Branch?       @relation("DestBranchJobs", fields: [destBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customDestAddress String?      // ที่อยู่ปลายทางกรณีเลือกจุดบนแผนที่
+  customDestLat     Float?       // ละติจูดปลายทาง
+  customDestLng     Float?       // ลองจิจูดปลายทาง
   pickupDateTime   DateTime?
   deliveryDateTime DateTime?
   contactPerson    String?

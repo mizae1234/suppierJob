@@ -35,6 +35,8 @@ export interface Branch {
   name: string;
   address?: string;
   phone?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Supplier {

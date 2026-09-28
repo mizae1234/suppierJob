@@ -6,11 +6,11 @@ import { formatCurrency } from '@/lib/billing-utils';
 import { useTheme } from '@/hooks/useTheme';
 import { 
   FileText, 
-  TrendingUp, 
   Clock, 
   AlertCircle, 
   CheckCircle2, 
-  Receipt 
+  Receipt,
+  Eye
 } from 'lucide-react';
 
 interface DashboardStatsCardsProps {
@@ -26,11 +26,18 @@ interface DashboardStatsCardsProps {
   invoicedAmount: number;
 }
 
+const cards = [
+  { key: 'total',    label: 'งานทั้งหมด',    icon: FileText,    dot: '#64748b', unit: 'รายการ' },
+  { key: 'pending',  label: 'รอ Supplier',    icon: Clock,       dot: '#3b82f6', unit: 'งาน' },
+  { key: 'review',   label: 'รอตรวจรับ',      icon: Eye,         dot: '#f59e0b', unit: 'งาน', href: '/approvals' },
+  { key: 'rejected', label: 'ขอแก้ไข',        icon: AlertCircle, dot: '#ef4444', unit: 'งาน' },
+  { key: 'approved', label: 'พร้อมวางบิล',    icon: CheckCircle2,dot: '#10b981', unit: 'งาน' },
+  { key: 'invoiced', label: 'วางบิลแล้ว',     icon: Receipt,     dot: '#8b5cf6', unit: 'งาน' },
+] as const;
+
 export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
   totalJobsCount,
   pendingSupplierCount,
-  pendingCarWashCount,
-  pendingSlideCount,
   waitingApprovalCount,
   rejectedCount,
   approvedCount,
@@ -40,130 +47,68 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
 }) => {
   const theme = useTheme();
 
+  const values: Record<string, number> = {
+    total: totalJobsCount,
+    pending: pendingSupplierCount,
+    review: waitingApprovalCount,
+    rejected: rejectedCount,
+    approved: approvedCount,
+    invoiced: invoicedCount,
+  };
+
+  const subtext: Record<string, string | null> = {
+    total: null,
+    pending: null,
+    review: null,
+    rejected: null,
+    approved: approvedAmount > 0 ? formatCurrency(approvedAmount) : null,
+    invoiced: invoicedAmount > 0 ? formatCurrency(invoicedAmount) : null,
+  };
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-      {/* 1. งานทั้งหมด */}
-      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            งานทั้งหมด
-          </span>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors duration-300" style={{ backgroundColor: theme.badgeBg, color: theme.iconColor }}>
-            <FileText className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold text-gray-900 font-mono">{totalJobsCount}</span>
-          <span className="text-xs text-gray-500 font-medium">รายการ</span>
-        </div>
-        <p className="text-[11px] mt-1.5 flex items-center gap-1 font-medium h-4 transition-colors duration-300" style={{ color: theme.textMuted }}>
-          <TrendingUp className="w-3 h-3" />
-          <span>ระบบอัปเดตเรียลไทม์</span>
-        </p>
-      </div>
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      {cards.map((card) => {
+        const Icon = card.icon;
+        const count = values[card.key];
+        const sub = subtext[card.key];
+        const Wrapper = card.href ? Link : 'div';
+        const wrapperProps = card.href ? { href: card.href } : {};
 
-      {/* 2. รอ Supplier รับงาน */}
-      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            รอ Supplier ทำ
-          </span>
-          <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-            <Clock className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold text-gray-900 font-mono">{pendingSupplierCount}</span>
-          <span className="text-xs text-gray-500 font-medium">งาน</span>
-        </div>
-        <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-gray-500 h-4">
-          <span className="px-1.5 py-0.5 rounded bg-gray-100 font-medium">
-            ล้าง {pendingCarWashCount}
-          </span>
-          <span className="px-1.5 py-0.5 rounded bg-gray-100 font-medium">
-            สไลด์ {pendingSlideCount}
-          </span>
-        </div>
-      </div>
+        return (
+          <Wrapper
+            key={card.key}
+            {...(wrapperProps as Record<string, string>)}
+            className={`p-4 rounded-2xl bg-white border border-gray-100 shadow-xs flex flex-col gap-3 transition-all duration-200 ${
+              card.href ? 'hover:shadow-md hover:border-gray-200 cursor-pointer' : ''
+            }`}
+          >
+            {/* Top: icon + dot */}
+            <div className="flex items-center justify-between">
+              <div className="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-gray-500">
+                <Icon className="w-4 h-4" />
+              </div>
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: card.dot }}
+              />
+            </div>
 
-      {/* 3. รอสาขาตรวจรับ (Urgent Highlight) */}
-      <div className="p-5 rounded-2xl bg-amber-50/70 border border-amber-300 shadow-xs flex flex-col min-h-[140px] relative overflow-hidden">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
-            รอสาขาตรวจรับ
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold animate-pulse">
-            ด่วน
-          </span>
-        </div>
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold text-amber-950 font-mono">{waitingApprovalCount}</span>
-          <span className="text-xs text-amber-800 font-medium">งาน</span>
-        </div>
-        <Link
-          href="/approvals"
-          className="inline-flex items-center gap-1 text-[11px] text-amber-900 font-semibold mt-1.5 hover:underline h-4"
-        >
-          <span>ส่งรูปหลักฐานแล้ว ตรวจสอบ &gt;</span>
-        </Link>
-      </div>
+            {/* Number */}
+            <div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-2xl font-bold text-gray-900">{count}</span>
+                <span className="text-[10px] text-gray-400 font-medium">{card.unit}</span>
+              </div>
+              {sub && (
+                <p className="text-[10px] text-gray-400 font-medium mt-0.5 truncate">{sub}</p>
+              )}
+            </div>
 
-      {/* 4. งานที่ขอแก้ไข (Reject) */}
-      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            งานขอแก้ไข
-          </span>
-          <div className="w-8 h-8 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
-            <AlertCircle className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold text-red-600 font-mono">{rejectedCount}</span>
-          <span className="text-xs text-gray-500 font-medium">งาน</span>
-        </div>
-        <p className="text-[11px] text-red-700 mt-1.5 font-medium h-4">
-          รอช่างแก้ไขเก็บงานซ้ำ
-        </p>
-      </div>
-
-      {/* 5. Approved พร้อมวางบิล */}
-      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            พร้อมวางบิล
-          </span>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors duration-300" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
-            <CheckCircle2 className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold font-mono transition-colors duration-300" style={{ color: theme.textPrimary }}>{approvedCount}</span>
-          <span className="text-xs text-gray-500 font-medium">งาน</span>
-        </div>
-        <p className="text-[11px] font-bold mt-1.5 font-mono h-4 transition-colors duration-300" style={{ color: theme.iconColor }}>
-          {formatCurrency(approvedAmount)} ประเมินแล้ว
-        </p>
-      </div>
-
-      {/* 6. วางบิลแล้ว (Pending Payment) */}
-      <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col min-h-[140px] transition-colors duration-300" style={{ borderColor: theme.borderSoft }}>
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            วางบิลแล้ว
-          </span>
-          <div className="w-8 h-8 rounded-xl bg-gray-100 text-gray-800 flex items-center justify-center">
-            <Receipt className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-baseline gap-1.5 mt-auto">
-          <span className="text-3xl font-bold text-gray-900 font-mono">{invoicedCount}</span>
-          <span className="text-xs text-gray-500 font-medium">งาน</span>
-        </div>
-        <p className="text-[11px] text-gray-600 font-medium mt-1.5 font-mono h-4">
-          {formatCurrency(invoicedAmount)} ในใบแจ้งหนี้
-        </p>
-      </div>
+            {/* Label */}
+            <p className="text-[11px] font-medium text-gray-500 leading-tight">{card.label}</p>
+          </Wrapper>
+        );
+      })}
     </div>
   );
 };
