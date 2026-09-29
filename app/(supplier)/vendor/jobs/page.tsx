@@ -72,13 +72,18 @@ function SupplierJobsPageContent() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">รายการงานของฉัน</h1>
-        <p className="text-sm text-gray-500">งานทั้งหมด {myJobs.length} รายการ</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">รายการงานของฉัน</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">งานทั้งหมด {myJobs.length} รายการ</p>
+        </div>
+        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+          {filteredJobs.length} งานในหมวดนี้
+        </span>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl overflow-x-auto">
+      {/* Tab Bar (Native Mobile Segmented Control) */}
+      <div className="flex items-center gap-1.5 p-1.5 bg-gray-200/60 backdrop-blur-sm rounded-2xl overflow-x-auto scrollbar-none shadow-inner">
         {tabConfig.map(tab => {
           const Icon = tab.icon;
           const count = myJobs.filter(j => tab.status.includes(j.status)).length;
@@ -87,9 +92,9 @@ function SupplierJobsPageContent() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
                 isActive
-                  ? 'bg-white shadow-sm text-gray-900'
+                  ? 'bg-white shadow-xs text-gray-900'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -97,7 +102,7 @@ function SupplierJobsPageContent() {
               <span>{tab.label}</span>
               {count > 0 && (
                 <span
-                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white"
+                  className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold text-white"
                   style={{ backgroundColor: tab.color }}
                 >
                   {count}
@@ -110,9 +115,10 @@ function SupplierJobsPageContent() {
 
       {/* Job Cards */}
       {filteredJobs.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-16 px-4 bg-white/60 rounded-3xl border border-gray-100 shadow-2xs text-gray-400">
           <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-sm font-medium">ไม่มีงานในหมวดนี้</p>
+          <p className="text-sm font-bold text-gray-600">ไม่มีงานในหมวดนี้</p>
+          <p className="text-xs text-gray-400 mt-1">งานจะปรากฏเมื่อมีการมอบหมายหรือเปลี่ยนสถานะ</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
