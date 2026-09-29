@@ -12,6 +12,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/logout') ||
     pathname.startsWith('/api/auth/check-user') ||
+    (pathname === '/api/suppliers' && request.method === 'GET') ||
     pathname.startsWith('/public') ||
     pathname.endsWith('.png') ||
     pathname.endsWith('.jpg') ||

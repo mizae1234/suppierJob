@@ -313,7 +313,7 @@ export default function LoginPage() {
 
                       {/* Dropdown Menu */}
                       {dropdownOpen && (
-                        <div className="absolute z-50 mt-1.5 w-full bg-white rounded-xl border border-gray-200 shadow-xl max-h-64 overflow-y-auto animate-[fadeIn_0.15s_ease-out]">
+                        <div className="absolute z-50 mt-1.5 w-full bg-white rounded-xl border border-gray-200 shadow-2xl max-h-72 sm:max-h-80 overflow-y-auto overscroll-contain animate-[fadeIn_0.15s_ease-out]">
                           {/* Master Option */}
                           <div className="p-1 border-b border-gray-100 bg-emerald-50/40">
                             <button
