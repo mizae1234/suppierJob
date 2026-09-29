@@ -132,6 +132,18 @@ async function main() {
     { vin: 'LGS4D8610PA009944', model: 'Deepal S07 Smart EV', color: 'Eclipse Black', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'SUV', licensePlate: 'กง-9944 ชลบุรี', mileage: 19800 },
     { vin: 'LGS4D8615PA005522', model: 'Deepal S07 Max EV', color: 'Glacier White', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'SUV', licensePlate: 'กจ-5522 ชลบุรี', mileage: 3200 },
     { vin: 'LNN6A5227PA007744', model: 'NETA X Mid Range', color: 'Titanium Grey', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'SUV', licensePlate: 'กฉ-7744 ชลบุรี', mileage: 15600 },
+    // EV7 — เพิ่มเติม (5 คัน)
+    { vin: 'LC07C5EB3PA004123', model: 'BYD Sealion 6 DM-i', color: 'Arctic White', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'SUV', licensePlate: '5ขร-4123 กทม.', mileage: 3500 },
+    { vin: 'LZW7AE321PA008899', model: 'ORA Good Cat GT', color: 'Sun Black', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'Hatchback', licensePlate: '2ขล-8899 กทม.', mileage: 12400 },
+    { vin: 'LC07C5EB2PA007711', model: 'BYD Seal Dynamic', color: 'Atlantis Grey', companyId: ev7.id, currentBranchId: branches['EV7-RNG'].id, vehicleType: 'Sedan', licensePlate: '4ขบ-7711 กทม.', mileage: 6800 },
+    { vin: 'LSJ574898PA005566', model: 'MG Cyberster EV', color: 'Inca Yellow', companyId: ev7.id, currentBranchId: branches['EV7-CNX'].id, vehicleType: 'Sedan', licensePlate: 'ขจ-5566 เชียงใหม่', mileage: 2100 },
+    { vin: 'LC07C5EB6PA003322', model: 'BYD Dolphin Standard Range', color: 'Maldive Purple', companyId: ev7.id, currentBranchId: branches['EV7-CNX'].id, vehicleType: 'Hatchback', licensePlate: 'ขฉ-3322 เชียงใหม่', mileage: 15300 },
+    // GI — เพิ่มเติม (5 คัน)
+    { vin: 'LGS4D8617PA002288', model: 'Deepal S07 L EV', color: 'Comet White', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'SUV', licensePlate: '3ขษ-2288 กทม.', mileage: 8900 },
+    { vin: 'LGS4D8612PA004499', model: 'Deepal L07 Sport EV', color: 'Sunset Orange', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'Sedan', licensePlate: '1ขห-4499 กทม.', mileage: 4700 },
+    { vin: 'LNN6A5221PA006633', model: 'NETA X Smart EV', color: 'Glacier Blue', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'SUV', licensePlate: '5กท-6633 กทม.', mileage: 11200 },
+    { vin: 'LGS4D8616PA008855', model: 'Deepal S07 Max EV', color: 'Space Grey', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'SUV', licensePlate: 'กน-8855 ชลบุรี', mileage: 6300 },
+    { vin: 'LNN6A5228PA001144', model: 'NETA V-II Lite', color: 'Sakura Pink', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'Hatchback', licensePlate: 'กต-1144 ชลบุรี', mileage: 18700 },
   ];
 
   for (const v of vehiclesData) {
