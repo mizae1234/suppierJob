@@ -112,12 +112,154 @@
 }
 
 @media print {
+  /* ─── Global Reset ──────────────────────────── */
   body {
     background: white !important;
     color: black !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    overflow: visible !important;
   }
-  aside, header, nav {
-    display: none !important;
+
+  /* ─── Hide EVERYTHING on screen ─────────────── */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* ─── Show ONLY .print-work-order and its children ── */
+  .print-work-order,
+  .print-work-order * {
+    visibility: visible !important;
+  }
+
+  .print-work-order {
+    display: block !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    z-index: 999999 !important;
+    background: white !important;
+    padding: 10mm !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ─── Force A4 page size ─────────────────────── */
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  /* ─── Print work order inner styles ──────────── */
+  .print-wo-header {
+    border-bottom: 2.5pt solid #111 !important;
+    padding-bottom: 12pt !important;
+    margin-bottom: 12pt !important;
+  }
+
+  .print-wo-title {
+    font-size: 16pt !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.3pt !important;
+  }
+
+  .print-wo-subtitle {
+    font-size: 9pt !important;
+    color: #555 !important;
+  }
+
+  .print-wo-job-number {
+    font-size: 13pt !important;
+    font-weight: 800 !important;
+    font-family: 'JetBrains Mono', 'Courier New', monospace !important;
+  }
+
+  .print-wo-info-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8pt !important;
+    margin-bottom: 12pt !important;
+    padding: 10pt !important;
+    border: 0.5pt solid #ccc !important;
+    border-radius: 4pt !important;
+    background: #fafafa !important;
+  }
+
+  .print-wo-info-grid dt {
+    font-size: 8pt !important;
+    color: #888 !important;
+    margin-bottom: 1pt !important;
+  }
+
+  .print-wo-info-grid dd {
+    font-size: 10pt !important;
+    font-weight: 700 !important;
+    margin-bottom: 6pt !important;
+  }
+
+  .print-wo-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 12pt !important;
+    font-size: 9pt !important;
+  }
+
+  .print-wo-table th {
+    border: 0.5pt solid #999 !important;
+    padding: 6pt 8pt !important;
+    background: #eee !important;
+    font-weight: 700 !important;
+    text-align: left !important;
+  }
+
+  .print-wo-table td {
+    border: 0.5pt solid #ccc !important;
+    padding: 5pt 8pt !important;
+    vertical-align: top !important;
+  }
+
+  .print-wo-table tr:nth-child(even) td {
+    background: #f9f9f9 !important;
+  }
+
+  .print-wo-total-row td {
+    border-top: 2pt solid #333 !important;
+    font-weight: 900 !important;
+    font-size: 10pt !important;
+    padding-top: 8pt !important;
+  }
+
+  .print-wo-signatures {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 40pt !important;
+    margin-top: 36pt !important;
+    padding-top: 12pt !important;
+    border-top: 0.5pt dashed #ccc !important;
+    text-align: center !important;
+    font-size: 9pt !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-wo-sig-line {
+    width: 70% !important;
+    border-bottom: 0.5pt solid #333 !important;
+    margin: 0 auto 8pt !important;
+    height: 40pt !important;
+  }
+
+  .print-wo-footer {
+    margin-top: 24pt !important;
+    padding-top: 8pt !important;
+    border-top: 0.5pt solid #ddd !important;
+    font-size: 7pt !important;
+    color: #999 !important;
+    text-align: center !important;
   }
 }
 

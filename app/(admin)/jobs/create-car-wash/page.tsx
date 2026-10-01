@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import { CompanyCode, Job } from '@/types';
@@ -39,6 +40,7 @@ export default function CreateCarWashPage() {
     vehicles, 
     createCarWashJob 
   } = useApp();
+  const { user: authUser } = useAuth();
   const theme = useTheme();
 
   // Wash Suppliers
@@ -47,7 +49,14 @@ export default function CreateCarWashPage() {
   // Selected supplier
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(washSuppliers[0]?.id || '');
   const selectedSupplier = washSuppliers.find(s => s.id === selectedSupplierId);
-  const [requestedBy, setRequestedBy] = useState<string>('ผู้จัดการสาขา');
+
+  // Auto-fill requester info from logged-in user
+  const autoName = authUser?.firstName && authUser?.lastName 
+    ? `${authUser.firstName} ${authUser.lastName}` 
+    : authUser?.displayName || 'ผู้จัดการสาขา';
+  const [requestedBy, setRequestedBy] = useState<string>(autoName);
+  const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
+  const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
   const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
   const [openWashTypeVin, setOpenWashTypeVin] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -186,6 +195,8 @@ export default function CreateCarWashPage() {
           remarks: it.remarks,
         })),
         requestedBy,
+        requesterPosition,
+        requesterPhone,
       });
 
       setShowConfirmModal(false);
@@ -321,18 +332,7 @@ export default function CreateCarWashPage() {
               ))}
             </div>
 
-            <div className="mt-2">
-              <label className="block text-xs font-semibold text-gray-700 mb-1">
-                ชื่อผู้สั่งงาน / เจ้าหน้าที่สาขา:
-              </label>
-              <input
-                type="text"
-                value={requestedBy}
-                onChange={(e) => setRequestedBy(e.target.value)}
-                required
-                className="w-full h-9 px-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238] outline-none"
-              />
-            </div>
+
           </div>
 
           {/* Step 2: Select VINs from Branch Stock */}
@@ -606,7 +606,7 @@ export default function CreateCarWashPage() {
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-gray-200">
                 <span className="text-gray-500">ผู้สั่งงาน:</span>
-                <span className="font-medium text-gray-800">{requestedBy}</span>
+                <span className="font-medium text-gray-800">{requestedBy}{requesterPosition ? ` (${requesterPosition})` : ''}</span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-gray-200">
                 <span className="text-gray-500">จำนวนรถทั้งหมด:</span>
@@ -685,7 +685,7 @@ export default function CreateCarWashPage() {
             </div>
 
             {/* Printable Document Sheet */}
-            <div className="p-6 border border-gray-200 rounded-2xl bg-white text-gray-900 flex flex-col gap-4 print:border-none print:p-0">
+            <div className="print-work-order p-6 border border-gray-200 rounded-2xl bg-white text-gray-900 flex flex-col gap-4 print:border-none print:p-0">
               {/* Document Top */}
               <div className="flex items-center justify-between border-b border-gray-200 pb-4">
                 <div>
@@ -704,6 +704,8 @@ export default function CreateCarWashPage() {
                   <p className="text-gray-500">สาขาผู้สั่งงาน:</p>
                   <p className="font-bold text-gray-900">{createdJob.branchName}</p>
                   <p className="text-gray-600 mt-0.5">ผู้สั่งงาน: {createdJob.requestedBy}</p>
+                  {createdJob.requesterPosition && <p className="text-gray-600">ตำแหน่ง: {createdJob.requesterPosition}</p>}
+                  {createdJob.requesterPhone && <p className="text-gray-600">โทร: {createdJob.requesterPhone}</p>}
                 </div>
                 <div>
                   <p className="text-gray-500">Supplier ผู้รับจ้าง:</p>
@@ -754,11 +756,11 @@ export default function CreateCarWashPage() {
               <div className="grid grid-cols-2 gap-8 pt-8 mt-4 border-t border-gray-200 text-xs text-center">
                 <div className="flex flex-col items-center gap-6">
                   <div className="w-48 border-b border-gray-400" />
-                  <p>ลงชื่อ ...................................................<br />({createdJob.requestedBy})<br />เจ้าหน้าที่สาขาผู้สั่งงาน</p>
+                  <p>ลงชื่อ {createdJob.requestedBy || '...................................................'}<br />({createdJob.requesterPosition || 'เจ้าหน้าที่สาขาผู้สั่งงาน'})</p>
                 </div>
                 <div className="flex flex-col items-center gap-6">
                   <div className="w-48 border-b border-gray-400" />
-                  <p>ลงชื่อ ...................................................<br />(...................................................)<br />ผู้แทน Supplier ผู้รับงาน</p>
+                  <p>ลงชื่อ ...................................................<br />(...................................................)</p>
                 </div>
               </div>
             </div>

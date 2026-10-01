@@ -739,7 +739,182 @@ function JobsContent() {
                 </div>
               </div>
 
-              {/* Sticky Drawer Footer */}
+              {/* ══════════════════════════════════════════════
+                  PRINT-ONLY WORK ORDER (hidden on screen)
+                  ══════════════════════════════════════════════ */}
+              <div className="print-work-order hidden">
+                {/* Header */}
+                <div className="print-wo-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div className="print-wo-title">
+                      {activeJob.jobType === 'CAR_WASH' ? 'ใบสั่งงานล้างรถ' : 'ใบสั่งงานรถสไลด์'}
+                    </div>
+                    <div className="print-wo-subtitle" style={{ marginTop: '2pt' }}>
+                      {activeJob.jobType === 'CAR_WASH' ? 'CAR WASH WORK ORDER' : 'VEHICLE SLIDE WORK ORDER'} — {activeJob.companyCode}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="print-wo-job-number">{activeJob.jobNumber}</div>
+                    <div className="print-wo-subtitle">วันที่สั่ง: {formatThaiDateTime(activeJob.createdAt)}</div>
+                  </div>
+                </div>
+
+                {/* Info Grid */}
+                <dl className="print-wo-info-grid">
+                  <div>
+                    <dt>สาขาผู้สั่งงาน</dt>
+                    <dd>{activeJob.branchName}</dd>
+                  </div>
+                  <div>
+                    <dt>Supplier ผู้รับจ้าง</dt>
+                    <dd>{activeJob.supplierName}</dd>
+                  </div>
+                  <div>
+                    <dt>ผู้สั่งงาน</dt>
+                    <dd>
+                      {activeJob.requestedBy || '-'}
+                      {activeJob.requesterPosition && ` (${activeJob.requesterPosition})`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>เบอร์โทรผู้สั่งงาน</dt>
+                    <dd>{activeJob.requesterPhone || '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>สถานะ</dt>
+                    <dd>{STATUS_MAP[activeJob.status]?.label || activeJob.status}</dd>
+                  </div>
+                  <div>
+                    <dt>ประเภทงาน</dt>
+                    <dd>{activeJob.jobType === 'CAR_WASH' ? 'ล้างรถ (Car Wash)' : 'รถสไลด์ (Vehicle Slide)'}</dd>
+                  </div>
+                </dl>
+
+                {/* Vehicle Slide specific info */}
+                {activeJob.jobType === 'VEHICLE_SLIDE' && (
+                  <dl className="print-wo-info-grid">
+                    <div>
+                      <dt>VIN รถ</dt>
+                      <dd style={{ fontFamily: 'monospace' }}>{activeJob.vin || '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>รุ่น / สี</dt>
+                      <dd>{activeJob.vehicle ? `${activeJob.vehicle.model} (${activeJob.vehicle.color})` : '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>สาขาต้นทาง</dt>
+                      <dd>{activeJob.originBranchName || activeJob.branchName}</dd>
+                    </div>
+                    <div>
+                      <dt>สาขาปลายทาง</dt>
+                      <dd>{activeJob.destBranchName || '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>วันเวลารับรถ</dt>
+                      <dd>{activeJob.pickupDateTime ? formatThaiDateTime(activeJob.pickupDateTime) : '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>วันเวลาส่งรถ</dt>
+                      <dd>{activeJob.deliveryDateTime ? formatThaiDateTime(activeJob.deliveryDateTime) : '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>ผู้ติดต่อปลายทาง</dt>
+                      <dd>{activeJob.contactPerson || '-'}</dd>
+                    </div>
+                    <div>
+                      <dt>เบอร์โทรปลายทาง</dt>
+                      <dd>{activeJob.contactPhone || '-'}</dd>
+                    </div>
+                    {activeJob.transferReason && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <dt>เหตุผลในการเคลื่อนย้าย</dt>
+                        <dd>{activeJob.transferReason}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+
+                {/* Car Wash Items Table */}
+                {activeJob.jobType === 'CAR_WASH' && activeJob.carWashItems && (
+                  <>
+                    <div style={{ fontSize: '10pt', fontWeight: 700, marginBottom: '6pt' }}>
+                      รายการรถในคำสั่งล้าง ({activeJob.carWashItems.length} คัน)
+                    </div>
+                    <table className="print-wo-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '30pt' }}>ลำดับ</th>
+                          <th>เลขตัวถัง (VIN)</th>
+                          <th>รุ่น / สี</th>
+                          <th>ทะเบียน</th>
+                          <th>วันที่ล้าง</th>
+                          <th>ประเภท</th>
+                          <th style={{ textAlign: 'right' }}>ราคา (฿)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeJob.carWashItems.map((item, idx) => (
+                          <tr key={item.id}>
+                            <td style={{ textAlign: 'center' }}>{idx + 1}</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{item.vin}</td>
+                            <td>{item.vehicleModel} {item.vehicleColor ? `(${item.vehicleColor})` : ''}</td>
+                            <td>{item.licensePlate || '-'}</td>
+                            <td>{formatThaiDate(item.actualWashDate)}</td>
+                            <td>{item.washType}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                              {item.unitPrice.toLocaleString()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="print-wo-total-row">
+                          <td colSpan={6} style={{ textAlign: 'right' }}>
+                            ยอดรวมทั้งสิ้น
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            ฿{activeJob.carWashItems.reduce((s, i) => s + i.unitPrice, 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </>
+                )}
+
+                {/* Vehicle Slide Cost */}
+                {activeJob.jobType === 'VEHICLE_SLIDE' && (
+                  <div style={{ textAlign: 'right', fontSize: '11pt', fontWeight: 800, marginBottom: '12pt', padding: '8pt', border: '0.5pt solid #ccc', borderRadius: '4pt', background: '#fafafa' }}>
+                    ค่าบริการโดยประมาณ: ฿{(activeJob.estimatedCost || 0).toLocaleString()}
+                  </div>
+                )}
+
+                {/* Signatures */}
+                <div className="print-wo-signatures">
+                  <div>
+                    <div className="print-wo-sig-line" />
+                    <div>ลงชื่อ {activeJob.requestedBy || '...........................................'}</div>
+                    <div style={{ fontWeight: 700, marginTop: '4pt' }}>
+                      ({activeJob.requesterPosition || 'เจ้าหน้าที่สาขาผู้สั่งงาน'})
+                    </div>
+                    <div>เจ้าหน้าที่สาขาผู้สั่งงาน</div>
+                  </div>
+                  <div>
+                    <div className="print-wo-sig-line" />
+                    <div>ลงชื่อ ...........................................</div>
+                    <div style={{ fontWeight: 700, marginTop: '4pt' }}>
+                      (...........................................)
+                    </div>
+                    <div>ผู้แทน Supplier ผู้รับงาน</div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="print-wo-footer">
+                  เอกสารนี้พิมพ์จากระบบจัดการงาน Supplier — {activeJob.companyCode} •
+                  เลขที่ {activeJob.jobNumber} •
+                  วันที่พิมพ์: {new Date().toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
               <div className="px-6 py-4 border-t border-gray-100 bg-white/95 backdrop-blur-md sticky bottom-0 z-20 flex items-center justify-between shrink-0 shadow-xs">
                 <button
                   type="button"

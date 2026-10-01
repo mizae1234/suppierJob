@@ -138,8 +138,11 @@ export async function GET(request: NextRequest) {
         status: item.status,
         remarks: item.remarks,
       })),
-      // Approval
+      // Approval — Requester Snapshot
+      requestedById: job.requestedById || '',
       requestedBy: job.requestedBy || '',
+      requesterPosition: job.requesterPosition || '',
+      requesterPhone: job.requesterPhone || '',
       completedAt: job.completedAt?.toISOString(),
       approvedAt: job.approvedAt?.toISOString(),
       approvedBy: job.approvedBy,
@@ -187,7 +190,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { jobType, companyId, branchId, supplierId, requestedBy } = body;
+    const { jobType, companyId, branchId, supplierId, requestedBy, requesterPosition, requesterPhone } = body;
+
+    // Build requester snapshot — always fetch fresh profile from DB for accuracy
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { firstName: true, lastName: true, position: true, phone: true, displayName: true },
+    });
+    const snapshotName = (dbUser?.firstName && dbUser?.lastName)
+      ? `${dbUser.firstName} ${dbUser.lastName}`
+      : (requestedBy || dbUser?.displayName || user.displayName || '');
+    const snapshotPosition = dbUser?.position || requesterPosition || '';
+    const snapshotPhone = dbUser?.phone || requesterPhone || '';
 
     // Validate required fields
     if (!jobType || !companyId || !branchId || !supplierId) {
@@ -250,7 +264,10 @@ export async function POST(request: NextRequest) {
           companyId,
           branchId,
           supplierId,
-          requestedBy: requestedBy || user.displayName || '',
+          requestedById: user.id,
+          requestedBy: snapshotName,
+          requesterPosition: snapshotPosition,
+          requesterPhone: snapshotPhone,
           estimatedCost: totalCost,
           carWashItems: {
             create: items.map((it: { vin: string; actualWashDate: string; washType?: string; unitPrice?: number; remarks?: string }) => ({
@@ -314,7 +331,10 @@ export async function POST(request: NextRequest) {
           contactPerson,
           contactPhone,
           transferReason,
-          requestedBy: requestedBy || user.displayName || '',
+          requestedById: user.id,
+          requestedBy: snapshotName,
+          requesterPosition: snapshotPosition,
+          requesterPhone: snapshotPhone,
           estimatedCost: estimatedCost ? parseFloat(estimatedCost) : 0,
         },
       });

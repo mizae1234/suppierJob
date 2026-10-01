@@ -120,8 +120,11 @@ export interface Job {
   // สำหรับ Car Wash
   carWashItems?: CarWashItem[];
 
-  // การตรวจรับและส่งมอบ
+  // การตรวจรับและส่งมอบ — Snapshot ข้อมูลผู้สั่งงาน
+  requestedById?: string;
   requestedBy: string;
+  requesterPosition?: string;
+  requesterPhone?: string;
   completedAt?: string;
   approvedAt?: string;
   approvedBy?: string;

@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
@@ -45,6 +46,7 @@ export default function CreateVehicleSlidePage() {
     vehicles, 
     createVehicleSlideJob 
   } = useApp();
+  const { user: authUser } = useAuth();
 
   // Slide suppliers
   const slideSuppliers = suppliers.filter(s => s.services.includes('VEHICLE_SLIDE'));
@@ -74,6 +76,11 @@ export default function CreateVehicleSlidePage() {
     return vehicles.filter(v => v.currentBranchId === selectedOriginBranchId && v.status === 'AVAILABLE');
   }, [vehicles, selectedOriginBranchId]);
 
+  // Auto-fill requester from logged-in user
+  const autoName = authUser?.firstName && authUser?.lastName 
+    ? `${authUser.firstName} ${authUser.lastName}` 
+    : authUser?.displayName || 'เจ้าหน้าที่สาขาต้นทาง';
+
   // Form State
   const [selectedVin, setSelectedVin] = useState<string>(branchStockVehicles[0]?.vin || '');
   const [destBranchId, setDestBranchId] = useState<string>(
@@ -89,7 +96,9 @@ export default function CreateVehicleSlidePage() {
   const [contactPerson, setContactPerson] = useState<string>('ผู้จัดการสาขาปลายทาง');
   const [contactPhone, setContactPhone] = useState<string>('081-234-5678');
   const [transferReason, setTransferReason] = useState<string>('ย้ายสต็อกรถรองรับการส่งมอบลูกค้า');
-  const [requestedBy, setRequestedBy] = useState<string>('เจ้าหน้าที่สาขาต้นทาง');
+  const [requestedBy, setRequestedBy] = useState<string>(autoName);
+  const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
+  const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
   const [estimatedCost, setEstimatedCost] = useState<number>(2500);
 
   // ── Hybrid Destination Mode ──
@@ -169,6 +178,8 @@ export default function CreateVehicleSlidePage() {
         contactPhone,
         transferReason,
         requestedBy,
+        requesterPosition,
+        requesterPhone,
         estimatedCost,
         ...(destMode === 'custom' && customDest ? {
           customDestAddress: customDest.address,

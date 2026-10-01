@@ -28,6 +28,8 @@ interface CreateCarWashParams {
     remarks?: string;
   }>;
   requestedBy: string;
+  requesterPosition?: string;
+  requesterPhone?: string;
 }
 
 interface CreateVehicleSlideParams {
@@ -42,6 +44,8 @@ interface CreateVehicleSlideParams {
   contactPhone: string;
   transferReason: string;
   requestedBy: string;
+  requesterPosition?: string;
+  requesterPhone?: string;
   estimatedCost: number;
   // Custom destination (map pin) — optional
   customDestAddress?: string;
@@ -219,6 +223,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           branchId: params.branchId,
           supplierId: params.supplierId,
           requestedBy: params.requestedBy,
+          requesterPosition: params.requesterPosition,
+          requesterPhone: params.requesterPhone,
           items: params.items,
         }),
       });
@@ -257,6 +263,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           contactPhone: params.contactPhone,
           transferReason: params.transferReason,
           requestedBy: params.requestedBy,
+          requesterPosition: params.requesterPosition,
+          requesterPhone: params.requesterPhone,
           estimatedCost: params.estimatedCost,
         }),
       });

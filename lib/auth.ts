@@ -4,6 +4,10 @@ export interface SessionUser {
   id: string;
   username: string;
   displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  position: string | null;
+  phone: string | null;
   role: 'MASTER' | 'ADMIN' | 'BRANCH' | 'SUPPLIER';
   companyId: string | null;
   companyCode: string | null;

@@ -7,6 +7,10 @@ interface AuthUser {
   id: string;
   username: string;
   displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  position: string | null;
+  phone: string | null;
   role: 'MASTER' | 'ADMIN' | 'BRANCH' | 'SUPPLIER';
   branchId: string | null;
   branchName: string | null;

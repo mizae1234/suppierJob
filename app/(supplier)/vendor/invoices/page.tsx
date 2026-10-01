@@ -353,7 +353,7 @@ export default function SupplierInvoicesPage() {
             </div>
 
             {/* Printable Invoice Sheet */}
-            <div className="p-8 border border-gray-200 rounded-2xl bg-white text-gray-900 flex flex-col gap-5 print:border-none print:p-0">
+            <div className="print-work-order p-8 border border-gray-200 rounded-2xl bg-white text-gray-900 flex flex-col gap-5 print:border-none print:p-0">
               <div className="flex items-start justify-between border-b border-gray-200 pb-4">
                 <div>
                   <h2 className="text-xl font-bold text-[#0f5238]">ใบวางบิล / ใบแจ้งหนี้ (INVOICE)</h2>

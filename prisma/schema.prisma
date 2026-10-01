@@ -13,6 +13,10 @@ model User {
   username    String    @unique
   password    String    // hashed with bcrypt
   displayName String
+  firstName   String?   // ชื่อจริง
+  lastName    String?   // นามสกุล
+  position    String?   // ตำแหน่ง เช่น ผู้จัดการสาขา, เจ้าหน้าที่ขาย
+  phone       String?   // เบอร์โทรศัพท์
   role        String    // ADMIN, BRANCH, SUPPLIER
   companyId   String?
   company     Company?  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -138,8 +142,11 @@ model Job {
   // Car Wash รายการรถหลายคัน
   carWashItems     CarWashItem[]
 
-  // การตรวจรับและส่งมอบ
-  requestedBy      String?
+  // การตรวจรับและส่งมอบ — Snapshot ข้อมูลผู้สั่งงาน ณ เวลาที่สร้าง
+  requestedById    String?       // FK → User.id ของผู้สั่งงาน
+  requestedBy      String?       // ชื่อ-นามสกุลเต็ม (snapshot)
+  requesterPosition String?      // ตำแหน่ง ณ ขณะสั่งงาน (snapshot)
+  requesterPhone   String?       // เบอร์โทร ณ ขณะสั่งงาน (snapshot)
   completedAt      DateTime?
   approvedAt       DateTime?
   approvedBy       String?
