@@ -223,7 +223,17 @@
     padding: 6pt 8pt !important;
     background: #eee !important;
     font-weight: 700 !important;
-    text-align: left !important;
+    text-align: left;
+  }
+
+  .print-wo-table th.text-center,
+  .print-wo-table td.text-center {
+    text-align: center !important;
+  }
+
+  .print-wo-table th.text-right,
+  .print-wo-table td.text-right {
+    text-align: right !important;
   }
 
   .print-wo-table td {

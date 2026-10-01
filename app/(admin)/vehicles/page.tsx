@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import TagSearch from '@/components/ui/TagSearch';
 import { Vehicle, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { 
   Car, 
   Search, 
@@ -287,11 +288,22 @@ export default function VehicleStockPage() {
                       </p>
                     </div>
 
-                    <div className="text-right">
-                      <span className="font-bold text-[#0f5238] text-sm">
-                        ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
-                      </span>
-                    </div>
+                    {(() => {
+                      const item = job.jobType === 'CAR_WASH' ? job.carWashItems?.find(i => i.vin === selectedVehicle.vin) : null;
+                      const isCancelled = item?.status === 'CANCELLED';
+                      const cost = item ? (isCancelled ? 0 : item.unitPrice) : getJobTotalCost(job);
+
+                      return (
+                        <div className="text-right">
+                          <span className={`font-bold text-sm ${isCancelled ? 'line-through text-gray-400' : 'text-[#0f5238]'}`}>
+                            ฿{cost.toLocaleString()}
+                          </span>
+                          {isCancelled && (
+                            <span className="block text-[10px] text-red-500 font-medium">ปฏิเสธ / ยกเลิก</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))
               )}

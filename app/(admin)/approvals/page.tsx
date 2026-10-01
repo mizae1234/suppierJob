@@ -4,6 +4,7 @@ import React, { useState, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -308,7 +309,7 @@ function ApprovalsContent() {
                         <span className="hidden sm:inline text-[11px] text-gray-400 font-medium">ค่าบริการสุทธิ</span>
                         <div className="flex items-baseline gap-1">
                           <span className="text-xl sm:text-2xl font-black text-[#0f5238] font-mono">
-                            ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
+                            ฿{getJobTotalCost(job).toLocaleString()}
                           </span>
                           <span className="text-[11px] text-gray-500 font-normal">บาท</span>
                         </div>

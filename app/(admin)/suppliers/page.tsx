@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { Supplier } from '@/types';
 import { 
   Store, 
@@ -187,7 +188,7 @@ export default function SupplierManagementPage() {
                   const supplierJobs = jobs.filter(j => j.supplierId === selectedSupplier.id);
                   const activeCount = supplierJobs.filter(j => ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(j.status)).length;
                   const completedCount = supplierJobs.filter(j => ['APPROVED', 'INVOICED'].includes(j.status)).length;
-                  const totalBilled = supplierJobs.reduce((acc, j) => acc + (j.actualCost || j.estimatedCost), 0);
+                  const totalBilled = supplierJobs.reduce((acc, j) => acc + getJobTotalCost(j), 0);
 
                   return (
                     <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-[#f4f9f5] border border-emerald-950/10">
@@ -315,7 +316,7 @@ export default function SupplierManagementPage() {
                             </div>
                             <div className="text-right">
                               <span className="font-bold text-[#0f5238]">
-                                ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
+                                ฿{getJobTotalCost(job).toLocaleString()}
                               </span>
                               <p className="text-[10px] text-gray-400 mt-0.5">{job.status}</p>
                             </div>

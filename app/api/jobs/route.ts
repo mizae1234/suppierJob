@@ -92,6 +92,7 @@ export async function GET(request: NextRequest) {
             },
           },
           evidences: true,
+          activities: { orderBy: { createdAt: 'asc' } },
           invoice: { select: { invoiceNumber: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -159,9 +160,32 @@ export async function GET(request: NextRequest) {
       })),
       // Cost
       estimatedCost: job.estimatedCost || 0,
-      actualCost: job.actualCost,
+      actualCost: (() => {
+        if (job.status === 'CANCELLED') return 0;
+        if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+          const hasCancelled = job.carWashItems.some(i => i.status === 'CANCELLED');
+          if (hasCancelled) {
+            const validItems = job.carWashItems.filter(i => i.status !== 'CANCELLED');
+            return validItems.reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+          }
+        }
+        return job.actualCost;
+      })(),
       invoiceId: job.invoiceId,
       invoiceNumber: job.invoice?.invoiceNumber,
+      // Activities / Timeline
+      activities: (job.activities || []).map(a => ({
+        id: a.id,
+        jobId: a.jobId,
+        action: a.action,
+        actor: a.actor,
+        actorRole: a.actorRole,
+        itemId: a.itemId,
+        vin: a.vin,
+        description: a.description,
+        metadata: a.metadata,
+        createdAt: a.createdAt.toISOString(),
+      })),
       // Timestamps
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
@@ -295,6 +319,7 @@ export async function POST(request: NextRequest) {
       // ─── Vehicle Slide ────────────────
       const { 
         vin, 
+        vins,
         originBranchId, 
         destBranchId, 
         customDestAddress, 
@@ -308,44 +333,64 @@ export async function POST(request: NextRequest) {
         estimatedCost 
       } = body;
 
-      if (!vin || !originBranchId || (!destBranchId && !customDestAddress)) {
-        return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
+      const vinsList: string[] = Array.isArray(vins) && vins.length > 0
+        ? vins
+        : (vin ? [vin] : []);
+
+      if (vinsList.length === 0 || !originBranchId || (!destBranchId && !customDestAddress)) {
+        return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุเลขตัวถัง และสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
       }
 
-      const job = await prisma.job.create({
-        data: {
-          jobNumber,
-          jobType: 'VEHICLE_SLIDE',
-          status: 'IN_PROGRESS',
-          companyId,
-          branchId: originBranchId,
-          supplierId,
-          vin,
-          originBranchId,
-          destBranchId: destBranchId || null,
-          customDestAddress: customDestAddress || null,
-          customDestLat: customDestLat ? parseFloat(customDestLat) : null,
-          customDestLng: customDestLng ? parseFloat(customDestLng) : null,
-          pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
-          deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
-          contactPerson,
-          contactPhone,
-          transferReason,
-          requestedById: user.id,
-          requestedBy: snapshotName,
-          requesterPosition: snapshotPosition,
-          requesterPhone: snapshotPhone,
-          estimatedCost: estimatedCost ? parseFloat(estimatedCost) : 0,
-        },
-      });
+      const costPerCar = estimatedCost ? parseFloat(estimatedCost) : 0;
+      const createdJobs = [];
 
-      // Update vehicle status to IN_TRANSIT
-      await prisma.vehicle.update({
-        where: { vin },
-        data: { status: 'IN_TRANSIT' },
-      });
+      for (let i = 0; i < vinsList.length; i++) {
+        const currentVin = vinsList[i];
+        const uniqueSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 900 + 100)}`;
+        const currentJobNumber = `VS-${company.code}-${dateStr}-${uniqueSuffix}`;
 
-      return NextResponse.json({ success: true, job }, { status: 201 });
+        const job = await prisma.job.create({
+          data: {
+            jobNumber: currentJobNumber,
+            jobType: 'VEHICLE_SLIDE',
+            status: 'IN_PROGRESS',
+            companyId,
+            branchId: originBranchId,
+            supplierId,
+            vin: currentVin,
+            originBranchId,
+            destBranchId: destBranchId || null,
+            customDestAddress: customDestAddress || null,
+            customDestLat: customDestLat ? parseFloat(customDestLat) : null,
+            customDestLng: customDestLng ? parseFloat(customDestLng) : null,
+            pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
+            deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
+            contactPerson,
+            contactPhone,
+            transferReason,
+            requestedById: user.id,
+            requestedBy: snapshotName,
+            requesterPosition: snapshotPosition,
+            requesterPhone: snapshotPhone,
+            estimatedCost: costPerCar,
+          },
+        });
+
+        // Update vehicle status to IN_TRANSIT
+        await prisma.vehicle.update({
+          where: { vin: currentVin },
+          data: { status: 'IN_TRANSIT' },
+        });
+
+        createdJobs.push(job);
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        job: createdJobs[0], 
+        jobs: createdJobs, 
+        count: createdJobs.length 
+      }, { status: 201 });
     }
 
     return NextResponse.json({ error: 'jobType ไม่ถูกต้อง' }, { status: 400 });

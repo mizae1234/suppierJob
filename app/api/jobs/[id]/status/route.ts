@@ -69,10 +69,25 @@ export async function PATCH(
 
       if (status === 'WAITING_APPROVAL') {
         updateData.completedAt = new Date();
+        if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED');
+          const validItems = completedItems.length > 0 
+            ? completedItems 
+            : job.carWashItems.filter(c => c.status !== 'CANCELLED');
+          updateData.actualCost = validItems.reduce((sum, c) => sum + (c.unitPrice || 0), 0);
+        }
       } else if (status === 'APPROVED') {
         updateData.approvedAt = new Date();
         updateData.approvedBy = approvedBy || user.displayName || 'Branch Manager';
-        if (!job.actualCost) updateData.actualCost = job.estimatedCost;
+        if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED');
+          const validItems = completedItems.length > 0 
+            ? completedItems 
+            : job.carWashItems.filter(c => c.status !== 'CANCELLED');
+          updateData.actualCost = validItems.reduce((sum, c) => sum + (c.unitPrice || 0), 0);
+        } else if (!job.actualCost) {
+          updateData.actualCost = job.estimatedCost;
+        }
 
         // Reset vehicle status atomically
         if (job.jobType === 'VEHICLE_SLIDE' && job.vin && job.destBranchId) {
@@ -91,6 +106,7 @@ export async function PATCH(
         updateData.rejectReason = rejectReason || 'ขอให้แก้ไขรายละเอียดงาน';
       } else if (status === 'CANCELLED') {
         updateData.rejectReason = rejectReason || (user.role === 'SUPPLIER' ? 'Supplier ปฏิเสธงาน' : 'ยกเลิกคำสั่งงาน');
+        updateData.actualCost = 0;
 
         // Reset vehicle status back to AVAILABLE
         if (job.jobType === 'VEHICLE_SLIDE' && job.vin) {

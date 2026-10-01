@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Invoice, CompanyCode } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { 
   Receipt, 
   Plus, 
@@ -67,7 +68,7 @@ export default function InvoiceManagementPage() {
 
   // Calculate selected jobs total
   const selectedJobs = jobs.filter(j => selectedJobIds.includes(j.id));
-  const subtotal = selectedJobs.reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+  const subtotal = selectedJobs.reduce((sum, j) => sum + getJobTotalCost(j), 0);
   const vat = Number((subtotal * 0.07).toFixed(2));
   const total = Number((subtotal + vat).toFixed(2));
 
@@ -367,7 +368,7 @@ export default function InvoiceManagementPage() {
                             </div>
                           </div>
                           <span className="font-bold text-[#0f5238]">
-                            ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
+                            ฿{getJobTotalCost(job).toLocaleString()}
                           </span>
                         </div>
                       );
@@ -518,7 +519,7 @@ export default function InvoiceManagementPage() {
                         <td className="py-2 px-2">{j?.jobType}</td>
                         <td className="py-2 px-2">{j?.branchName}</td>
                         <td className="py-2 px-2 text-right font-bold">
-                          ฿{(j?.actualCost || j?.estimatedCost || 0).toLocaleString()}
+                          ฿{(j ? getJobTotalCost(j) : 0).toLocaleString()}
                         </td>
                       </tr>
                     );

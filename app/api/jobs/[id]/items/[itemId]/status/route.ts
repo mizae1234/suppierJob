@@ -16,9 +16,9 @@ export async function PATCH(
     const { id: jobId, itemId } = await params;
     const { status, remarks } = await request.json();
 
-    if (!status || !['PENDING', 'COMPLETED', 'REJECTED'].includes(status)) {
+    if (!status || !['PENDING', 'COMPLETED', 'REJECTED', 'CANCELLED'].includes(status)) {
       return NextResponse.json(
-        { error: 'กรุณาระบุสถานะที่ถูกต้อง (PENDING, COMPLETED, REJECTED)' },
+        { error: 'กรุณาระบุสถานะที่ถูกต้อง (PENDING, COMPLETED, REJECTED, CANCELLED)' },
         { status: 400 }
       );
     }
@@ -57,10 +57,10 @@ export async function PATCH(
           { status: 403 }
         );
       }
-      // Supplier can only mark items as COMPLETED
-      if (status !== 'COMPLETED') {
+      // Supplier can mark items as COMPLETED or CANCELLED (per-item reject)
+      if (status !== 'COMPLETED' && status !== 'CANCELLED') {
         return NextResponse.json(
-          { error: 'Supplier สามารถส่งงานรายคัน (COMPLETED) เท่านั้น' },
+          { error: 'Supplier สามารถส่งงาน (COMPLETED) หรือปฏิเสธรายคัน (CANCELLED) เท่านั้น' },
           { status: 403 }
         );
       }
@@ -92,25 +92,111 @@ export async function PATCH(
       });
 
       const completedCount = allItems.filter(i => i.status === 'COMPLETED').length;
+      const cancelledCount = allItems.filter(i => i.status === 'CANCELLED').length;
       const totalCount = allItems.length;
-      const allCompleted = completedCount === totalCount;
+      const allResolved = (completedCount + cancelledCount) === totalCount;
 
-      // 3. Auto-transition parent Job status based on item completion
-      if (allCompleted && job.status === 'IN_PROGRESS') {
-        // All items completed → auto move parent to WAITING_APPROVAL
+      // 3. Auto-transition parent Job status when all items have a final status
+      if (allResolved && job.status === 'IN_PROGRESS') {
+        if (cancelledCount === totalCount) {
+          // All items cancelled → cancel the entire job
+          await tx.job.update({
+            where: { id: jobId },
+            data: {
+              status: 'CANCELLED',
+              actualCost: 0,
+              rejectReason: remarks || 'Supplier ปฏิเสธทุกรายการ',
+              updatedAt: new Date(),
+            },
+          });
+
+          await tx.jobActivity.create({
+            data: {
+              jobId,
+              action: 'JOB_CANCELLED',
+              actor: 'ระบบอัตโนมัติ',
+              actorRole: 'SYSTEM',
+              description: `Supplier ปฏิเสธทุกรายการ (${totalCount} คัน) — ระบบยกเลิกใบงานอัตโนมัติ`,
+              metadata: JSON.stringify({ completed: completedCount, cancelled: cancelledCount, total: totalCount }),
+            },
+          });
+        } else {
+          // Mix of completed + cancelled → move to WAITING_APPROVAL for admin review
+          const actualCost = allItems
+            .filter(i => i.status === 'COMPLETED')
+            .reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+
+          await tx.job.update({
+            where: { id: jobId },
+            data: {
+              status: 'WAITING_APPROVAL',
+              actualCost,
+              completedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          });
+
+          await tx.jobActivity.create({
+            data: {
+              jobId,
+              action: 'JOB_WAITING_APPROVAL',
+              actor: 'ระบบอัตโนมัติ',
+              actorRole: 'SYSTEM',
+              description: `ทุกรายการมีสถานะแล้ว (เสร็จ ${completedCount} คัน, ปฏิเสธ ${cancelledCount} คัน) — ค่าบริการสุทธิ ฿${actualCost.toLocaleString()} — รอสาขาตรวจรับ`,
+              metadata: JSON.stringify({ completed: completedCount, cancelled: cancelledCount, total: totalCount, actualCost }),
+            },
+          });
+        }
+      } else if (cancelledCount > 0 || job.actualCost !== null) {
+        // Keep actualCost in sync when items are rejected or updated
+        const validSum = allItems
+          .filter(i => i.status !== 'CANCELLED')
+          .reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+
         await tx.job.update({
           where: { id: jobId },
           data: {
-            status: 'WAITING_APPROVAL',
-            completedAt: new Date(),
+            actualCost: validSum,
             updatedAt: new Date(),
           },
         });
       }
 
+      // 4. Log activity for the item status change
+      const actionMap: Record<string, string> = {
+        COMPLETED: 'ITEM_COMPLETED',
+        REJECTED: 'ITEM_REJECTED',
+        CANCELLED: 'ITEM_CANCELLED',
+        PENDING: 'ITEM_RESET',
+      };
+
+      const descMap: Record<string, string> = {
+        COMPLETED: `Supplier ส่งงานรถคัน ${item.vin} เรียบร้อย (${completedCount}/${totalCount})`,
+        REJECTED: `สาขาตีกลับรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
+        CANCELLED: `Supplier ปฏิเสธรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''} (ปฏิเสธ ${cancelledCount}/${totalCount})`,
+        PENDING: `รีเซ็ตสถานะรถคัน ${item.vin} กลับเป็นรอดำเนินการ`,
+      };
+
+      await tx.jobActivity.create({
+        data: {
+          jobId,
+          action: actionMap[status] || status,
+          actor: user.displayName || user.username,
+          actorRole: user.role,
+          itemId,
+          vin: item.vin,
+          description: descMap[status] || `อัปเดตสถานะรถคัน ${item.vin} เป็น ${status}`,
+          metadata: JSON.stringify({ 
+            fromStatus: item.status, 
+            toStatus: status,
+            remarks: remarks || null,
+          }),
+        },
+      });
+
       return {
         item: updatedItem,
-        progress: { completed: completedCount, total: totalCount, allCompleted },
+        progress: { completed: completedCount, cancelled: cancelledCount, total: totalCount, allResolved },
       };
     });
 

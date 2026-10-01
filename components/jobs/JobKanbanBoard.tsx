@@ -4,6 +4,7 @@ import React from 'react';
 import { Job, UserRole } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { Sparkles, Truck } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
 
@@ -33,7 +34,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
       <div className="flex gap-4 min-w-[1500px]">
         {KANBAN_COLUMNS.map(col => {
           const colJobs = jobs.filter(j => j.status === col.id);
-          const colTotal = colJobs.reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+          const colTotal = colJobs.reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
           return (
             <div
@@ -143,7 +144,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                         onClick={e => e.stopPropagation()}
                       >
                         <span className="font-bold text-xs" style={{ color: theme.textPrimary }}>
-                          ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
+                          ฿{getJobTotalCost(job).toLocaleString()}
                         </span>
 
                         <div className="flex items-center gap-1">

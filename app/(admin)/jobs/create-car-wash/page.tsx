@@ -817,7 +817,7 @@ export default function CreateCarWashPage() {
               <div className="grid grid-cols-2 gap-8 pt-8 mt-4 border-t border-gray-200 text-xs text-center">
                 <div className="flex flex-col items-center gap-6">
                   <div className="w-48 border-b border-gray-400" />
-                  <p>ลงชื่อ {createdJob.requestedBy || '...................................................'}<br />({createdJob.requesterPosition || 'เจ้าหน้าที่สาขาผู้สั่งงาน'})</p>
+                  <p>ลงชื่อ {createdJob.requestedBy || '...................................................'}<br />({createdJob.requesterPosition || '...................................................'})</p>
                 </div>
                 <div className="flex flex-col items-center gap-6">
                   <div className="w-48 border-b border-gray-400" />

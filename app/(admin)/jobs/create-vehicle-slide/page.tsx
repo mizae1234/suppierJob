@@ -28,7 +28,9 @@ import {
   ToggleRight,
   Navigation,
   AlertCircle,
-  Loader2
+  Loader2,
+  Check,
+  Minus
 } from 'lucide-react';
 
 // Dynamic import to avoid SSR issues with Leaflet
@@ -69,6 +71,7 @@ export default function CreateVehicleSlidePage() {
     if (currentRole === 'BRANCH') return;
     if (availableBranches.length > 0 && !availableBranches.find(b => b.id === selectedOriginBranchId)) {
       setSelectedOriginBranchId(availableBranches[0].id);
+      setSelectedVins([]);
     }
   }, [availableBranches, selectedOriginBranchId, currentRole]);
 
@@ -83,7 +86,7 @@ export default function CreateVehicleSlidePage() {
     : authUser?.displayName || 'เจ้าหน้าที่สาขาต้นทาง';
 
   // Form State
-  const [selectedVin, setSelectedVin] = useState<string>(branchStockVehicles[0]?.vin || '');
+  const [selectedVins, setSelectedVins] = useState<string[]>([]);
   const [destBranchId, setDestBranchId] = useState<string>(
     availableBranches.find(b => b.id !== selectedOriginBranchId)?.id || branches.find(b => b.id !== selectedOriginBranchId)?.id || ''
   );
@@ -120,7 +123,10 @@ export default function CreateVehicleSlidePage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedVehicle = vehicles.find(v => v.vin === selectedVin);
+  const selectedVehicles = useMemo(() => {
+    return vehicles.filter(v => selectedVins.includes(v.vin));
+  }, [vehicles, selectedVins]);
+
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
   const destBranch = branches.find(b => b.id === destBranchId);
 
@@ -132,12 +138,32 @@ export default function CreateVehicleSlidePage() {
     });
   });
 
+  // Select all filtered vehicles state and handlers
+  const isAllFilteredSelected = filteredVehicles.length > 0 && filteredVehicles.every(v => selectedVins.includes(v.vin));
+  const someFilteredSelected = filteredVehicles.some(v => selectedVins.includes(v.vin));
+
+  const handleToggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      const filteredVinSet = new Set(filteredVehicles.map(v => v.vin));
+      setSelectedVins(prev => prev.filter(vin => !filteredVinSet.has(vin)));
+    } else {
+      const newVins = new Set([...selectedVins, ...filteredVehicles.map(v => v.vin)]);
+      setSelectedVins(Array.from(newVins));
+    }
+  };
+
+  const handleToggleVehicle = (vin: string) => {
+    setSelectedVins(prev =>
+      prev.includes(vin) ? prev.filter(v => v !== vin) : [...prev, vin]
+    );
+  };
+
   const { showToast } = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedVin) {
-      showToast('กรุณาเลือกรถ (VIN) ที่ต้องการสไลด์', 'warning');
+    if (selectedVins.length === 0) {
+      showToast('กรุณาเลือกรถ (VIN) อย่างน้อย 1 คันที่ต้องการสไลด์', 'warning');
       return;
     }
     if (destMode === 'branch') {
@@ -174,7 +200,8 @@ export default function CreateVehicleSlidePage() {
         originBranchId: selectedOriginBranchId,
         destBranchId: destMode === 'branch' ? destBranchId : '',
         supplierId: selectedSupplierId,
-        vin: selectedVin,
+        vin: selectedVins[0],
+        vins: selectedVins,
         pickupDateTime,
         deliveryDateTime,
         contactPerson,
@@ -192,7 +219,7 @@ export default function CreateVehicleSlidePage() {
       } as Parameters<typeof createVehicleSlideJob>[0]);
 
       setShowConfirmModal(false);
-      showToast('บันทึกและสร้างคำขอรถสไลด์เรียบร้อยแล้ว!', 'success');
+      showToast(`บันทึกและสร้างคำขอรถสไลด์เรียบร้อยแล้ว (${selectedVins.length} คัน)!`, 'success');
       if (newJob) setCreatedJob(newJob);
     } catch (err) {
       console.error(err);
@@ -261,47 +288,83 @@ export default function CreateVehicleSlidePage() {
                 <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">1</span>
                 <span>เลือกรถที่ต้องการสไลด์ (VIN)</span>
               </h2>
+              <span className="text-xs text-gray-500">เลือกแล้ว {selectedVins.length} คัน</span>
             </div>
 
             <TagSearch
               tags={searchTags}
               onTagsChange={setSearchTags}
-              placeholder="ค้นหาตาม VIN / รุ่น... (กด Enter เพื่อเพิ่ม)"
+              placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน... (กด Enter เพื่อเพิ่ม)"
               accentColor="#0f5238"
             />
+
+            {/* Select All Bar */}
+            {filteredVehicles.length > 0 && (
+              <div className="flex items-center justify-between px-1 py-1 text-xs border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleToggleSelectAllFiltered}
+                  className="flex items-center gap-2 font-medium text-gray-700 hover:text-emerald-900 transition-colors select-none py-1 group"
+                >
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                    isAllFilteredSelected
+                      ? 'bg-[#0f5238] border-[#0f5238] text-white'
+                      : someFilteredSelected
+                        ? 'bg-emerald-100 border-[#0f5238] text-[#0f5238]'
+                        : 'border-gray-300 group-hover:border-gray-400 bg-white'
+                  }`}>
+                    {isAllFilteredSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                    {!isAllFilteredSelected && someFilteredSelected && <Minus className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                  <span className="font-semibold text-xs text-gray-800 group-hover:text-emerald-900">
+                    {isAllFilteredSelected
+                      ? 'ยกเลิกการเลือกทั้งหมด'
+                      : `เลือกทั้งหมด (${filteredVehicles.length} คัน)`}
+                  </span>
+                </button>
+
+                {searchTags.length > 0 && (
+                  <span className="text-[11px] text-emerald-800 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                    ผลการค้นหา {filteredVehicles.length} คัน
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
               {filteredVehicles.length === 0 ? (
                 <div className="p-6 text-center text-xs text-gray-400">
-                  ไม่มีรถสถานะพร้อมย้ายในสต็อกสาขานี้
+                  ไม่มีรถสถานะพร้อมย้ายในสต็อกสาขานี้ หรือไม่ตรงกับการค้นหา
                 </div>
               ) : (
                 filteredVehicles.map(v => {
-                  const isSelected = selectedVin === v.vin;
+                  const isSelected = selectedVins.includes(v.vin);
                   return (
                     <div
                       key={v.vin}
-                      onClick={() => setSelectedVin(v.vin)}
-                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex flex-col gap-1 ${
+                      onClick={() => handleToggleVehicle(v.vin)}
+                      className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between gap-2 ${
                         isSelected
-                          ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20'
+                          ? 'border-[#0f5238] bg-[#f4f9f5] font-semibold'
                           : 'border-gray-200 hover:bg-gray-50'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono font-bold text-gray-900">{v.vin}</span>
-                        {v.licensePlate && (
-                          <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-[10px] font-semibold">
-                            {v.licensePlate}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-[#0f5238] border-[#0f5238] text-white' : 'border-gray-300'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-mono font-bold text-gray-900 truncate">{v.vin}</p>
+                          <p className="text-[11px] text-gray-500 truncate">{v.model} • {v.color}</p>
+                        </div>
                       </div>
-                      <p className="text-gray-600 font-medium">{v.model}</p>
-                      <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1">
-                        <span>สี: {v.color}</span>
-                        <span>•</span>
-                        <span>ไมล์: {v.mileage?.toLocaleString() || '-'} กม.</span>
-                      </div>
+                      {v.licensePlate && (
+                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-[10px] shrink-0 font-medium">
+                          {v.licensePlate}
+                        </span>
+                      )}
                     </div>
                   );
                 })
@@ -310,28 +373,48 @@ export default function CreateVehicleSlidePage() {
           </div>
 
           {/* Selected Vehicle Card Preview */}
-          {selectedVehicle && (
+          {selectedVehicles.length > 0 && (
             <div className="p-5 rounded-2xl bg-gradient-to-br from-[#0f5238] to-[#1b4332] text-white shadow-md flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">คันที่เลือกจะขนย้าย</span>
+                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">
+                  {selectedVehicles.length === 1 ? 'คันที่เลือกจะขนย้าย' : `รถที่เลือกขนย้าย (${selectedVehicles.length} คัน)`}
+                </span>
                 <span className="px-2 py-0.5 rounded-full bg-white/20 text-xs font-bold">
-                  {selectedVehicle.vehicleType}
+                  {selectedVehicles.length === 1 ? selectedVehicles[0].vehicleType : `รวม ${selectedVehicles.length} คัน`}
                 </span>
               </div>
-              <div>
-                <h3 className="text-lg font-bold">{selectedVehicle.model}</h3>
-                <p className="font-mono text-xs text-emerald-200 mt-0.5">{selectedVehicle.vin}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10 text-xs">
-                <div>
-                  <span className="text-emerald-300">สีตัวถัง:</span>
-                  <p className="font-semibold">{selectedVehicle.color}</p>
+              {selectedVehicles.length === 1 ? (
+                <>
+                  <div>
+                    <h3 className="text-lg font-bold">{selectedVehicles[0].model}</h3>
+                    <p className="font-mono text-xs text-emerald-200 mt-0.5">{selectedVehicles[0].vin}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10 text-xs">
+                    <div>
+                      <span className="text-emerald-300">สีตัวถัง:</span>
+                      <p className="font-semibold">{selectedVehicles[0].color}</p>
+                    </div>
+                    <div>
+                      <span className="text-emerald-300">ทะเบียน:</span>
+                      <p className="font-semibold">{selectedVehicles[0].licensePlate || 'ป้ายแดง/ไม่มีทะเบียน'}</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  {selectedVehicles.map((sv, idx) => (
+                    <div key={sv.vin} className="flex items-center justify-between text-xs py-1 border-b border-white/10 last:border-none">
+                      <div className="min-w-0 pr-2">
+                        <p className="font-mono font-bold truncate">{idx + 1}. {sv.vin}</p>
+                        <p className="text-[11px] text-emerald-200 truncate">{sv.model} • {sv.color}</p>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] shrink-0 font-medium">
+                        {sv.licensePlate || 'ป้ายแดง'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <span className="text-emerald-300">ทะเบียน:</span>
-                  <p className="font-semibold">{selectedVehicle.licensePlate || 'ป้ายแดง/ไม่มีทะเบียน'}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -354,7 +437,7 @@ export default function CreateVehicleSlidePage() {
                 {currentRole === 'ADMIN' ? (
                   <select
                     value={selectedOriginBranchId}
-                    onChange={(e) => { setSelectedOriginBranchId(e.target.value); setSelectedVin(''); }}
+                    onChange={(e) => { setSelectedOriginBranchId(e.target.value); setSelectedVins([]); }}
                     className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
                   >
                     {branches.map(b => (
@@ -581,7 +664,7 @@ export default function CreateVehicleSlidePage() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  ประมาณการค่าบริการสไลด์ (บาท):
+                  ประมาณการค่าบริการสไลด์ต่อคัน (บาท):
                 </label>
                 <input
                   type="number"
@@ -591,6 +674,11 @@ export default function CreateVehicleSlidePage() {
                   min={100}
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-bold text-[#0f5238] focus:ring-2 focus:ring-[#0f5238] outline-none"
                 />
+                {selectedVins.length > 1 && (
+                  <p className="text-[11px] font-semibold text-[#0f5238] mt-1.5">
+                    รวม {selectedVins.length} คัน: ฿{(estimatedCost * selectedVins.length).toLocaleString()}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -606,11 +694,16 @@ export default function CreateVehicleSlidePage() {
                       ? customDest.address.split(',').slice(0, 2).join(',')
                       : 'ยังไม่ได้เลือกจุดปลายทาง'}
                 </p>
+                {selectedVins.length > 0 && (
+                  <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                    เลือก {selectedVins.length} คัน (ประมาณการรวม ฿{(estimatedCost * selectedVins.length).toLocaleString()})
+                  </p>
+                )}
               </div>
 
               <button
                 type="submit"
-                className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#0f5238] text-white text-xs font-bold hover:bg-[#0a3d28] shadow-md transition-all"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#0f5238] text-white text-xs font-bold hover:bg-[#0a3d28] shadow-md transition-all cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>บันทึกและส่งมอบหมายงานรถสไลด์</span>
@@ -642,8 +735,22 @@ export default function CreateVehicleSlidePage() {
             {/* Summary Information Card */}
             <div className="p-4 rounded-2xl bg-[#f4f9f5] border border-emerald-950/10 text-xs flex flex-col gap-2.5">
               <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                <span className="text-gray-500">จำนวนรถที่ขอสไลด์:</span>
+                <span className="font-bold text-gray-900">{selectedVins.length} คัน</span>
+              </div>
+              <div className="flex flex-col gap-1 pb-2 border-b border-gray-200">
                 <span className="text-gray-500">เลขตัวถัง (VIN):</span>
-                <span className="font-mono font-bold text-gray-900">{selectedVin}</span>
+                {selectedVins.length === 1 ? (
+                  <span className="font-mono font-bold text-gray-900">{selectedVins[0]}</span>
+                ) : (
+                  <div className="max-h-24 overflow-y-auto flex flex-wrap gap-1 mt-0.5">
+                    {selectedVins.map(vin => (
+                      <span key={vin} className="font-mono text-[11px] bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-800">
+                        {vin}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-gray-200">
                 <span className="text-gray-500">เส้นทางขนส่ง:</span>
@@ -660,9 +767,11 @@ export default function CreateVehicleSlidePage() {
                 <span className="font-medium text-gray-800">{formatThaiDateTime(pickupDateTime)}</span>
               </div>
               <div className="flex items-center justify-between pt-1">
-                <span className="text-gray-600 font-medium">ประมาณการค่าบริการ:</span>
+                <span className="text-gray-600 font-medium">
+                  {selectedVins.length > 1 ? `ประมาณการค่าบริการรวม (${selectedVins.length} คัน):` : 'ประมาณการค่าบริการ:'}
+                </span>
                 <span className="text-base font-bold text-[#0f5238]">
-                  ฿{estimatedCost.toLocaleString()}
+                  ฿{(estimatedCost * selectedVins.length).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -712,17 +821,38 @@ export default function CreateVehicleSlidePage() {
                 <h3 className="text-base font-bold text-gray-900">
                   สร้างคำขอรถสไลด์เรียบร้อยแล้ว
                 </h3>
-                <p className="text-xs text-gray-500">ระบบได้แจ้งเตือนไปยัง Supplier ผู้รับงานแล้ว</p>
+                <p className="text-xs text-gray-500">
+                  {selectedVins.length > 1
+                    ? `สร้างใบคำขอรถสไลด์จำนวน ${selectedVins.length} คันเรียบร้อยแล้ว ระบบได้แจ้งเตือน Supplier แล้ว`
+                    : 'ระบบได้แจ้งเตือนไปยัง Supplier ผู้รับงานแล้ว'}
+                </p>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-[#f4f9f5] border border-emerald-950/10 text-xs flex flex-col gap-2">
-              <p><strong>Job No.:</strong> <span className="font-mono font-bold text-gray-900">{createdJob.jobNumber}</span></p>
-              <p><strong>เลขตัวถัง (VIN):</strong> <span className="font-mono">{createdJob.vin}</span></p>
-              <p><strong>เส้นทาง:</strong> {createdJob.originBranchName} &rarr; {createdJob.destBranchName}</p>
+              <p>
+                <strong>Job No.:</strong>{' '}
+                <span className="font-mono font-bold text-gray-900">
+                  {createdJob.jobNumber} {selectedVins.length > 1 ? `(และอีก ${selectedVins.length - 1} ใบคำขอ)` : ''}
+                </span>
+              </p>
+              <p><strong>จำนวนรถ:</strong> {selectedVins.length} คัน</p>
+              <p>
+                <strong>เลขตัวถัง (VIN):</strong>{' '}
+                <span className="font-mono">
+                  {selectedVins.slice(0, 3).join(', ')}{selectedVins.length > 3 ? ` ... (รวม ${selectedVins.length} คัน)` : ''}
+                </span>
+              </p>
+              <p><strong>เส้นทาง:</strong> {createdJob.originBranchName} &rarr; {createdJob.destBranchName || createdJob.customDestAddress || 'ปลายทางที่ระบุ'}</p>
               <p><strong>Supplier:</strong> {createdJob.supplierName}</p>
               <p><strong>เวลารับรถ:</strong> {formatThaiDateTime(createdJob.pickupDateTime)}</p>
-              <p><strong>ประมาณการค่าบริการ:</strong> ฿{createdJob.estimatedCost.toLocaleString()}</p>
+              <p>
+                <strong>ประมาณการค่าบริการรวม:</strong>{' '}
+                <span className="font-bold text-[#0f5238]">
+                  ฿{(estimatedCost * selectedVins.length).toLocaleString()}{' '}
+                  {selectedVins.length > 1 ? `(คันละ ฿${estimatedCost.toLocaleString()})` : ''}
+                </span>
+              </p>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">

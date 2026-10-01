@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
       // 1. Fetch target jobs inside transaction
       const targetJobs = await tx.job.findMany({
         where: { id: { in: jobIds } },
+        include: { carWashItems: true },
       });
 
       if (targetJobs.length !== jobIds.length) {
@@ -151,8 +152,14 @@ export async function POST(request: NextRequest) {
         throw new Error('มีบางรายการงานที่ถูกวางบิลไปแล้ว กรุณารีเฟรชหน้ารายการ');
       }
 
-      // Calculate amounts
-      const subtotal = targetJobs.reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+      // Calculate amounts (exclude cancelled car wash items)
+      const subtotal = targetJobs.reduce((sum, j) => {
+        if (j.jobType === 'CAR_WASH' && j.carWashItems && j.carWashItems.length > 0) {
+          const valid = j.carWashItems.filter(i => i.status !== 'CANCELLED');
+          return sum + valid.reduce((s, i) => s + (i.unitPrice || 0), 0);
+        }
+        return sum + (j.actualCost || j.estimatedCost || 0);
+      }, 0);
       const vatAmount = Number((subtotal * 0.07).toFixed(2));
       const totalAmount = Number((subtotal + vatAmount).toFixed(2));
 

@@ -405,7 +405,7 @@ export default function SupplierInvoicesPage() {
                         <td className="py-2.5 px-2">{j?.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}</td>
                         <td className="py-2.5 px-2">{j?.branchName || '-'}</td>
                         <td className="py-2.5 px-2 text-right font-bold">
-                          ฿{(j?.actualCost || j?.estimatedCost || 0).toLocaleString()}
+                          ฿{(j ? getJobTotalCost(j) : 0).toLocaleString()}
                         </td>
                       </tr>
                     );

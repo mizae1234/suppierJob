@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useApp } from '@/context/AppContext';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { 
   BarChart3, 
   FileDown, 
@@ -18,15 +19,15 @@ export default function ReportsPage() {
   // Stats calculation
   const totalExpense = jobs
     .filter(j => j.status === 'APPROVED' || j.status === 'INVOICED')
-    .reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+    .reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
   const ev7Expense = jobs
     .filter(j => (j.status === 'APPROVED' || j.status === 'INVOICED') && j.companyCode === 'EV7')
-    .reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+    .reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
   const giExpense = jobs
     .filter(j => (j.status === 'APPROVED' || j.status === 'INVOICED') && j.companyCode === 'GI')
-    .reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+    .reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
   const washJobs = jobs.filter(j => j.jobType === 'CAR_WASH');
   const slideJobs = jobs.filter(j => j.jobType === 'VEHICLE_SLIDE');
@@ -55,7 +56,7 @@ export default function ReportsPage() {
       sanitizeCell(j.branchName),
       sanitizeCell(j.supplierName),
       sanitizeCell(j.status),
-      sanitizeCell(j.actualCost || j.estimatedCost || 0),
+      sanitizeCell(getJobTotalCost(j)),
       sanitizeCell(j.createdAt),
     ]);
 
@@ -200,7 +201,7 @@ export default function ReportsPage() {
                 const sJobs = jobs.filter(j => j.supplierId === sup.id);
                 const sApproved = sJobs.filter(j => j.status === 'APPROVED' || j.status === 'INVOICED');
                 const sRejected = sJobs.filter(j => j.status === 'REJECTED');
-                const sCost = sApproved.reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+                const sCost = sApproved.reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
                 return (
                   <tr key={sup.id} className="hover:bg-gray-50">
@@ -225,7 +226,7 @@ export default function ReportsPage() {
             const sJobs = jobs.filter(j => j.supplierId === sup.id);
             const sApproved = sJobs.filter(j => j.status === 'APPROVED' || j.status === 'INVOICED');
             const sRejected = sJobs.filter(j => j.status === 'REJECTED');
-            const sCost = sApproved.reduce((sum, j) => sum + (j.actualCost || j.estimatedCost || 0), 0);
+            const sCost = sApproved.reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
             return (
               <div key={sup.id} className="px-4 py-3">

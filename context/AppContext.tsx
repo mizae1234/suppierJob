@@ -37,7 +37,8 @@ interface CreateVehicleSlideParams {
   originBranchId: string;
   destBranchId: string;
   supplierId: string;
-  vin: string;
+  vin?: string;
+  vins?: string[];
   pickupDateTime: string;
   deliveryDateTime: string;
   contactPerson: string;
@@ -92,7 +93,7 @@ interface AppContextType {
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
   updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<void>;
-  updateCarWashItemStatus: (jobId: string, itemId: string, status: 'PENDING' | 'COMPLETED' | 'REJECTED', remarks?: string) => Promise<{ completed: number; total: number; allCompleted: boolean } | null>;
+  updateCarWashItemStatus: (jobId: string, itemId: string, status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED', remarks?: string) => Promise<{ completed: number; total: number; allCompleted: boolean } | null>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
@@ -253,6 +254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           branchId: params.originBranchId,
           supplierId: params.supplierId,
           vin: params.vin,
+          vins: params.vins,
           originBranchId: params.originBranchId,
           destBranchId: params.destBranchId || undefined,
           customDestAddress: params.customDestAddress,
@@ -306,7 +308,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateCarWashItemStatus = async (
     jobId: string,
     itemId: string,
-    status: 'PENDING' | 'COMPLETED' | 'REJECTED',
+    status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED',
     remarks?: string
   ): Promise<{ completed: number; total: number; allCompleted: boolean } | null> => {
     try {

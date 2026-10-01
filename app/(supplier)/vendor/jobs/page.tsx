@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, Suspense } from 'react';
+import React, { useMemo, useState, useRef, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -26,6 +26,8 @@ import {
   Car,
   Hash,
   Send,
+  ImagePlus,
+  Trash2,
 } from 'lucide-react';
 
 type TabKey = 'progress' | 'waiting' | 'approved' | 'rejected';
@@ -40,7 +42,7 @@ interface SupplierItemCard {
   licensePlate?: string;
   washType: string;
   unitPrice: number;
-  itemStatus: 'PENDING' | 'COMPLETED' | 'REJECTED';
+  itemStatus: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
   itemRemarks?: string;
   actualWashDate: string;
   // Parent job reference
@@ -71,13 +73,19 @@ function SupplierJobsPageContent() {
   const initialTab: TabKey = rawTab === 'new' ? 'progress' : (rawTab as TabKey) || 'progress';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
-  // Rejection modal state
-  const [rejectingJob, setRejectingJob] = useState<Job | null>(null);
+  // Rejection modal state — per-item rejection
+  const [rejectingCard, setRejectingCard] = useState<SupplierItemCard | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
   const [isSubmittingReject, setIsSubmittingReject] = useState<boolean>(false);
 
   // Item submit state
   const [submittingItemId, setSubmittingItemId] = useState<string | null>(null);
+
+  // Photo upload modal state
+  const [photoModalCard, setPhotoModalCard] = useState<SupplierItemCard | null>(null);
+  const [uploadedPhotos, setUploadedPhotos] = useState<{ url: string; file: File }[]>([]);
+  const [photoCaption, setPhotoCaption] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presetReasons = [
     'คิวงานเต็ม / ช่างไม่พอ',
@@ -113,7 +121,7 @@ function SupplierJobsPageContent() {
             licensePlate: item.licensePlate,
             washType: item.washType,
             unitPrice: item.unitPrice,
-            itemStatus: item.status as 'PENDING' | 'COMPLETED' | 'REJECTED',
+            itemStatus: item.status as 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED',
             itemRemarks: item.remarks,
             actualWashDate: item.actualWashDate,
             jobId: job.id,
@@ -232,17 +240,66 @@ function SupplierJobsPageContent() {
 
   const totalFilteredCount = filteredItems.length + filteredSlides.length;
 
-  // ─── Handle item-level submit (mark COMPLETED) ──
-  const handleSubmitItem = async (card: SupplierItemCard) => {
+  // ─── Open photo modal for item submission ──
+  const handleOpenPhotoModal = (card: SupplierItemCard) => {
+    setPhotoModalCard(card);
+    setUploadedPhotos([]);
+    setPhotoCaption('');
+  };
+
+  // ─── Handle file selection (camera / gallery) ──
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('ไฟล์ขนาดเกิน 10MB กรุณาเลือกไฟล์ที่เล็กกว่า', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setUploadedPhotos(prev => {
+          if (prev.length >= 5) {
+            showToast('แนบได้สูงสุด 5 รูป', 'error');
+            return prev;
+          }
+          return [...prev, { url: ev.target?.result as string, file }];
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  }, [showToast]);
+
+  // ─── Remove a photo ──
+  const handleRemovePhoto = useCallback((index: number) => {
+    setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // ─── Handle item-level submit (mark COMPLETED) — requires photos ──
+  const handleSubmitItem = async () => {
+    if (!photoModalCard) return;
+    if (uploadedPhotos.length === 0) {
+      showToast('กรุณาถ่ายรูปหรือแนบรูปอย่างน้อย 1 รูป', 'error');
+      return;
+    }
+
+    const card = photoModalCard;
     setSubmittingItemId(card.itemId);
     try {
-      // Add evidence for this specific VIN
-      await addJobEvidence(card.jobId, {
-        photoUrl: '/evidence/completion-photo.jpg',
-        caption: `ล้างรถเสร็จเรียบร้อย — ${card.vin}`,
-        evidenceType: 'AFTER',
-        vin: card.vin,
-      });
+      // Add each photo as evidence
+      for (let i = 0; i < uploadedPhotos.length; i++) {
+        await addJobEvidence(card.jobId, {
+          photoUrl: uploadedPhotos[i].url,
+          caption: photoCaption || `ล้างรถเสร็จเรียบร้อย — ${card.vin} (${i + 1}/${uploadedPhotos.length})`,
+          evidenceType: 'AFTER',
+          vin: card.vin,
+        });
+      }
 
       // Update item status to COMPLETED
       const progress = await updateCarWashItemStatus(card.jobId, card.itemId, 'COMPLETED');
@@ -252,6 +309,10 @@ function SupplierJobsPageContent() {
       } else if (progress) {
         showToast(`✅ ส่งงานรถคัน ${card.vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
       }
+
+      setPhotoModalCard(null);
+      setUploadedPhotos([]);
+      setPhotoCaption('');
     } catch (e) {
       showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
     } finally {
@@ -259,19 +320,19 @@ function SupplierJobsPageContent() {
     }
   };
 
-  // ─── Handle reject job (entire job) ──
+  // ─── Handle reject item (per-item, NOT entire job) ──
   const handleConfirmReject = async () => {
-    if (!rejectingJob) return;
+    if (!rejectingCard) return;
     setIsSubmittingReject(true);
     try {
-      const reason = rejectReason.trim() || 'Supplier ปฏิเสธงาน';
-      await updateJobStatus(rejectingJob.id, 'CANCELLED', { rejectReason: reason });
-      showToast(`ปฏิเสธงาน ${rejectingJob.jobNumber} เรียบร้อยแล้ว`, 'info');
-      setRejectingJob(null);
+      const reason = rejectReason.trim() || 'Supplier ปฏิเสธรายการนี้';
+      await updateCarWashItemStatus(rejectingCard.jobId, rejectingCard.itemId, 'CANCELLED', reason);
+      showToast(`ปฏิเสธรถคัน ${rejectingCard.vin.slice(-6)} เรียบร้อยแล้ว`, 'info');
+      setRejectingCard(null);
       setRejectReason('');
     } catch (e) {
       console.error(e);
-      showToast('ไม่สามารถปฏิเสธงานได้ กรุณาลองใหม่อีกครั้ง', 'error');
+      showToast('ไม่สามารถปฏิเสธได้ กรุณาลองใหม่อีกครั้ง', 'error');
     } finally {
       setIsSubmittingReject(false);
     }
@@ -326,9 +387,14 @@ function SupplierJobsPageContent() {
               </p>
             </div>
           </div>
-          <span className="text-sm font-black font-mono shrink-0" style={{ color: theme.primary }}>
-            ฿{card.unitPrice.toLocaleString()}
-          </span>
+          <div className="text-right shrink-0">
+            <span className={`text-sm font-mono ${card.itemStatus === 'CANCELLED' ? 'line-through text-gray-400 text-xs' : 'font-black'}`} style={card.itemStatus !== 'CANCELLED' ? { color: theme.primary } : undefined}>
+              ฿{card.unitPrice.toLocaleString()}
+            </span>
+            {card.itemStatus === 'CANCELLED' && (
+              <span className="block text-[9px] text-red-500 font-medium">ไม่คิดเงิน</span>
+            )}
+          </div>
         </div>
 
         {/* Job Reference Badge + Progress */}
@@ -369,7 +435,7 @@ function SupplierJobsPageContent() {
               <button
                 type="button"
                 onClick={() => {
-                  setRejectingJob(card.job);
+                  setRejectingCard(card);
                   setRejectReason('');
                 }}
                 className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
@@ -380,22 +446,13 @@ function SupplierJobsPageContent() {
 
               <button
                 type="button"
-                onClick={() => handleSubmitItem(card)}
+                onClick={() => handleOpenPhotoModal(card)}
                 disabled={isSubmitting}
                 className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
               >
-                {isSubmitting ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>กำลังส่ง...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>ส่งงานคันนี้</span>
-                  </>
-                )}
+                <Camera className="w-3.5 h-3.5" />
+                <span>ถ่ายรูป + ส่งงาน</span>
               </button>
             </>
           )}
@@ -426,7 +483,7 @@ function SupplierJobsPageContent() {
               </span>
               <button
                 type="button"
-                onClick={() => handleSubmitItem(card)}
+                onClick={() => handleOpenPhotoModal(card)}
                 disabled={isSubmitting}
                 className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
               >
@@ -494,8 +551,9 @@ function SupplierJobsPageContent() {
               <button
                 type="button"
                 onClick={() => {
-                  setRejectingJob(job);
-                  setRejectReason('');
+                  // Vehicle Slide: reject entire job (single vehicle)
+                  updateJobStatus(job.id, 'CANCELLED', { rejectReason: 'Supplier ปฏิเสธงาน' });
+                  showToast(`ปฏิเสธงาน ${job.jobNumber} เรียบร้อยแล้ว`, 'info');
                 }}
                 className="flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
               >
@@ -641,8 +699,8 @@ function SupplierJobsPageContent() {
         </div>
       )}
 
-      {/* Reject Job Confirmation Modal */}
-      {rejectingJob && (
+      {/* Reject Item Confirmation Modal (PER-ITEM) */}
+      {rejectingCard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-100 flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -651,22 +709,31 @@ function SupplierJobsPageContent() {
                   <AlertTriangle className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">ปฏิเสธงานนี้</h3>
-                  <p className="text-[11px] text-gray-500 font-mono">{rejectingJob.jobNumber}</p>
+                  <h3 className="text-base font-bold text-gray-900">ปฏิเสธรถคันนี้</h3>
+                  <p className="text-[11px] text-gray-500 font-mono">VIN: {rejectingCard.vin}</p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setRejectingJob(null)}
+                onClick={() => setRejectingCard(null)}
                 className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-gray-600">
-              เมื่อกดยืนยัน ระบบจะยกเลิกคำสั่งงานทั้งใบ ({rejectingJob.carWashItems?.length || 1} คัน) และคืนสถานะรถให้สาขาเพื่อจัดสรรใหม่
-            </p>
+            {/* Car info */}
+            <div className="p-3 rounded-xl bg-red-50/50 border border-red-100 text-xs">
+              <p className="font-semibold text-gray-800">
+                {rejectingCard.vehicleModel} {rejectingCard.vehicleColor && `• สี ${rejectingCard.vehicleColor}`}
+              </p>
+              <p className="text-gray-500 mt-0.5">
+                ใบงาน: <span className="font-mono font-bold">{rejectingCard.jobNumber}</span> • {rejectingCard.branchName}
+              </p>
+              <p className="text-red-600 font-medium mt-1">
+                ⚠️ ปฏิเสธเฉพาะคันนี้เท่านั้น — คันอื่นในใบงานเดียวกันไม่ได้รับผลกระทบ
+              </p>
+            </div>
 
             {/* Quick Reason Chips */}
             <div>
@@ -697,7 +764,7 @@ function SupplierJobsPageContent() {
               <textarea
                 value={rejectReason}
                 onChange={e => setRejectReason(e.target.value)}
-                placeholder="ระบุเหตุผลในการปฏิเสธงาน..."
+                placeholder="ระบุเหตุผลในการปฏิเสธรถคันนี้..."
                 rows={3}
                 className="w-full p-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none resize-none"
               />
@@ -707,7 +774,7 @@ function SupplierJobsPageContent() {
             <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setRejectingJob(null)}
+                onClick={() => setRejectingCard(null)}
                 disabled={isSubmittingReject}
                 className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer"
               >
@@ -720,7 +787,196 @@ function SupplierJobsPageContent() {
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <XCircle className="w-4 h-4" />
-                <span>{isSubmittingReject ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธงาน'}</span>
+                <span>{isSubmittingReject ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธคันนี้'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Upload + Submit Modal */}
+      {photoModalCard && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100 flex flex-col">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-gray-100 shrink-0">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center"
+                    style={{ backgroundColor: `${theme.primary}15`, color: theme.primary }}
+                  >
+                    <Camera className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">ส่งงานรถคันนี้</h3>
+                    <p className="text-[11px] text-gray-500">ถ่ายรูปหลักฐานก่อนส่งงาน</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoModalCard(null);
+                    setUploadedPhotos([]);
+                    setPhotoCaption('');
+                  }}
+                  className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Car Info Card */}
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                  <Car className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-bold text-gray-900 font-mono">{photoModalCard.vin}</span>
+                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                      {photoModalCard.washType === 'STANDARD' ? 'ล้างปกติ' : photoModalCard.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : 'ขัดเคลือบ'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                    {photoModalCard.vehicleModel} {photoModalCard.vehicleColor && `• ${photoModalCard.vehicleColor}`}
+                    <span className="ml-1 font-mono text-gray-400">#{photoModalCard.jobNumber}</span>
+                  </p>
+                </div>
+                <span className="text-sm font-bold font-mono shrink-0" style={{ color: theme.primary }}>
+                  ฿{photoModalCard.unitPrice.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Photo Upload Area */}
+            <div className="p-5 flex flex-col gap-4">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
+              {/* Upload buttons */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-gray-700">📸 รูปถ่ายหลักฐาน <span className="text-red-500">*</span></p>
+                  <span className="text-[10px] text-gray-400">{uploadedPhotos.length}/5 รูป</span>
+                </div>
+
+                {/* Photo Grid */}
+                {uploadedPhotos.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {uploadedPhotos.map((photo, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photo.url}
+                          alt={`ภาพที่ ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(idx)}
+                          className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                        <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/50 text-white text-[9px] font-bold">
+                          {idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upload Trigger Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.setAttribute('capture', 'environment');
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    disabled={uploadedPhotos.length >= 5}
+                    className="flex-1 flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-100/70 text-emerald-700 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Camera className="w-6 h-6" />
+                    <span className="text-xs font-bold">ถ่ายรูป</span>
+                    <span className="text-[9px] text-emerald-600">เปิดกล้อง</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.removeAttribute('capture');
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    disabled={uploadedPhotos.length >= 5}
+                    className="flex-1 flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 hover:bg-gray-100 text-gray-600 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ImagePlus className="w-6 h-6" />
+                    <span className="text-xs font-bold">เลือกจากอัลบั้ม</span>
+                    <span className="text-[9px] text-gray-400">JPG, PNG (max 10MB)</span>
+                  </button>
+                </div>
+
+                {uploadedPhotos.length === 0 && (
+                  <p className="text-[10px] text-red-500 mt-2 text-center font-medium">
+                    ⚠️ ต้องแนบรูปอย่างน้อย 1 รูป จึงจะส่งงานได้
+                  </p>
+                )}
+              </div>
+
+              {/* Caption */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
+                  หมายเหตุ (ไม่บังคับ)
+                </label>
+                <textarea
+                  value={photoCaption}
+                  onChange={(e) => setPhotoCaption(e.target.value)}
+                  placeholder="เช่น ล้างรถเสร็จเรียบร้อย ทำความสะอาดภายใน..."
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 transition-all resize-none"
+                  style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
+                />
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="p-5 pt-0 shrink-0">
+              <button
+                type="button"
+                onClick={handleSubmitItem}
+                disabled={uploadedPhotos.length === 0 || submittingItemId === photoModalCard.itemId}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:opacity-95 active:scale-[0.98]"
+                style={{ backgroundColor: uploadedPhotos.length > 0 ? theme.primary : '#9ca3af' }}
+              >
+                {submittingItemId === photoModalCard.itemId ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>กำลังส่งงาน...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>
+                      {uploadedPhotos.length > 0
+                        ? `ส่งงาน (${uploadedPhotos.length} รูป)`
+                        : 'กรุณาแนบรูปก่อน'
+                      }
+                    </span>
+                  </>
+                )}
               </button>
             </div>
           </div>

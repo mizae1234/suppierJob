@@ -4,6 +4,7 @@ import React from 'react';
 import { Job, UserRole } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
+import { getJobTotalCost } from '@/lib/job-utils';
 import { Sparkles, Truck } from 'lucide-react';
 import { STATUS_MAP } from './constants';
 
@@ -119,8 +120,15 @@ export const JobTable: React.FC<JobTableProps> = ({
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-4 text-right font-bold text-gray-900 whitespace-nowrap">
-                      ฿{(job.actualCost || job.estimatedCost).toLocaleString()}
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                      <div className="font-bold text-gray-900">
+                        ฿{getJobTotalCost(job).toLocaleString()}
+                      </div>
+                      {job.jobType === 'CAR_WASH' && job.carWashItems?.some(i => i.status === 'CANCELLED') && (
+                        <span className="text-[10px] text-red-500 font-medium block">
+                          (หักคันที่ปฏิเสธ)
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-center whitespace-nowrap">

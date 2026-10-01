@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Job, JobStatus, JobType } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
+import { getJobTotalCost } from '@/lib/job-utils';
 import {
   JobFilters,
   JobTable,
@@ -38,6 +39,7 @@ import {
   ArrowRight,
   ImageIcon,
   ZoomIn,
+  Clock,
 } from 'lucide-react';
 
 function JobsContent() {
@@ -420,219 +422,279 @@ function JobsContent() {
               </div>
 
               {/* Scrollable Drawer Body */}
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 text-xs">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
 
-                {/* Top Highlights Banner */}
-                <div className="p-5 rounded-2xl border flex flex-col gap-4" style={{ background: `linear-gradient(to bottom right, ${theme.bgSoft}, ${theme.bgFooter})`, borderColor: theme.borderSoft }}>
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div>
-                      <span className="text-[11px] text-gray-500 font-medium">ยอดค่าบริการสุทธิ:</span>
-                      <p className="text-2xl font-black tracking-tight" style={{ color: theme.textPrimary }}>
-                        ฿{(activeJob.actualCost || activeJob.estimatedCost).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/80 border shadow-2xs" style={{ borderColor: theme.borderSoft }}>
-                      {activeJob.jobType === 'CAR_WASH' ? (
-                        <>
-                          <Sparkles className="w-4 h-4" style={{ color: theme.iconColor }} />
-                          <span className="font-bold text-gray-800">Car Wash (ล้างรถ)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Truck className="w-4 h-4 text-blue-600" />
-                          <span className="font-bold text-gray-800">Vehicle Slide (สไลด์รถ)</span>
-                        </>
+                {/* ─── Compact Job Overview ─── */}
+                <div className="flex items-start justify-between gap-4">
+                  {/* Left: Key Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold border" style={{ color: theme.textPrimary, backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
+                        {activeJob.jobType === 'CAR_WASH' ? (
+                          <><Sparkles className="w-3 h-3" /> Car Wash</>
+                        ) : (
+                          <><Truck className="w-3 h-3" /> Vehicle Slide</>
+                        )}
+                      </span>
+                      {activeJob.carWashItems && (
+                        <span className="text-[10px] text-gray-500 font-medium">
+                          {activeJob.carWashItems.length} คัน
+                        </span>
                       )}
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">
+                      <div className="flex items-center gap-1.5 text-gray-600">
+                        <Building2 className="w-3 h-3 text-gray-400 shrink-0" />
+                        <span className="truncate"><strong className="text-gray-800">{activeJob.branchName}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-gray-600">
+                        <User className="w-3 h-3 text-gray-400 shrink-0" />
+                        <span className="truncate"><strong className="text-gray-800">{activeJob.supplierName}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-gray-500">
+                        <Calendar className="w-3 h-3 text-gray-400 shrink-0" />
+                        <span>{formatThaiDate(activeJob.createdAt)}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-3 border-t text-xs" style={{ borderColor: theme.borderSoft }}>
-                    <div>
-                      <span className="text-gray-500 flex items-center gap-1">
-                        <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                        สาขาที่สั่งงาน:
-                      </span>
-                      <p className="font-bold text-gray-900 mt-0.5">{activeJob.branchName}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 flex items-center gap-1">
-                        <User className="w-3.5 h-3.5 text-gray-400" />
-                        Supplier คู่ค้า:
-                      </span>
-                      <p className="font-bold text-gray-900 mt-0.5">{activeJob.supplierName}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                        วันที่สร้างคำสั่ง:
-                      </span>
-                      <p className="font-bold text-gray-900 mt-0.5">{formatThaiDateTime(activeJob.createdAt)}</p>
-                    </div>
-                  </div>
+                  {/* Right: Cost */}
+                  {(() => {
+                    const effectiveCost = getJobTotalCost(activeJob);
+                    const hasCancelled = activeJob.jobType === 'CAR_WASH' && 
+                      activeJob.carWashItems?.some(i => i.status === 'CANCELLED');
+                    const originalCost = activeJob.estimatedCost || 0;
+
+                    return (
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] text-gray-400 block">
+                          {hasCancelled ? 'ค่าบริการสุทธิ' : 'ค่าบริการ'}
+                        </span>
+                        <div className="flex items-baseline justify-end gap-1.5">
+                          {hasCancelled && originalCost > effectiveCost && (
+                            <span className="text-xs text-gray-400 line-through font-mono">
+                              ฿{originalCost.toLocaleString()}
+                            </span>
+                          )}
+                          <p className="text-xl font-black tracking-tight" style={{ color: hasCancelled ? '#059669' : theme.textPrimary }}>
+                            ฿{effectiveCost.toLocaleString()}
+                          </p>
+                        </div>
+                        {hasCancelled && (
+                          <span className="text-[9px] text-red-500 font-semibold block">
+                            (หักคันที่ปฏิเสธแล้ว)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
-                {/* Reject Reason Alert (If Any) */}
+                {/* Reject Reason Alert */}
                 {activeJob.rejectReason && (
-                  <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-900 flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-50 border border-red-200 text-xs">
+                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-bold text-red-800">ข้อความขอให้แก้ไขงานจากสาขา:</p>
-                      <p className="mt-1 leading-relaxed">{activeJob.rejectReason}</p>
+                      <p className="font-bold text-red-700">หมายเหตุจากสาขา:</p>
+                      <p className="text-red-600 mt-0.5">{activeJob.rejectReason}</p>
                     </div>
                   </div>
                 )}
 
-                {/* Workflow Lifecycle Stepper */}
-                <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-2xs">
-                  <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">
-                    สถานะการดำเนินงาน (Workflow Lifecycle)
-                  </h4>
-                  <div className="flex items-center justify-between text-[11px] relative">
-                    <div className="absolute top-3 left-3 right-3 h-0.5 bg-gray-200 -z-0" />
-                    
-                    {/* Step 1 */}
-                    <div className="flex flex-col items-center gap-1.5 z-10">
-                      <div className="w-6 h-6 rounded-full text-white flex items-center justify-center font-bold text-[10px]" style={{ backgroundColor: theme.primary }}>
-                        ✓
-                      </div>
-                      <span className="text-gray-700 font-medium">เปิดงาน</span>
-                    </div>
+                {/* ─── Compact Workflow Stepper ─── */}
+                <div className="flex items-center gap-1 text-[10px]">
+                  {(() => {
+                    const steps = [
+                      { label: 'เปิดงาน', key: 'CREATED' },
+                      { label: 'รับงาน', key: 'PENDING_SUPPLIER' },
+                      { label: 'ดำเนินการ', key: 'IN_PROGRESS' },
+                      { label: activeJob.status === 'REJECTED' ? 'ขอแก้ไข' : 'ตรวจรับ', key: 'WAITING_APPROVAL' },
+                      { label: 'อนุมัติ', key: 'APPROVED' },
+                    ];
 
-                    {/* Step 2 */}
-                    <div className="flex flex-col items-center gap-1.5 z-10">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                        activeJob.status !== 'PENDING_SUPPLIER' 
-                          ? 'text-white' 
-                          : 'bg-blue-600 text-white ring-4 ring-blue-100'
-                      }`}
-                        style={activeJob.status !== 'PENDING_SUPPLIER' ? { backgroundColor: theme.primary } : {}}
-                      >
-                        {activeJob.status !== 'PENDING_SUPPLIER' ? '✓' : '2'}
-                      </div>
-                      <span className={activeJob.status === 'PENDING_SUPPLIER' ? 'font-bold text-blue-700' : 'text-gray-600'}>
-                        รับงาน
-                      </span>
-                    </div>
+                    const statusOrder = ['CREATED', 'PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL', 'APPROVED'];
+                    const currentIdx = (() => {
+                      if (['APPROVED', 'INVOICED'].includes(activeJob.status)) return 4;
+                      if (activeJob.status === 'WAITING_APPROVAL') return 3;
+                      if (activeJob.status === 'REJECTED') return 3;
+                      if (activeJob.status === 'IN_PROGRESS') return 2;
+                      if (activeJob.status === 'PENDING_SUPPLIER') return 1;
+                      return 0;
+                    })();
 
-                    {/* Step 3 */}
-                    <div className="flex flex-col items-center gap-1.5 z-10">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                        ['WAITING_APPROVAL', 'APPROVED', 'INVOICED'].includes(activeJob.status)
-                          ? 'text-white'
-                          : activeJob.status === 'IN_PROGRESS'
-                            ? 'bg-amber-600 text-white ring-4 ring-amber-100'
-                            : 'bg-gray-200 text-gray-500'
-                      }`}
-                        style={['WAITING_APPROVAL', 'APPROVED', 'INVOICED'].includes(activeJob.status) ? { backgroundColor: theme.primary } : {}}
-                      >
-                        {['WAITING_APPROVAL', 'APPROVED', 'INVOICED'].includes(activeJob.status) ? '✓' : '3'}
-                      </div>
-                      <span className={activeJob.status === 'IN_PROGRESS' ? 'font-bold text-amber-700' : 'text-gray-600'}>
-                        ดำเนินการ
-                      </span>
-                    </div>
+                    return steps.map((step, idx) => {
+                      const isCompleted = idx < currentIdx || (idx === currentIdx && ['APPROVED', 'INVOICED'].includes(activeJob.status));
+                      const isCurrent = idx === currentIdx && !['APPROVED', 'INVOICED'].includes(activeJob.status);
+                      const isRejected = isCurrent && activeJob.status === 'REJECTED';
 
-                    {/* Step 4 */}
-                    <div className="flex flex-col items-center gap-1.5 z-10">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                        ['APPROVED', 'INVOICED'].includes(activeJob.status)
-                          ? 'text-white'
-                          : activeJob.status === 'WAITING_APPROVAL'
-                            ? 'bg-orange-500 text-white ring-4 ring-orange-100'
-                            : activeJob.status === 'REJECTED'
-                              ? 'bg-red-600 text-white ring-4 ring-red-100'
-                              : 'bg-gray-200 text-gray-500'
-                      }`}
-                        style={['APPROVED', 'INVOICED'].includes(activeJob.status) ? { backgroundColor: theme.primary } : {}}
-                      >
-                        {['APPROVED', 'INVOICED'].includes(activeJob.status) ? '✓' : activeJob.status === 'REJECTED' ? '!' : '4'}
-                      </div>
-                      <span className={activeJob.status === 'WAITING_APPROVAL' ? 'font-bold text-orange-700' : 'text-gray-600'}>
-                        {activeJob.status === 'REJECTED' ? 'ขอแก้ไข' : 'ตรวจรับ'}
-                      </span>
-                    </div>
-
-                    {/* Step 5 */}
-                    <div className="flex flex-col items-center gap-1.5 z-10">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                        ['APPROVED', 'INVOICED'].includes(activeJob.status)
-                          ? 'text-white ring-4'
-                          : 'bg-gray-200 text-gray-500'
-                      }`}
-                        style={['APPROVED', 'INVOICED'].includes(activeJob.status) ? { backgroundColor: theme.primary, '--tw-ring-color': theme.badgeBg } as React.CSSProperties : {}}
-                      >
-                        {['APPROVED', 'INVOICED'].includes(activeJob.status) ? '✓' : '5'}
-                      </div>
-                      <span className={['APPROVED', 'INVOICED'].includes(activeJob.status) ? 'font-bold' : 'text-gray-400'}
-                        style={['APPROVED', 'INVOICED'].includes(activeJob.status) ? { color: theme.textPrimary } : {}}
-                      >
-                        อนุมัติ
-                      </span>
-                    </div>
-                  </div>
+                      return (
+                        <React.Fragment key={idx}>
+                          {idx > 0 && (
+                            <div className={`flex-1 h-px ${isCompleted || isCurrent ? '' : 'bg-gray-200'}`}
+                              style={isCompleted || isCurrent ? { backgroundColor: isRejected ? '#dc2626' : theme.primary } : {}}
+                            />
+                          )}
+                          <div className="flex items-center gap-1">
+                            <div
+                              className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
+                                isCompleted
+                                  ? 'text-white'
+                                  : isCurrent
+                                    ? isRejected
+                                      ? 'bg-red-600 text-white ring-2 ring-red-100'
+                                      : 'text-white ring-2'
+                                    : 'bg-gray-200 text-gray-400'
+                              }`}
+                              style={{
+                                ...(isCompleted ? { backgroundColor: theme.primary } : {}),
+                                ...(isCurrent && !isRejected ? { backgroundColor: theme.primary, '--tw-ring-color': theme.badgeBg } as React.CSSProperties : {}),
+                              }}
+                            >
+                              {isCompleted ? '✓' : isRejected ? '!' : idx + 1}
+                            </div>
+                            <span className={`hidden sm:inline whitespace-nowrap ${
+                              isCurrent ? (isRejected ? 'font-bold text-red-600' : 'font-bold') : isCompleted ? 'text-gray-600' : 'text-gray-400'
+                            }`}
+                              style={isCurrent && !isRejected ? { color: theme.textPrimary } : {}}
+                            >
+                              {step.label}
+                            </span>
+                          </div>
+                        </React.Fragment>
+                      );
+                    });
+                  })()}
                 </div>
 
-                {/* Specific Job Details: Car Wash Items */}
+                {/* ─── Car Wash Items ─── */}
                 {activeJob.jobType === 'CAR_WASH' && activeJob.carWashItems && (
                   <div>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4" style={{ color: theme.iconColor }} />
-                        <span>รายการรถในคำสั่งล้าง ({activeJob.carWashItems.length} คัน)</span>
+                    {/* Header + Progress */}
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
+                        รายการรถ
                       </h4>
-                      <span className="text-[11px] text-gray-500">
-                        รวม ฿{activeJob.carWashItems.reduce((acc, cur) => acc + cur.unitPrice, 0).toLocaleString()}
-                      </span>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        {(() => {
+                          const completed = activeJob.carWashItems.filter(i => i.status === 'COMPLETED').length;
+                          const cancelled = activeJob.carWashItems.filter(i => i.status === 'CANCELLED' || i.status === 'REJECTED').length;
+                          return (
+                            <>
+                              {completed > 0 && <span className="text-emerald-600 font-bold">เสร็จ {completed}</span>}
+                              {cancelled > 0 && <span className="text-red-500 font-bold">ปฏิเสธ {cancelled}</span>}
+                              <span className="text-gray-400 font-mono">{completed + cancelled}/{activeJob.carWashItems.length}</span>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
 
-                    <div className="divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-2xs">
-                      {activeJob.carWashItems.map((item, idx) => (
-                        <div key={item.id} className="p-3.5 hover:bg-[#fbfdfc] flex items-center justify-between gap-3 text-xs transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono font-bold text-gray-900 text-[13px]">{item.vin}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyText(item.vin)}
-                                title="คัดลอก VIN"
-                                className="p-0.5 rounded text-gray-400 hover:text-gray-700 transition-colors"
-                              >
-                                {copiedText === item.vin ? (
-                                  <CheckCheck className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
-                                ) : (
-                                  <Copy className="w-3.5 h-3.5" />
+                    {/* Progress Bar */}
+                    {(() => {
+                      const completed = activeJob.carWashItems.filter(i => i.status === 'COMPLETED').length;
+                      const cancelled = activeJob.carWashItems.filter(i => i.status === 'CANCELLED' || i.status === 'REJECTED').length;
+                      const total = activeJob.carWashItems.length;
+                      if (completed === 0 && cancelled === 0) return null;
+                      return (
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden flex mb-2">
+                          {completed > 0 && (
+                            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${(completed / total) * 100}%` }} />
+                          )}
+                          {cancelled > 0 && (
+                            <div className="h-full bg-red-400 transition-all duration-500" style={{ width: `${(cancelled / total) * 100}%` }} />
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Item Rows */}
+                    <div className="border border-gray-100 rounded-xl overflow-hidden bg-white shadow-2xs divide-y divide-gray-50">
+                      {activeJob.carWashItems.map((item) => {
+                        const statusCfg: Record<string, { label: string; color: string; bg: string }> = {
+                          PENDING: { label: 'รอดำเนินการ', color: '#d97706', bg: '#fffbeb' },
+                          COMPLETED: { label: 'ส่งแล้ว', color: '#059669', bg: '#ecfdf5' },
+                          REJECTED: { label: 'ตีกลับ', color: '#dc2626', bg: '#fef2f2' },
+                          CANCELLED: { label: 'ปฏิเสธ', color: '#ef4444', bg: '#fef2f2' },
+                        };
+                        const s = statusCfg[item.status] || statusCfg.PENDING;
+                        const isCancelled = item.status === 'CANCELLED';
+
+                        return (
+                          <div key={item.id} className={`px-3 py-2.5 flex items-center gap-3 text-xs transition-colors ${isCancelled ? 'bg-red-50/25' : 'hover:bg-gray-50/50'}`}>
+                            {/* VIN + Copy */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={`font-mono font-bold text-[11px] ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.vin}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyText(item.vin)}
+                                  className="p-0.5 rounded text-gray-300 hover:text-gray-600 transition-colors"
+                                >
+                                  {copiedText === item.vin ? <CheckCheck className="w-3 h-3" style={{ color: theme.iconColor }} /> : <Copy className="w-3 h-3" />}
+                                </button>
+                                {item.licensePlate && (
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isCancelled ? 'line-through bg-gray-50 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
+                                    {item.licensePlate}
+                                  </span>
                                 )}
-                              </button>
-                              {item.licensePlate && (
-                                <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-800 text-[11px] font-semibold border border-gray-200">
-                                  {item.licensePlate}
-                                </span>
+                              </div>
+                              <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                                {item.vehicleModel} {item.vehicleColor && `• ${item.vehicleColor}`} • {item.washType}
+                              </p>
+                            </div>
+
+                            {/* Status Badge */}
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap" style={{ color: s.color, backgroundColor: s.bg }}>
+                              {s.label}
+                            </span>
+
+                            {/* Price */}
+                            <div className="text-right shrink-0">
+                              <span className={`font-mono ${isCancelled ? 'line-through text-gray-400 text-[11px]' : 'font-bold text-[12px]'}`} style={!isCancelled ? { color: theme.textPrimary } : undefined}>
+                                ฿{item.unitPrice.toLocaleString()}
+                              </span>
+                              {isCancelled && (
+                                <span className="block text-[9px] text-red-500 font-medium">ไม่คิดเงิน</span>
                               )}
                             </div>
-                            
-                            <p className="text-gray-600 mt-1">
-                              รุ่น: <strong className="text-gray-800">{item.vehicleModel}</strong> {item.vehicleColor && `• สี ${item.vehicleColor}`}
-                            </p>
-                            
-                            <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1">
-                              <span>บริการ: <strong style={{ color: theme.textMuted }}>{item.washType}</strong></span>
-                              <span>•</span>
-                              <span>วันที่ทำจริง: {formatThaiDate(item.actualWashDate)}</span>
-                            </div>
-
-                            {item.remarks && (
-                              <p className="text-[11px] text-gray-500 italic mt-1 bg-gray-50 p-1.5 rounded-lg border border-gray-100">
-                                &quot;{item.remarks}&quot;
-                              </p>
-                            )}
                           </div>
+                        );
+                      })}
+                    </div>
 
-                          <div className="text-right shrink-0">
-                            <span className="font-black text-sm" style={{ color: theme.textPrimary }}>฿{item.unitPrice.toLocaleString()}</span>
+                    {/* Total row */}
+                    {(() => {
+                      const validItems = activeJob.carWashItems.filter(i => i.status !== 'CANCELLED');
+                      const totalActive = validItems.reduce((a, c) => a + c.unitPrice, 0);
+                      const totalOriginal = activeJob.carWashItems.reduce((a, c) => a + c.unitPrice, 0);
+                      const hasCancelled = activeJob.carWashItems.some(i => i.status === 'CANCELLED');
+
+                      return (
+                        <div className="flex items-center justify-between mt-2 px-3 py-2 rounded-xl bg-gray-50/80 border border-gray-100 text-[11px]">
+                          <span className="text-gray-600 font-medium">
+                            {hasCancelled ? (
+                              <>
+                                ยอดรวมสุทธิ <span className="text-gray-400 font-normal">({validItems.length} จาก {activeJob.carWashItems.length} คัน)</span>
+                              </>
+                            ) : (
+                              `ยอดรวม (${activeJob.carWashItems.length} คัน)`
+                            )}
+                          </span>
+                          <div className="flex items-baseline gap-2">
+                            {hasCancelled && (
+                              <span className="text-gray-400 line-through text-[10px] font-mono">
+                                ฿{totalOriginal.toLocaleString()}
+                              </span>
+                            )}
+                            <strong className="text-sm font-bold font-mono" style={{ color: theme.textPrimary }}>
+                              ฿{totalActive.toLocaleString()}
+                            </strong>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -720,10 +782,7 @@ function JobsContent() {
                   </div>
 
                   {activeJob.evidences.length === 0 ? (
-                    <div className="p-8 rounded-2xl border border-dashed border-gray-200 text-center text-xs text-gray-400 bg-gray-50/50 flex flex-col items-center gap-2">
-                      <ImageIcon className="w-8 h-8 text-gray-300" />
-                      <p>ยังไม่มีการอัปโหลดรูปหลักฐานการปฏิบัติงาน</p>
-                    </div>
+                    <p className="text-[11px] text-gray-400 italic">ยังไม่มีรูปหลักฐาน</p>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {activeJob.evidences.map(evi => (
@@ -759,6 +818,68 @@ function JobsContent() {
                   )}
                 </div>
               </div>
+
+              {/* ─── Activity Timeline (Flex-based) ─── */}
+              {activeJob.activities && activeJob.activities.length > 0 && (
+                <div>
+                  <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+                    <Clock className="w-3.5 h-3.5" />
+                    กิจกรรม
+                  </h4>
+
+                  <div className="flex flex-col">
+                    {activeJob.activities.map((activity, idx) => {
+                      const dotColors: Record<string, string> = {
+                        ITEM_COMPLETED: '#059669',
+                        ITEM_REJECTED: '#dc2626',
+                        ITEM_CANCELLED: '#ef4444',
+                        JOB_WAITING_APPROVAL: '#2563eb',
+                        JOB_APPROVED: '#059669',
+                        JOB_REJECTED: '#dc2626',
+                        JOB_CANCELLED: '#6b7280',
+                        EVIDENCE_UPLOADED: '#0891b2',
+                      };
+                      const dotColor = dotColors[activity.action] || '#9ca3af';
+                      const time = new Date(activity.createdAt);
+                      const timeStr = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+                      const isLast = idx === (activeJob.activities?.length || 0) - 1;
+
+                      return (
+                        <div key={activity.id} className="flex gap-3">
+                          {/* Left: dot + connecting line */}
+                          <div className="flex flex-col items-center shrink-0" style={{ width: '12px' }}>
+                            <div
+                              className="w-[10px] h-[10px] rounded-full shrink-0 mt-[3px]"
+                              style={{ backgroundColor: dotColor }}
+                            />
+                            {!isLast && (
+                              <div className="w-[2px] flex-1 bg-gray-200 min-h-[8px]" />
+                            )}
+                          </div>
+
+                          {/* Right: content */}
+                          <div className={`flex-1 flex items-baseline justify-between gap-2 text-[11px] ${!isLast ? 'pb-2.5' : ''}`}>
+                            <p className="text-gray-700 leading-snug">
+                              {activity.description
+                                .replace(/✅/g, 'เสร็จ')
+                                .replace(/❌/g, 'ปฏิเสธ')
+                                .replace(/🚫/g, 'ปฏิเสธ')
+                                .replace(/⏳/g, 'รอ')
+                              }
+                              {activity.vin && (
+                                <span className="ml-1 text-[9px] font-mono text-gray-400">
+                                  ...{activity.vin.slice(-6)}
+                                </span>
+                              )}
+                            </p>
+                            <span className="text-[9px] text-gray-400 font-mono shrink-0">{timeStr}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* ══════════════════════════════════════════════
                   PRINT-ONLY WORK ORDER (hidden on screen)
@@ -864,37 +985,52 @@ function JobsContent() {
                     <table className="print-wo-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '30pt' }}>ลำดับ</th>
+                          <th className="text-center" style={{ width: '28pt' }}>ลำดับ</th>
                           <th>เลขตัวถัง (VIN)</th>
                           <th>รุ่น / สี</th>
                           <th>ทะเบียน</th>
                           <th>วันที่ล้าง</th>
                           <th>ประเภท</th>
-                          <th style={{ textAlign: 'right' }}>ราคา (฿)</th>
+                          <th className="text-center" style={{ width: '55pt' }}>สถานะ</th>
+                          <th className="text-right" style={{ width: '55pt' }}>ราคา (฿)</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {activeJob.carWashItems.map((item, idx) => (
-                          <tr key={item.id}>
-                            <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{item.vin}</td>
-                            <td>{item.vehicleModel} {item.vehicleColor ? `(${item.vehicleColor})` : ''}</td>
-                            <td>{item.licensePlate || '-'}</td>
-                            <td>{formatThaiDate(item.actualWashDate)}</td>
-                            <td>{item.washType}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                              {item.unitPrice.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
+                        {activeJob.carWashItems.map((item, idx) => {
+                          const isCancelled = item.status === 'CANCELLED';
+                          const statusConfig: Record<string, { label: string; color: string }> = {
+                            PENDING: { label: 'รอดำเนินการ', color: '#b45309' },
+                            COMPLETED: { label: 'เสร็จสิ้น', color: '#15803d' },
+                            REJECTED: { label: 'ตีกลับ', color: '#dc2626' },
+                            CANCELLED: { label: 'ปฏิเสธ', color: '#dc2626' },
+                          };
+                          const s = statusConfig[item.status] || { label: item.status, color: '#374151' };
+
+                          return (
+                            <tr key={item.id}>
+                              <td className="text-center">{idx + 1}</td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: 700 }}>{item.vin}</td>
+                              <td>{item.vehicleModel} {item.vehicleColor ? `(${item.vehicleColor})` : ''}</td>
+                              <td>{item.licensePlate || '-'}</td>
+                              <td>{formatThaiDate(item.actualWashDate)}</td>
+                              <td>{item.washType}</td>
+                              <td className="text-center" style={{ fontWeight: 700, color: s.color }}>
+                                {s.label}
+                              </td>
+                              <td className="text-right" style={{ fontWeight: 700, color: isCancelled ? '#dc2626' : undefined }}>
+                                {isCancelled ? '0' : item.unitPrice.toLocaleString()}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                       <tfoot>
                         <tr className="print-wo-total-row">
-                          <td colSpan={6} style={{ textAlign: 'right' }}>
-                            ยอดรวมทั้งสิ้น
+                          <td colSpan={7} className="text-right">
+                            ยอดรวมสุทธิ {activeJob.carWashItems.some(i => i.status === 'CANCELLED') ? `(เฉพาะ ${activeJob.carWashItems.filter(i => i.status !== 'CANCELLED').length} คันที่ทำ)` : 'ทั้งสิ้น'}
                           </td>
-                          <td style={{ textAlign: 'right' }}>
-                            ฿{activeJob.carWashItems.reduce((s, i) => s + i.unitPrice, 0).toLocaleString()}
+                          <td className="text-right">
+                            ฿{activeJob.carWashItems.filter(i => i.status !== 'CANCELLED').reduce((s, i) => s + i.unitPrice, 0).toLocaleString()}
                           </td>
                         </tr>
                       </tfoot>
@@ -915,9 +1051,8 @@ function JobsContent() {
                     <div className="print-wo-sig-line" />
                     <div>ลงชื่อ {activeJob.requestedBy || '...........................................'}</div>
                     <div style={{ fontWeight: 700, marginTop: '4pt' }}>
-                      ({activeJob.requesterPosition || 'เจ้าหน้าที่สาขาผู้สั่งงาน'})
+                      ({activeJob.requesterPosition || '...........................................'})
                     </div>
-                    <div>เจ้าหน้าที่สาขาผู้สั่งงาน</div>
                   </div>
                   <div>
                     <div className="print-wo-sig-line" />

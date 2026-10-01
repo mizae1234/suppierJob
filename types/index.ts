@@ -78,7 +78,7 @@ export interface CarWashItem {
   actualWashDate: string; // YYYY-MM-DD
   washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH';
   unitPrice: number;
-  status: 'PENDING' | 'COMPLETED' | 'REJECTED';
+  status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
   remarks?: string;
 }
 
@@ -111,6 +111,9 @@ export interface Job {
   originBranchName?: string;
   destBranchId?: string;
   destBranchName?: string;
+  customDestAddress?: string;
+  customDestLat?: number;
+  customDestLng?: number;
   pickupDateTime?: string;
   deliveryDateTime?: string;
   contactPerson?: string;
@@ -133,6 +136,9 @@ export interface Job {
   // หลักฐานภาพถ่าย
   evidences: JobEvidence[];
 
+  // บันทึกกิจกรรม / Timeline
+  activities?: JobActivity[];
+
   // การเงิน & วางบิล
   estimatedCost: number;
   actualCost?: number;
@@ -141,6 +147,19 @@ export interface Job {
 
   createdAt: string;
   updatedAt: string;
+}
+
+export interface JobActivity {
+  id: string;
+  jobId: string;
+  action: string;
+  actor?: string;
+  actorRole?: string;
+  itemId?: string;
+  vin?: string;
+  description: string;
+  metadata?: string;
+  createdAt: string;
 }
 
 export interface Invoice {
