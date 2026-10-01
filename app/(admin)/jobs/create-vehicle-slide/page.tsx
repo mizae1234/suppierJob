@@ -496,9 +496,9 @@ export default function CreateVehicleSlidePage() {
                     required
                     className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
                   >
-                    {availableBranches.map(b => (
+                    {branches.map(b => (
                       <option key={b.id} value={b.id} disabled={b.id === selectedOriginBranchId}>
-                        {b.name} {b.id === selectedOriginBranchId ? '(สาขาต้นทาง)' : ''}
+                        {b.name} {b.id === selectedOriginBranchId ? '(ต้นทาง)' : ''}
                       </option>
                     ))}
                   </select>

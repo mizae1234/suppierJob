@@ -38,11 +38,9 @@ async function main() {
   console.log('\n🏢 Creating Branches...');
 
   const branchesData = [
-    // EV7
-    { companyId: ev7.id, code: 'EV7-RM9', name: 'EV7 สาขาพระราม 9 (สำนักงานใหญ่)', address: '99/9 ถ.พระราม 9 แขวงบางกะปิ เขตห้วยขวาง กทม.', phone: '02-719-8888', latitude: 13.7563, longitude: 100.5648 },
-    { companyId: ev7.id, code: 'EV7-RNG', name: 'EV7 สาขารังสิต คลอง 1', address: '15/2 ถ.พหลโยธิน ต.ประชาธิปัตย์ อ.ธัญบุรี ปทุมธานี', phone: '02-998-1122', latitude: 13.9622, longitude: 100.6168 },
-    { companyId: ev7.id, code: 'EV7-CNX', name: 'EV7 สาขาเชียงใหม่ ซุปเปอร์ไฮเวย์', address: '244 หมู่ 4 ถ.เชียงใหม่-ลำปาง ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่', phone: '053-245-566', latitude: 18.7953, longitude: 98.9796 },
-    // GI
+    // EV7 (ไม่มีบริษัทย่อยหรือสาขา)
+    { companyId: ev7.id, code: 'EV7', name: 'EV7', address: 'สำนักงานใหญ่ EV7 ถ.พระราม 9 แขวงบางกะปิ เขตห้วยขวาง กทม.', phone: '02-719-8888', latitude: 13.7563, longitude: 100.5648 },
+    // GI (มีบริษัทย่อย/สาขา)
     { companyId: gi.id, code: 'GI-BNA', name: 'GI Hub บางนา-สุวรรณภูมิ', address: '888 ถ.บางนา-ตราด กม.18 ต.บางโฉลง อ.บางพลี สมุทรปราการ', phone: '02-334-5500', latitude: 13.6270, longitude: 100.6802 },
     { companyId: gi.id, code: 'GI-CHON', name: 'GI Hub แหลมฉบัง ชลบุรี', address: '123/45 นิคมอุตสาหกรรมแหลมฉบัง ต.ทุ่งสุขลา อ.ศรีราชา จ.ชลบุรี', phone: '038-490-123', latitude: 13.0827, longitude: 100.9017 },
   ];
@@ -112,17 +110,15 @@ async function main() {
   console.log('\n🚗 Creating Vehicles...');
 
   const vehiclesData = [
-    // EV7 — พระราม 9
-    { vin: 'LC07C5EB8PA001234', model: 'BYD Atto 3 Extended Range', color: 'Ski White', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'SUV', licensePlate: '3ขข-1234 กทม.', mileage: 14200 },
-    { vin: 'LC07C5EB1PA005678', model: 'BYD Dolphin Premium Extended', color: 'Coral Pink', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'Hatchback', licensePlate: '4ขค-5678 กทม.', mileage: 8300 },
-    { vin: 'LC07C5EB9PA009012', model: 'BYD Seal AWD Performance', color: 'Aurora White', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'Sedan', licensePlate: '1ขฉ-9012 กทม.', mileage: 5600 },
-    { vin: 'LSJ574892PA003344', model: 'MG4 Electric EV Long Range', color: 'Andes Grey', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'Hatchback', licensePlate: '2กง-3344 กทม.', mileage: 18900 },
-    // EV7 — รังสิต
-    { vin: 'LZW7AE324PA007788', model: 'ORA Good Cat 500 Ultra', color: 'Hamilton White', companyId: ev7.id, currentBranchId: branches['EV7-RNG'].id, vehicleType: 'Hatchback', licensePlate: '5ขฐ-7788 กทม.', mileage: 22100 },
-    { vin: 'LZW7AE329PA004455', model: 'ORA 07 GT Long Range', color: 'Amethyst Purple', companyId: ev7.id, currentBranchId: branches['EV7-RNG'].id, vehicleType: 'Sedan', licensePlate: '3ขต-4455 กทม.', mileage: 4100 },
-    // EV7 — เชียงใหม่
-    { vin: 'LC07C5EB4PA002233', model: 'BYD Atto 3 Dynamic', color: 'Forest Green', companyId: ev7.id, currentBranchId: branches['EV7-CNX'].id, vehicleType: 'SUV', licensePlate: 'ขข-2233 เชียงใหม่', mileage: 16500 },
-    { vin: 'LC07C5EB7PA006699', model: 'BYD Dolphin Standard Range', color: 'Surf Blue', companyId: ev7.id, currentBranchId: branches['EV7-CNX'].id, vehicleType: 'Hatchback', licensePlate: 'ขง-6699 เชียงใหม่', mileage: 9800 },
+    // EV7 (ไม่มีสาขาย่อย)
+    { vin: 'LC07C5EB8PA001234', model: 'BYD Atto 3 Extended Range', color: 'Ski White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'SUV', licensePlate: '3ขข-1234 กทม.', mileage: 14200 },
+    { vin: 'LC07C5EB1PA005678', model: 'BYD Dolphin Premium Extended', color: 'Coral Pink', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '4ขค-5678 กทม.', mileage: 8300 },
+    { vin: 'LC07C5EB9PA009012', model: 'BYD Seal AWD Performance', color: 'Aurora White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: '1ขฉ-9012 กทม.', mileage: 5600 },
+    { vin: 'LSJ574892PA003344', model: 'MG4 Electric EV Long Range', color: 'Andes Grey', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '2กง-3344 กทม.', mileage: 18900 },
+    { vin: 'LZW7AE324PA007788', model: 'ORA Good Cat 500 Ultra', color: 'Hamilton White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '5ขฐ-7788 กทม.', mileage: 22100 },
+    { vin: 'LZW7AE329PA004455', model: 'ORA 07 GT Long Range', color: 'Amethyst Purple', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: '3ขต-4455 กทม.', mileage: 4100 },
+    { vin: 'LC07C5EB4PA002233', model: 'BYD Atto 3 Dynamic', color: 'Forest Green', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'SUV', licensePlate: 'ขข-2233 เชียงใหม่', mileage: 16500 },
+    { vin: 'LC07C5EB7PA006699', model: 'BYD Dolphin Standard Range', color: 'Surf Blue', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: 'ขง-6699 เชียงใหม่', mileage: 9800 },
     // GI — บางนา
     { vin: 'LGS4D8618PA001199', model: 'Deepal S07 Smart EV', color: 'Nebula Green', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'SUV', licensePlate: '1ขษ-1199 กทม.', mileage: 7400 },
     { vin: 'LGS4D8613PA006677', model: 'Deepal L07 Fastback EV', color: 'Lunar Grey', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'Sedan', licensePlate: '4ขส-6677 กทม.', mileage: 11200 },
@@ -133,11 +129,11 @@ async function main() {
     { vin: 'LGS4D8615PA005522', model: 'Deepal S07 Max EV', color: 'Glacier White', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'SUV', licensePlate: 'กจ-5522 ชลบุรี', mileage: 3200 },
     { vin: 'LNN6A5227PA007744', model: 'NETA X Mid Range', color: 'Titanium Grey', companyId: gi.id, currentBranchId: branches['GI-CHON'].id, vehicleType: 'SUV', licensePlate: 'กฉ-7744 ชลบุรี', mileage: 15600 },
     // EV7 — เพิ่มเติม (5 คัน)
-    { vin: 'LC07C5EB3PA004123', model: 'BYD Sealion 6 DM-i', color: 'Arctic White', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'SUV', licensePlate: '5ขร-4123 กทม.', mileage: 3500 },
-    { vin: 'LZW7AE321PA008899', model: 'ORA Good Cat GT', color: 'Sun Black', companyId: ev7.id, currentBranchId: branches['EV7-RM9'].id, vehicleType: 'Hatchback', licensePlate: '2ขล-8899 กทม.', mileage: 12400 },
-    { vin: 'LC07C5EB2PA007711', model: 'BYD Seal Dynamic', color: 'Atlantis Grey', companyId: ev7.id, currentBranchId: branches['EV7-RNG'].id, vehicleType: 'Sedan', licensePlate: '4ขบ-7711 กทม.', mileage: 6800 },
-    { vin: 'LSJ574898PA005566', model: 'MG Cyberster EV', color: 'Inca Yellow', companyId: ev7.id, currentBranchId: branches['EV7-CNX'].id, vehicleType: 'Sedan', licensePlate: 'ขจ-5566 เชียงใหม่', mileage: 2100 },
-    { vin: 'LC07C5EB6PA003322', model: 'BYD Dolphin Standard Range', color: 'Maldive Purple', companyId: ev7.id, currentBranchId: branches['EV7-CNX'].id, vehicleType: 'Hatchback', licensePlate: 'ขฉ-3322 เชียงใหม่', mileage: 15300 },
+    { vin: 'LC07C5EB3PA004123', model: 'BYD Sealion 6 DM-i', color: 'Arctic White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'SUV', licensePlate: '5ขร-4123 กทม.', mileage: 3500 },
+    { vin: 'LZW7AE321PA008899', model: 'ORA Good Cat GT', color: 'Sun Black', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '2ขล-8899 กทม.', mileage: 12400 },
+    { vin: 'LC07C5EB2PA007711', model: 'BYD Seal Dynamic', color: 'Atlantis Grey', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: '4ขบ-7711 กทม.', mileage: 6800 },
+    { vin: 'LSJ574898PA005566', model: 'MG Cyberster EV', color: 'Inca Yellow', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: 'ขจ-5566 เชียงใหม่', mileage: 2100 },
+    { vin: 'LC07C5EB6PA003322', model: 'BYD Dolphin Standard Range', color: 'Maldive Purple', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: 'ขฉ-3322 เชียงใหม่', mileage: 15300 },
     // GI — เพิ่มเติม (5 คัน)
     { vin: 'LGS4D8617PA002288', model: 'Deepal S07 L EV', color: 'Comet White', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'SUV', licensePlate: '3ขษ-2288 กทม.', mileage: 8900 },
     { vin: 'LGS4D8612PA004499', model: 'Deepal L07 Sport EV', color: 'Sunset Orange', companyId: gi.id, currentBranchId: branches['GI-BNA'].id, vehicleType: 'Sedan', licensePlate: '1ขห-4499 กทม.', mileage: 4700 },
@@ -208,7 +204,7 @@ async function main() {
       phone: '085-666-7777',
       role: 'BRANCH',
       companyId: ev7.id,
-      branchId: branches['EV7-RM9'].id,
+      branchId: branches['EV7'].id,
       supplierId: null as string | null,
     },
     {

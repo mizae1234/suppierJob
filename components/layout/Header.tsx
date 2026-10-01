@@ -1,13 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
-import { UserRole, CompanyCode } from '@/types';
-import TagSearch from '@/components/ui/TagSearch';
+import { UserRole } from '@/types';
 import { 
   Bell, 
   User, 
@@ -21,46 +19,6 @@ import {
   LogOut
 } from 'lucide-react';
 
-function HeaderSearch({ accentColor }: { accentColor: string }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-
-  const queryParam = searchParams.get('q') || '';
-  const [searchTags, setSearchTags] = useState<string[]>(() => {
-    return queryParam ? queryParam.split(',').map(s => s.trim()).filter(Boolean) : [];
-  });
-
-  useEffect(() => {
-    const q = searchParams.get('q') || '';
-    if (q) {
-      setSearchTags(q.split(',').map(s => s.trim()).filter(Boolean));
-    } else if (pathname === '/jobs') {
-      setSearchTags([]);
-    }
-  }, [searchParams, pathname]);
-
-  const handleTagsChange = (tags: string[]) => {
-    setSearchTags(tags);
-    if (tags.length > 0) {
-      router.push(`/jobs?q=${encodeURIComponent(tags.join(','))}`);
-    } else {
-      if (pathname === '/jobs') {
-        router.push('/jobs');
-      }
-    }
-  };
-
-  return (
-    <TagSearch
-      variant="header"
-      tags={searchTags}
-      onTagsChange={handleTagsChange}
-      placeholder="ค้นหาเลข VIN / รหัสงาน (Job No.) / ทะเบียนรถ... (กด Enter เพื่อเพิ่ม)"
-      accentColor={accentColor}
-    />
-  );
-}
 
 export const Header: React.FC = () => {
   const router = useRouter();
@@ -123,6 +81,8 @@ export const Header: React.FC = () => {
       {companyOptions.filter(o => o.value !== 'ALL').map((opt) => {
         const isCompanySelected = currentCompany === opt.value;
         const companyBranches = branches.filter(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
+        // EV7 ไม่มีสาขาย่อย; เฉพาะ GI ที่มีสาขาย่อยแยกตาม Hub
+        const showSubBranches = opt.value === 'GI';
         
         return (
           <div key={opt.value}>
@@ -130,7 +90,8 @@ export const Header: React.FC = () => {
               onMouseDown={(e) => { 
                 e.preventDefault(); 
                 setCurrentCompany(opt.value);
-                setCurrentBranchId('');
+                const firstBranch = branches.find(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
+                setCurrentBranchId(opt.value === 'EV7' ? (firstBranch?.id || '') : '');
                 setIsCompanyOpen(false); 
               }}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-bold transition-colors ${
@@ -144,7 +105,7 @@ export const Header: React.FC = () => {
               {isCompanySelected && <Check className="w-3.5 h-3.5 text-emerald-600" />}
             </button>
             
-            {companyBranches.map((branch) => (
+            {showSubBranches && companyBranches.map((branch) => (
               <button
                 key={branch.id}
                 onMouseDown={(e) => {
@@ -179,12 +140,22 @@ export const Header: React.FC = () => {
       className="fixed top-0 left-0 lg:left-72 right-0 h-20 bg-white/95 backdrop-blur-md border-b z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden transition-colors duration-300"
       style={{ borderColor: theme.borderSoft }}
     >
-      {/* Search Bar */}
-      <div className="flex items-center gap-3 flex-1 max-w-xl">
-        <Suspense fallback={<div className="w-full h-10 rounded-full bg-[#f4f9f5] animate-pulse border border-gray-200" />}>
-          <HeaderSearch accentColor={theme.primary} />
-        </Suspense>
+      {/* Mobile Brand (visible only on mobile/tablet when sidebar is hidden) */}
+      <div className="flex lg:hidden items-center gap-2.5">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-xs font-bold shrink-0"
+          style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
+        >
+          <Building className="w-4.5 h-4.5 text-white" />
+        </div>
+        <div className="flex flex-col">
+          <span className="font-bold text-sm text-gray-900 leading-tight">VendorOps</span>
+          <span className="text-[10px] text-gray-400 font-semibold">{currentCompany === 'ALL' ? 'EV7 & GI' : currentCompany}</span>
+        </div>
       </div>
+
+      {/* Desktop spacer to push controls to the right */}
+      <div className="hidden lg:block flex-1" />
 
       {/* Control Center & Role Context Switcher */}
       <div className="flex items-center gap-3 shrink-0">
@@ -238,9 +209,11 @@ export const Header: React.FC = () => {
             >
               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: activeCompanyOption.dot }} />
               <span className="truncate">
-                {currentBranchId && currentCompany !== 'ALL'
-                  ? branches.find(b => b.id === currentBranchId)?.name || activeCompanyOption.label
-                  : activeCompanyOption.label
+                {currentCompany === 'EV7'
+                  ? 'EV7'
+                  : currentBranchId && currentCompany !== 'ALL'
+                    ? branches.find(b => b.id === currentBranchId)?.name || activeCompanyOption.label
+                    : activeCompanyOption.label
                 }
               </span>
               <ChevronDown className={`w-3.5 h-3.5 text-white/70 shrink-0 transition-transform duration-200 ${isCompanyOpen ? 'rotate-180' : ''}`} />

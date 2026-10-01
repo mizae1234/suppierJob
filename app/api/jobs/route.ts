@@ -214,7 +214,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { jobType, companyId, branchId, supplierId, requestedBy, requesterPosition, requesterPhone } = body;
+    let { jobType, companyId, branchId, supplierId, requestedBy, requesterPosition, requesterPhone } = body;
+
+    // Auto-resolve branch if missing (e.g. EV7 unified company with no sub-branches)
+    if (!branchId && companyId) {
+      const primaryBranch = await prisma.branch.findFirst({ where: { companyId } });
+      if (primaryBranch) {
+        branchId = primaryBranch.id;
+      }
+    }
 
     // Build requester snapshot — always fetch fresh profile from DB for accuracy
     const dbUser = await prisma.user.findUnique({

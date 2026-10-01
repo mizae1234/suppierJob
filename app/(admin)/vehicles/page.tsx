@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import TagSearch from '@/components/ui/TagSearch';
 import { Vehicle, Job } from '@/types';
@@ -13,15 +12,15 @@ import {
   Filter, 
   MapPin, 
   Building2, 
-  Sparkles, 
-  Truck, 
   History, 
   CheckCircle2, 
   Clock, 
   X,
   Gauge,
-  ArrowRight
+  ArrowRight,
+  FileSpreadsheet
 } from 'lucide-react';
+import VehicleImportModal from '@/components/vehicles/VehicleImportModal';
 
 export default function VehicleStockPage() {
   const { 
@@ -37,6 +36,7 @@ export default function VehicleStockPage() {
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   // Filtered vehicles
   const displayedVehicles = useMemo(() => {
@@ -93,10 +93,19 @@ export default function VehicleStockPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-[#0f5238]">
             รถในระบบทั้งหมด {displayedVehicles.length} คัน
           </span>
+          {currentRole !== 'SUPPLIER' && (
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#0f5238] text-white hover:bg-[#0a3d28] text-xs font-bold shadow-md transition-all cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>นำเข้ารถ (Excel)</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -113,17 +122,21 @@ export default function VehicleStockPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
-          {/* Branch Filter */}
-          <select
-            value={selectedBranchFilter}
-            onChange={(e) => setSelectedBranchFilter(e.target.value)}
-            className="h-10 px-3 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
-          >
-            <option value="ALL">ทุกสาขา</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
+          {/* Branch Filter - Only show if not EV7 */}
+          {currentCompany !== 'EV7' && (
+            <select
+              value={selectedBranchFilter}
+              onChange={(e) => setSelectedBranchFilter(e.target.value)}
+              className="h-10 px-3 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
+            >
+              <option value="ALL">ทุกสาขา {currentCompany === 'GI' ? '(GI Hubs)' : ''}</option>
+              {branches
+                .filter(b => currentCompany === 'ALL' || b.code.startsWith(currentCompany))
+                .map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+            </select>
+          )}
 
           {/* Status Filter */}
           <select
@@ -139,95 +152,132 @@ export default function VehicleStockPage() {
         </div>
       </div>
 
-      {/* Vehicles Grid / Table */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {displayedVehicles.map(vehicle => {
-          const statusConfig = {
-            AVAILABLE: { label: 'พร้อมใช้งาน', bg: 'bg-emerald-100 text-[#0f5238]' },
-            IN_WASH: { label: 'อยู่ระหว่างล้าง', bg: 'bg-blue-100 text-blue-800' },
-            IN_TRANSIT: { label: 'อยู่ระหว่างขนส่ง', bg: 'bg-amber-100 text-amber-800' },
-            MAINTENANCE: { label: 'ซ่อมบำรุง', bg: 'bg-gray-100 text-gray-700' }
-          }[vehicle.status] || { label: vehicle.status, bg: 'bg-gray-100 text-gray-700' };
+      {/* Vehicles Table */}
+      <div className="bg-white rounded-2xl border border-emerald-950/10 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-gray-100 bg-[#f4f9f5] text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+                <th className="py-2.5 px-3 w-10 text-center">#</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">เลขตัวถัง (VIN) / สังกัด</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">ยี่ห้อและรุ่นรถ (Model)</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">สีตัวถัง</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">ทะเบียนรถ</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">เลขไมล์</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">สาขาปัจจุบัน</th>
+                <th className="py-2.5 px-3 whitespace-nowrap">สถานะ</th>
+                <th className="py-2.5 px-3 text-center whitespace-nowrap">ประวัติงาน</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-xs">
+              {displayedVehicles.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <div className="w-10 h-10 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400">
+                        <Car className="w-5 h-5" />
+                      </div>
+                      <p className="text-gray-500 font-medium">ไม่พบข้อมูลรถยนต์ที่ตรงกับเงื่อนไขการค้นหา</p>
+                      <p className="text-[11px] text-gray-400">ลองปรับเปลี่ยนคำค้นหา หรือตัวกรองสาขา/สถานะ</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                displayedVehicles.map((vehicle, idx) => {
+                  const statusConfig = {
+                    AVAILABLE: { label: 'พร้อมใช้งาน', bg: 'bg-emerald-50 text-[#0f5238] border border-emerald-200' },
+                    IN_WASH: { label: 'อยู่ระหว่างล้าง', bg: 'bg-blue-50 text-blue-800 border border-blue-200' },
+                    IN_TRANSIT: { label: 'อยู่ระหว่างขนส่ง', bg: 'bg-amber-50 text-amber-800 border border-amber-200' },
+                    MAINTENANCE: { label: 'ซ่อมบำรุง', bg: 'bg-gray-100 text-gray-700 border border-gray-200' }
+                  }[vehicle.status] || { label: vehicle.status, bg: 'bg-gray-100 text-gray-700 border border-gray-200' };
 
-          return (
-            <div
-              key={vehicle.vin}
-              className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-4"
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#0f5238] font-bold text-[10px]">
-                    {vehicle.companyCode}
-                  </span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${statusConfig.bg}`}>
-                    {statusConfig.label}
-                  </span>
-                </div>
-
-                <h3 className="text-base font-bold text-gray-900 mt-2">
-                  {vehicle.model}
-                </h3>
-                <p className="font-mono text-xs font-bold text-[#0f5238] mt-0.5 tracking-tight">
-                  {vehicle.vin}
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-600">
-                  <div>
-                    <span className="text-gray-400 text-[11px]">สีตัวถัง:</span>
-                    <p className="font-medium text-gray-800">{vehicle.color}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 text-[11px]">ทะเบียน:</span>
-                    <p className="font-medium text-gray-800">{vehicle.licensePlate || 'ป้ายแดง'}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 text-[11px]">ประเภทรถ:</span>
-                    <p className="font-medium text-gray-800">{vehicle.vehicleType}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 text-[11px]">เลขไมล์:</span>
-                    <p className="font-medium text-gray-800">{vehicle.mileage?.toLocaleString() || '-'} กม.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-600 bg-[#f4f9f5] p-2 rounded-xl">
-                  <MapPin className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                  <span className="truncate">{vehicle.currentBranchName}</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <button
-                  onClick={() => setSelectedVehicle(vehicle)}
-                  className="flex items-center gap-1 text-xs font-bold text-[#0f5238] hover:underline"
-                >
-                  <History className="w-3.5 h-3.5" />
-                  <span>ดูประวัติงานของ VIN นี้</span>
-                </button>
-
-                {/* Quick actions if vehicle in current branch */}
-                {vehicle.currentBranchId === currentBranchId && vehicle.status === 'AVAILABLE' && (
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      href={`/jobs/create-car-wash`}
-                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0f5238]"
-                      title="สั่งล้างรถ"
+                  return (
+                    <tr 
+                      key={vehicle.vin} 
+                      className="hover:bg-[#fbfdfc] transition-colors group"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
-                    </Link>
-                    <Link
-                      href={`/jobs/create-vehicle-slide`}
-                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-[#0f5238]"
-                      title="ขอรถสไลด์"
-                    >
-                      <Truck className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+                      <td className="py-2 px-3 text-center text-gray-400 font-mono text-[11px]">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#0f5238] font-bold text-[10px] border border-emerald-200/60 shrink-0">
+                            {vehicle.companyCode}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedVehicle(vehicle)}
+                            className="font-mono font-bold text-gray-900 group-hover:text-[#0f5238] hover:underline text-left cursor-pointer"
+                            title="คลิกเพื่อดูประวัติงาน"
+                          >
+                            {vehicle.vin}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="font-semibold text-gray-900">{vehicle.model}</span>
+                          <span className="text-[10px] text-gray-400 font-medium">({vehicle.vehicleType})</span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 text-[11px] font-medium whitespace-nowrap">
+                          {vehicle.color}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        {vehicle.licensePlate ? (
+                          <span className="font-semibold text-gray-800 px-2 py-0.5 rounded bg-gray-100 text-[11px] border border-gray-200/70 whitespace-nowrap">
+                            {vehicle.licensePlate}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 text-[11px] italic">ป้ายแดง</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 font-mono font-medium text-gray-700 whitespace-nowrap">
+                        {vehicle.mileage !== undefined && vehicle.mileage !== null 
+                          ? `${vehicle.mileage.toLocaleString()} กม.` 
+                          : '-'}
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1 text-gray-700 max-w-[220px]">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                          <span className="truncate text-xs" title={vehicle.currentBranchName}>
+                            {vehicle.currentBranchName || '-'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${statusConfig.bg}`}>
+                          {statusConfig.label}
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 whitespace-nowrap text-center">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVehicle(vehicle)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:border-emerald-600 hover:bg-emerald-50 text-[#0f5238] font-semibold text-[11px] transition-all cursor-pointer shadow-2xs group-hover:border-emerald-300"
+                          title="ดูประวัติงานของ VIN นี้"
+                        >
+                          <History className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>ดูประวัติ</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Table Footer info */}
+        {displayedVehicles.length > 0 && (
+          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-gray-500">
+            <span>แสดงผล <strong>{displayedVehicles.length}</strong> จากทั้งหมด <strong>{vehicles.length}</strong> คัน</span>
+            <span>คลิกที่เลข VIN หรือปุ่ม &quot;ประวัติ&quot; เพื่อตรวจสอบประวัติงานย้อนหลัง</span>
+          </div>
+        )}
       </div>
 
       {/* VIN History Modal Drawer */}
@@ -320,6 +370,12 @@ export default function VehicleStockPage() {
           </div>
         </div>
       )}
+
+      {/* Import Vehicles Modal */}
+      <VehicleImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+      />
     </div>
   );
 }

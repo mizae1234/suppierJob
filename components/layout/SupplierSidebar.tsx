@@ -165,7 +165,11 @@ export const SupplierSidebar: React.FC = () => {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-gray-900 truncate">
-                  {activeBranch ? activeBranch.name : 'ทุกสาขา (All Branches)'}
+                  {currentCompany === 'EV7' || (activeBranch && activeBranch.code.startsWith('EV7'))
+                    ? 'EV7'
+                    : activeBranch
+                      ? activeBranch.name
+                      : 'ทุกสาขา (All Branches)'}
                 </p>
                 <p
                   className="text-[11px] font-medium transition-colors duration-300 truncate mt-0.5 flex items-center gap-1"
@@ -194,10 +198,10 @@ export const SupplierSidebar: React.FC = () => {
               <div className="absolute left-5 right-5 top-full mt-1.5 bg-white rounded-2xl shadow-xl border border-gray-200 py-1.5 z-50 text-gray-800 animate-in fade-in duration-150 max-h-80 overflow-y-auto">
                 <div className="px-3.5 py-1.5 border-b border-gray-100 flex items-center justify-between">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    สาขาที่มีงานของคุณ
+                    บริษัท / สาขา
                   </p>
                   <span className="text-[10px] text-gray-400">
-                    {totalRelevantBranches} สาขา
+                    {totalRelevantBranches} รายการ
                   </span>
                 </div>
 
@@ -227,21 +231,22 @@ export const SupplierSidebar: React.FC = () => {
                   {!currentBranchId && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
                 </button>
 
-                {/* EV7 Branches */}
+                {/* EV7 (No sub-branches) */}
                 {ev7Branches.length > 0 && (
                   <div>
                     <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#0f5238]" />
-                      <span>สาขา EV7</span>
+                      <span>EV7</span>
                     </div>
-                    {ev7Branches.map((branch) => {
-                      const isSelected = currentBranchId === branch.id;
+                    {(() => {
+                      const ev7Branch = ev7Branches[0];
+                      const isSelected = currentCompany === 'EV7' && (!currentBranchId || currentBranchId === ev7Branch.id);
                       return (
                         <button
-                          key={branch.id}
+                          key={ev7Branch.id}
                           type="button"
                           onClick={() => {
-                            setCurrentBranchId(branch.id);
+                            setCurrentBranchId(ev7Branch.id);
                             setCurrentCompany('EV7');
                             setIsBranchDropdownOpen(false);
                           }}
@@ -252,15 +257,15 @@ export const SupplierSidebar: React.FC = () => {
                           }`}
                         >
                           <div className="min-w-0 pr-2">
-                            <p className="leading-tight truncate">{branch.name}</p>
-                            <p className="text-[10px] text-gray-400 font-normal font-mono truncate">
-                              {branch.code}
+                            <p className="leading-tight truncate">EV7</p>
+                            <p className="text-[10px] text-gray-400 font-normal truncate">
+                              งานทั้งหมดของ EV7
                             </p>
                           </div>
                           {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
                         </button>
                       );
-                    })}
+                    })()}
                   </div>
                 )}
 
