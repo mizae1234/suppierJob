@@ -93,9 +93,19 @@ export const SupplierSidebar: React.FC = () => {
     router.push('/');
   };
 
-  // Group branches by company
-  const ev7Branches = branches.filter(b => b.code.startsWith('EV7'));
-  const giBranches = branches.filter(b => b.code.startsWith('GI'));
+  // Filter branches to only those that have jobs for this supplier
+  const supplierBranchIds = useMemo(() => {
+    const sId = activeSupplier?.id || user?.supplierId;
+    
+    // Always filter: show only branches that have actual supplier jobs
+    const relevantJobs = (isAllSupplier || !sId) ? jobs : jobs.filter(j => j.supplierId === sId);
+    return new Set(relevantJobs.map(j => j.branchId));
+  }, [jobs, activeSupplier, user, isAllSupplier]);
+
+  // Group branches by company — only those with jobs
+  const ev7Branches = branches.filter(b => b.code.startsWith('EV7') && supplierBranchIds.has(b.id));
+  const giBranches = branches.filter(b => b.code.startsWith('GI') && supplierBranchIds.has(b.id));
+  const totalRelevantBranches = ev7Branches.length + giBranches.length;
 
   const containerClasses =
     'fixed left-0 top-0 h-full w-72 bg-white border-r shadow-[0_4px_24px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between select-none print:hidden';
@@ -184,10 +194,10 @@ export const SupplierSidebar: React.FC = () => {
               <div className="absolute left-5 right-5 top-full mt-1.5 bg-white rounded-2xl shadow-xl border border-gray-200 py-1.5 z-50 text-gray-800 animate-in fade-in duration-150 max-h-80 overflow-y-auto">
                 <div className="px-3.5 py-1.5 border-b border-gray-100 flex items-center justify-between">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    เลือกดูงานตามสาขา
+                    สาขาที่มีงานของคุณ
                   </p>
                   <span className="text-[10px] text-gray-400">
-                    {branches.length} สาขา
+                    {totalRelevantBranches} สาขา
                   </span>
                 </div>
 
@@ -288,6 +298,14 @@ export const SupplierSidebar: React.FC = () => {
                         </button>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Empty state when supplier has no jobs yet */}
+                {!isAllSupplier && totalRelevantBranches === 0 && (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-xs text-gray-400">ยังไม่มีสาขาที่สั่งงานมาให้คุณ</p>
+                    <p className="text-[10px] text-gray-300 mt-1">เมื่อมีสาขาสั่งงาน จะแสดงที่นี่</p>
                   </div>
                 )}
 

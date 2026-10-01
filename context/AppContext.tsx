@@ -92,6 +92,7 @@ interface AppContextType {
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
   updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<void>;
+  updateCarWashItemStatus: (jobId: string, itemId: string, status: 'PENDING' | 'COMPLETED' | 'REJECTED', remarks?: string) => Promise<{ completed: number; total: number; allCompleted: boolean } | null>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
@@ -301,6 +302,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // ─── Action: Update CarWashItem Status (per-VIN) ─
+  const updateCarWashItemStatus = async (
+    jobId: string,
+    itemId: string,
+    status: 'PENDING' | 'COMPLETED' | 'REJECTED',
+    remarks?: string
+  ): Promise<{ completed: number; total: number; allCompleted: boolean } | null> => {
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/items/${itemId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, remarks }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        return data.progress;
+      }
+    } catch (e) {
+      console.error('Update car wash item status failed:', e);
+    }
+    return null;
+  };
+
   // ─── Action: Add Job Evidence (via API) ─────────
   const addJobEvidence = async (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => {
     try {
@@ -384,6 +409,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createCarWashJob,
         createVehicleSlideJob,
         updateJobStatus,
+        updateCarWashItemStatus,
         addJobEvidence,
         createInvoice,
         refreshData,

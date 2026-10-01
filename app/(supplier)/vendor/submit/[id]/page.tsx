@@ -13,21 +13,29 @@ import {
   ImagePlus,
   Sparkles,
   Truck,
+  Car,
+  Hash,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SupplierSubmitPage() {
-  const { jobs, addJobEvidence, updateJobStatus } = useApp();
+  const { jobs, addJobEvidence, updateJobStatus, updateCarWashItemStatus } = useApp();
   const theme = useTheme();
   const router = useRouter();
   const params = useParams();
   const jobId = params.id as string;
+  const { showToast } = useToast();
 
   const job = useMemo(() => jobs.find(j => j.id === jobId), [jobs, jobId]);
 
   const [caption, setCaption] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Per-item submission tracking
+  const [submittingItemId, setSubmittingItemId] = useState<string | null>(null);
+  const [completedItems, setCompletedItems] = useState<Set<string>>(new Set());
 
   if (!job) {
     return (
@@ -40,21 +48,67 @@ export default function SupplierSubmitPage() {
     );
   }
 
-  const { showToast } = useToast();
+  const isCarWash = job.jobType === 'CAR_WASH';
+  const pendingItems = job.carWashItems?.filter(i => i.status === 'PENDING') || [];
+  const completedItemsList = job.carWashItems?.filter(i => i.status === 'COMPLETED') || [];
+  const allItemsCompleted = isCarWash && pendingItems.length === 0 && (job.carWashItems?.length || 0) > 0;
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
+  // Handle per-item submit
+  const handleSubmitItem = async (itemId: string, vin: string) => {
+    setSubmittingItemId(itemId);
     try {
-      // Add evidence
+      // Add evidence for this specific VIN
       await addJobEvidence(job.id, {
         photoUrl: '/evidence/completion-photo.jpg',
-        caption: caption || 'งานเสร็จเรียบร้อย',
+        caption: caption || `ล้างรถเสร็จเรียบร้อย — ${vin}`,
         evidenceType: 'AFTER',
-        vin: job.vin || job.carWashItems?.[0]?.vin,
+        vin,
       });
 
-      // Update status to WAITING_APPROVAL
-      await updateJobStatus(job.id, 'WAITING_APPROVAL');
+      // Update item status
+      const progress = await updateCarWashItemStatus(job.id, itemId, 'COMPLETED', caption || undefined);
+
+      setCompletedItems(prev => new Set(prev).add(itemId));
+
+      if (progress?.allCompleted) {
+        showToast(`🎉 ส่งงานครบทุกคันแล้ว! ใบงาน ${job.jobNumber} รอสาขาตรวจรับ`, 'success');
+        setSubmitted(true);
+      } else if (progress) {
+        showToast(`✅ ส่งงานรถคัน ${vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total})`, 'success');
+      }
+    } catch (e) {
+      showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
+    } finally {
+      setSubmittingItemId(null);
+    }
+  };
+
+  // Handle whole-job submit (for Vehicle Slide or submit-all)
+  const handleSubmitAll = async () => {
+    setIsSubmitting(true);
+    try {
+      if (isCarWash && job.carWashItems) {
+        // Submit all pending items
+        for (const item of pendingItems) {
+          await addJobEvidence(job.id, {
+            photoUrl: '/evidence/completion-photo.jpg',
+            caption: caption || `ล้างรถเสร็จเรียบร้อย — ${item.vin}`,
+            evidenceType: 'AFTER',
+            vin: item.vin,
+          });
+          await updateCarWashItemStatus(job.id, item.id, 'COMPLETED', caption || undefined);
+        }
+        showToast(`🎉 ส่งงานครบทุกคันแล้ว! ใบงาน ${job.jobNumber} รอสาขาตรวจรับ`, 'success');
+      } else {
+        // Vehicle Slide — original flow
+        await addJobEvidence(job.id, {
+          photoUrl: '/evidence/completion-photo.jpg',
+          caption: caption || 'งานเสร็จเรียบร้อย',
+          evidenceType: 'AFTER',
+          vin: job.vin,
+        });
+        await updateJobStatus(job.id, 'WAITING_APPROVAL');
+      }
       setSubmitted(true);
     } catch (error) {
       showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
@@ -63,7 +117,7 @@ export default function SupplierSubmitPage() {
     }
   };
 
-  if (submitted) {
+  if (submitted || allItemsCompleted) {
     return (
       <div className="text-center py-12">
         <div
@@ -74,7 +128,10 @@ export default function SupplierSubmitPage() {
         </div>
         <h2 className="text-xl font-bold text-gray-900 mb-2">ส่งงานเรียบร้อย! 🎉</h2>
         <p className="text-sm text-gray-500 mb-6">
-          รอสาขาตรวจรับ — คุณจะได้รับแจ้งเตือนเมื่อมีการอนุมัติ
+          {isCarWash
+            ? `ส่งงานล้างรถครบทั้ง ${job.carWashItems?.length || 0} คันแล้ว — รอสาขาตรวจรับ`
+            : 'รอสาขาตรวจรับ — คุณจะได้รับแจ้งเตือนเมื่อมีการอนุมัติ'
+          }
         </p>
         <Link
           href="/vendor/jobs"
@@ -102,7 +159,7 @@ export default function SupplierSubmitPage() {
       <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center">
-            {job.jobType === 'CAR_WASH'
+            {isCarWash
               ? <Sparkles className="w-5 h-5 text-blue-500" />
               : <Truck className="w-5 h-5 text-purple-500" />
             }
@@ -110,27 +167,121 @@ export default function SupplierSubmitPage() {
           <div>
             <p className="text-base font-bold text-gray-900 font-mono">{job.jobNumber}</p>
             <p className="text-xs text-gray-500">
-              {job.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'} • {job.companyCode} • {job.branchName}
+              {isCarWash ? 'ล้างรถ' : 'รถสไลด์'} • {job.companyCode} • {job.branchName}
             </p>
           </div>
         </div>
 
-        {/* VIN List */}
-        {job.carWashItems && (
+        {/* Progress Bar for Car Wash */}
+        {isCarWash && job.carWashItems && (
           <div className="mb-4">
-            <p className="text-xs font-semibold text-gray-700 mb-2">รถที่ต้องล้าง:</p>
-            <div className="flex flex-col gap-1.5">
-              {job.carWashItems.map((item, idx) => (
-                <div key={idx} className="px-3 py-2 rounded-lg bg-gray-50 flex items-center justify-between">
-                  <span className="text-xs font-mono text-gray-900">{item.vin}</span>
-                  <span className="text-[10px] text-gray-500">{item.washType}</span>
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-700">ความคืบหน้า</p>
+              <span className="text-xs font-bold" style={{ color: theme.primary }}>
+                {completedItemsList.length}/{job.carWashItems.length} คัน
+              </span>
+            </div>
+            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${(completedItemsList.length / job.carWashItems.length) * 100}%`,
+                  backgroundColor: theme.primary,
+                }}
+              />
             </div>
           </div>
         )}
 
-        {job.vin && (
+        {/* Car Wash Items — Per-VIN Cards */}
+        {isCarWash && job.carWashItems && (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-xs font-semibold text-gray-700">รถที่ต้องล้าง:</p>
+            {job.carWashItems.map((item) => {
+              const isItemCompleted = item.status === 'COMPLETED' || completedItems.has(item.id);
+              const isItemSubmitting = submittingItemId === item.id;
+
+              return (
+                <div
+                  key={item.id}
+                  className={`px-3.5 py-3 rounded-xl border transition-all ${
+                    isItemCompleted
+                      ? 'bg-emerald-50/50 border-emerald-200/60'
+                      : 'bg-white border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        isItemCompleted
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {isItemCompleted ? (
+                          <CheckCircle2 className="w-4 h-4" />
+                        ) : (
+                          <Car className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono font-bold text-gray-900">{item.vin}</span>
+                          <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${
+                            item.washType === 'DEEP_CLEAN'
+                              ? 'bg-blue-50 text-blue-700'
+                              : item.washType === 'POLISH'
+                              ? 'bg-purple-50 text-purple-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {item.washType}
+                          </span>
+                        </div>
+                        {item.vehicleModel && (
+                          <p className="text-[10px] text-gray-500 truncate">
+                            {item.vehicleModel} {item.vehicleColor && `• ${item.vehicleColor}`}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-bold font-mono" style={{ color: theme.primary }}>
+                        ฿{item.unitPrice.toLocaleString()}
+                      </span>
+
+                      {!isItemCompleted && (
+                        <button
+                          type="button"
+                          onClick={() => handleSubmitItem(item.id, item.vin)}
+                          disabled={isItemSubmitting}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-[11px] font-bold transition-all cursor-pointer hover:opacity-90 active:scale-95 disabled:opacity-50 shadow-sm"
+                          style={{ backgroundColor: theme.primary }}
+                        >
+                          {isItemSubmitting ? (
+                            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                          <span>{isItemSubmitting ? 'ส่ง...' : 'ส่งคันนี้'}</span>
+                        </button>
+                      )}
+
+                      {isItemCompleted && (
+                        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-[11px] font-bold">
+                          <CheckCircle2 className="w-3 h-3" />
+                          ส่งแล้ว
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Vehicle Slide VIN */}
+        {!isCarWash && job.vin && (
           <div className="mb-4">
             <p className="text-xs font-semibold text-gray-700 mb-2">VIN:</p>
             <div className="px-3 py-2 rounded-lg bg-gray-50">
@@ -169,25 +320,30 @@ export default function SupplierSubmitPage() {
           />
         </div>
 
-        {/* Submit Button */}
-        <button
-          onClick={handleSubmit}
-          disabled={isSubmitting}
-          className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold transition-all disabled:opacity-50"
-          style={{ backgroundColor: theme.primary }}
-        >
-          {isSubmitting ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              กำลังส่ง...
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              ส่งงานเพื่อตรวจรับ
-            </>
-          )}
-        </button>
+        {/* Submit All Button — for Vehicle Slide, or submit remaining Car Wash items */}
+        {(!isCarWash || pendingItems.length > 0) && (
+          <button
+            onClick={handleSubmitAll}
+            disabled={isSubmitting}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold transition-all disabled:opacity-50"
+            style={{ backgroundColor: theme.primary }}
+          >
+            {isSubmitting ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                กำลังส่ง...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                {isCarWash
+                  ? `ส่งงานที่เหลือทั้งหมด (${pendingItems.length} คัน)`
+                  : 'ส่งงานเพื่อตรวจรับ'
+                }
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
-import { Job, JobStatus } from '@/types';
+import { Job, JobStatus, CarWashItem } from '@/types';
 import {
   ClipboardList,
   Clock,
@@ -22,12 +22,42 @@ import {
   ArrowRight,
   AlertTriangle,
   X,
+  ChevronRight,
+  Car,
+  Hash,
+  Send,
 } from 'lucide-react';
 
 type TabKey = 'progress' | 'waiting' | 'approved' | 'rejected';
 
+// ─── Item-level virtual card type for Supplier display ──
+interface SupplierItemCard {
+  // Item-level data
+  itemId: string;
+  vin: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  licensePlate?: string;
+  washType: string;
+  unitPrice: number;
+  itemStatus: 'PENDING' | 'COMPLETED' | 'REJECTED';
+  itemRemarks?: string;
+  actualWashDate: string;
+  // Parent job reference
+  jobId: string;
+  jobNumber: string;
+  jobStatus: JobStatus;
+  branchName: string;
+  supplierName: string;
+  companyCode: string;
+  supplierId: string;
+  totalItemsInJob: number;
+  completedItemsInJob: number;
+  job: Job; // Full reference
+}
+
 function SupplierJobsPageContent() {
-  const { jobs, updateJobStatus, addJobEvidence, activeSupplier, currentSupplierId, currentBranchId, activeBranch } = useApp();
+  const { jobs, updateJobStatus, updateCarWashItemStatus, addJobEvidence, activeSupplier, currentSupplierId, currentBranchId, activeBranch } = useApp();
   const { user } = useAuth();
   const { showToast } = useToast();
   const theme = useTheme();
@@ -46,6 +76,9 @@ function SupplierJobsPageContent() {
   const [rejectReason, setRejectReason] = useState<string>('');
   const [isSubmittingReject, setIsSubmittingReject] = useState<boolean>(false);
 
+  // Item submit state
+  const [submittingItemId, setSubmittingItemId] = useState<string | null>(null);
+
   const presetReasons = [
     'คิวงานเต็ม / ช่างไม่พอ',
     'เกินเวลาทำการ',
@@ -54,6 +87,7 @@ function SupplierJobsPageContent() {
     'รถไม่อยู่ในจุดนัดหมาย',
   ];
 
+  // ─── Filter jobs by supplier ──
   const myJobs = useMemo(() => {
     let list = isAll ? jobs : jobs.filter(j => j.supplierId === supplierId);
     if (currentBranchId) {
@@ -62,36 +96,170 @@ function SupplierJobsPageContent() {
     return list;
   }, [jobs, supplierId, isAll, currentBranchId]);
 
-  const tabConfig: { key: TabKey; label: string; status: JobStatus[]; icon: React.ElementType; color: string }[] = [
-    { key: 'progress', label: 'งานที่ต้องทำ', status: ['IN_PROGRESS', 'PENDING_SUPPLIER'], icon: Clock, color: '#f59e0b' },
-    { key: 'waiting', label: 'รอตรวจรับ', status: ['WAITING_APPROVAL'], icon: AlertCircle, color: '#ef4444' },
-    { key: 'approved', label: 'ผ่านแล้ว', status: ['APPROVED', 'INVOICED'], icon: CheckCircle2, color: theme.primary },
-    { key: 'rejected', label: 'ปฏิเสธ/ตีกลับ', status: ['CANCELLED', 'REJECTED'], icon: XCircle, color: '#dc2626' },
+  // ─── Flatten CAR_WASH jobs into item-level cards ──
+  const allItemCards: SupplierItemCard[] = useMemo(() => {
+    const cards: SupplierItemCard[] = [];
+
+    myJobs.forEach(job => {
+      if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+        const completedCount = job.carWashItems.filter(i => i.status === 'COMPLETED').length;
+        
+        job.carWashItems.forEach(item => {
+          cards.push({
+            itemId: item.id,
+            vin: item.vin,
+            vehicleModel: item.vehicleModel,
+            vehicleColor: item.vehicleColor,
+            licensePlate: item.licensePlate,
+            washType: item.washType,
+            unitPrice: item.unitPrice,
+            itemStatus: item.status as 'PENDING' | 'COMPLETED' | 'REJECTED',
+            itemRemarks: item.remarks,
+            actualWashDate: item.actualWashDate,
+            jobId: job.id,
+            jobNumber: job.jobNumber,
+            jobStatus: job.status,
+            branchName: job.branchName,
+            supplierName: job.supplierName,
+            companyCode: job.companyCode,
+            supplierId: job.supplierId,
+            totalItemsInJob: job.carWashItems!.length,
+            completedItemsInJob: completedCount,
+            job,
+          });
+        });
+      }
+    });
+
+    return cards;
+  }, [myJobs]);
+
+  // ─── Keep Vehicle Slide jobs as-is ──
+  const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE'), [myJobs]);
+
+  const tabConfig: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
+    { key: 'progress', label: 'งานที่ต้องทำ', icon: Clock, color: '#f59e0b' },
+    { key: 'waiting', label: 'รอตรวจรับ', icon: AlertCircle, color: '#ef4444' },
+    { key: 'approved', label: 'ผ่านแล้ว', icon: CheckCircle2, color: theme.primary },
+    { key: 'rejected', label: 'ปฏิเสธ/ตีกลับ', icon: XCircle, color: '#dc2626' },
   ];
+
+  // ─── Tab Filtering Logic ──
+  // For item cards: filter based on item-level status + job status
+  // For slide jobs: filter based on job status (unchanged)
+  const getTabItems = (tabKey: TabKey) => {
+    let items: SupplierItemCard[] = [];
+    let slides: Job[] = [];
+
+    switch (tabKey) {
+      case 'progress':
+        // Items that are PENDING and belong to active jobs
+        items = allItemCards.filter(c =>
+          c.itemStatus === 'PENDING' &&
+          ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(c.jobStatus)
+        );
+        slides = slideJobs.filter(j => ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(j.status));
+        break;
+      case 'waiting':
+        // Items that are COMPLETED (submitted by supplier) — waiting branch approval
+        items = allItemCards.filter(c =>
+          c.itemStatus === 'COMPLETED' &&
+          ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(c.jobStatus)
+        );
+        slides = slideJobs.filter(j => j.status === 'WAITING_APPROVAL');
+        break;
+      case 'approved':
+        // Items that are COMPLETED and parent job is APPROVED/INVOICED
+        items = allItemCards.filter(c =>
+          c.itemStatus === 'COMPLETED' &&
+          ['APPROVED', 'INVOICED'].includes(c.jobStatus)
+        );
+        slides = slideJobs.filter(j => ['APPROVED', 'INVOICED'].includes(j.status));
+        break;
+      case 'rejected':
+        // Items that are REJECTED, or belong to CANCELLED/REJECTED jobs
+        items = allItemCards.filter(c =>
+          c.itemStatus === 'REJECTED' ||
+          ['CANCELLED', 'REJECTED'].includes(c.jobStatus)
+        );
+        slides = slideJobs.filter(j => ['CANCELLED', 'REJECTED'].includes(j.status));
+        break;
+    }
+
+    return { items, slides };
+  };
+
+  const currentTabData = getTabItems(activeTab);
+
+  // Tab counts
+  const getTabCount = (tabKey: TabKey) => {
+    const data = getTabItems(tabKey);
+    return data.items.length + data.slides.length;
+  };
 
   const searchQuery = (searchParams.get('q') || '').trim().toLowerCase();
 
-  const filteredJobs = useMemo(() => {
-    const config = tabConfig.find(t => t.key === activeTab);
-    if (!config) return [];
-    let list = myJobs.filter(j => config.status.includes(j.status));
-    if (searchQuery) {
-      const terms = searchQuery.split(/[,\s]+/).filter(t => t.length > 0);
-      if (terms.length > 0) {
-        list = list.filter(j =>
-          terms.some(q =>
-            j.jobNumber.toLowerCase().includes(q) ||
-            (j.vehicle?.licensePlate && j.vehicle.licensePlate.toLowerCase().includes(q)) ||
-            (j.carWashItems && j.carWashItems.some(it => (it.licensePlate && it.licensePlate.toLowerCase().includes(q)) || (it.vin && it.vin.toLowerCase().includes(q)))) ||
-            (j.vin && j.vin.toLowerCase().includes(q)) ||
-            (j.branchName && j.branchName.toLowerCase().includes(q))
-          )
-        );
-      }
-    }
-    return list;
-  }, [myJobs, activeTab, searchQuery]);
+  // Apply search filter
+  const filteredItems = useMemo(() => {
+    if (!searchQuery) return currentTabData.items;
+    const terms = searchQuery.split(/[,\s]+/).filter(t => t.length > 0);
+    if (terms.length === 0) return currentTabData.items;
 
+    return currentTabData.items.filter(card =>
+      terms.some(q =>
+        card.vin.toLowerCase().includes(q) ||
+        card.jobNumber.toLowerCase().includes(q) ||
+        (card.licensePlate && card.licensePlate.toLowerCase().includes(q)) ||
+        (card.vehicleModel && card.vehicleModel.toLowerCase().includes(q)) ||
+        card.branchName.toLowerCase().includes(q)
+      )
+    );
+  }, [currentTabData.items, searchQuery]);
+
+  const filteredSlides = useMemo(() => {
+    if (!searchQuery) return currentTabData.slides;
+    const terms = searchQuery.split(/[,\s]+/).filter(t => t.length > 0);
+    if (terms.length === 0) return currentTabData.slides;
+
+    return currentTabData.slides.filter(j =>
+      terms.some(q =>
+        j.jobNumber.toLowerCase().includes(q) ||
+        (j.vin && j.vin.toLowerCase().includes(q)) ||
+        (j.branchName && j.branchName.toLowerCase().includes(q))
+      )
+    );
+  }, [currentTabData.slides, searchQuery]);
+
+  const totalFilteredCount = filteredItems.length + filteredSlides.length;
+
+  // ─── Handle item-level submit (mark COMPLETED) ──
+  const handleSubmitItem = async (card: SupplierItemCard) => {
+    setSubmittingItemId(card.itemId);
+    try {
+      // Add evidence for this specific VIN
+      await addJobEvidence(card.jobId, {
+        photoUrl: '/evidence/completion-photo.jpg',
+        caption: `ล้างรถเสร็จเรียบร้อย — ${card.vin}`,
+        evidenceType: 'AFTER',
+        vin: card.vin,
+      });
+
+      // Update item status to COMPLETED
+      const progress = await updateCarWashItemStatus(card.jobId, card.itemId, 'COMPLETED');
+
+      if (progress?.allCompleted) {
+        showToast(`🎉 ส่งงานรถคัน ${card.vin.slice(-6)} เสร็จ — ใบงาน ${card.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
+      } else if (progress) {
+        showToast(`✅ ส่งงานรถคัน ${card.vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
+      }
+    } catch (e) {
+      showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
+    } finally {
+      setSubmittingItemId(null);
+    }
+  };
+
+  // ─── Handle reject job (entire job) ──
   const handleConfirmReject = async () => {
     if (!rejectingJob) return;
     setIsSubmittingReject(true);
@@ -109,25 +277,309 @@ function SupplierJobsPageContent() {
     }
   };
 
+  // ─── Render item card ──
+  const renderItemCard = (card: SupplierItemCard) => {
+    const isSubmitting = submittingItemId === card.itemId;
+    const isPending = card.itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(card.jobStatus);
+    const isCompleted = card.itemStatus === 'COMPLETED';
+    const isRejected = card.itemStatus === 'REJECTED';
+
+    return (
+      <div
+        key={card.itemId}
+        className={`p-4 rounded-2xl bg-white border shadow-xs transition-all ${
+          isPending
+            ? 'border-amber-200/80 hover:border-amber-300'
+            : isCompleted
+            ? 'border-emerald-200/60'
+            : 'border-red-200/60'
+        }`}
+      >
+        {/* Top Row: Vehicle + Price */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              isPending
+                ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                : isCompleted
+                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                : 'bg-red-50 text-red-600 border border-red-100'
+            }`}>
+              <Car className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-sm font-bold text-gray-900 font-mono">{card.vin.slice(-6)}</p>
+                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                  card.washType === 'DEEP_CLEAN'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-100'
+                    : card.washType === 'POLISH'
+                    ? 'bg-purple-50 text-purple-700 border border-purple-100'
+                    : 'bg-gray-50 text-gray-600 border border-gray-100'
+                }`}>
+                  {card.washType === 'STANDARD' ? 'ล้างปกติ' : card.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : 'ขัดเคลือบ'}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-0.5 truncate max-w-[200px]">
+                {card.vehicleModel || 'รถยนต์'} {card.vehicleColor ? `• ${card.vehicleColor}` : ''}
+                {card.licensePlate && ` • ${card.licensePlate}`}
+              </p>
+            </div>
+          </div>
+          <span className="text-sm font-black font-mono shrink-0" style={{ color: theme.primary }}>
+            ฿{card.unitPrice.toLocaleString()}
+          </span>
+        </div>
+
+        {/* Job Reference Badge + Progress */}
+        <div className="flex items-center justify-between mb-3 gap-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0">
+            <Hash className="w-3 h-3 shrink-0 text-gray-400" />
+            <span className="font-mono font-semibold text-gray-700 shrink-0">{card.jobNumber}</span>
+            <span>•</span>
+            <span className="truncate">{card.branchName}</span>
+            {isAll && (
+              <span className="ml-0.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+                🏢 {card.supplierName}
+              </span>
+            )}
+          </div>
+          {/* Mini progress bar */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${card.totalItemsInJob > 0 ? (card.completedItemsInJob / card.totalItemsInJob) * 100 : 0}%`,
+                  backgroundColor: theme.primary,
+                }}
+              />
+            </div>
+            <span className="text-[10px] font-bold text-gray-500">
+              {card.completedItemsInJob}/{card.totalItemsInJob}
+            </span>
+          </div>
+        </div>
+
+        {/* Action Row */}
+        <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+          {/* PENDING items: Show submit + reject */}
+          {isPending && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectingJob(card.job);
+                  setRejectReason('');
+                }}
+                className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+              >
+                <XCircle className="w-3.5 h-3.5 text-red-500" />
+                <span>ปฏิเสธ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSubmitItem(card)}
+                disabled={isSubmitting}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: theme.primary }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>กำลังส่ง...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>ส่งงานคันนี้</span>
+                  </>
+                )}
+              </button>
+            </>
+          )}
+
+          {/* COMPLETED items waiting approval */}
+          {isCompleted && ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(card.jobStatus) && (
+            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold">
+              <Clock className="w-4 h-4" />
+              <span>ส่งงานคันนี้แล้ว • รอตรวจรับ</span>
+            </div>
+          )}
+
+          {/* APPROVED items */}
+          {isCompleted && ['APPROVED', 'INVOICED'].includes(card.jobStatus) && (
+            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold"
+              style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
+            </div>
+          )}
+
+          {/* REJECTED items */}
+          {isRejected && (
+            <div className="flex-1 flex items-center justify-between gap-2">
+              <span className="text-xs text-red-700 font-medium truncate">
+                ⚠️ สาขาขอให้แก้ไข: {card.itemRemarks || card.job.rejectReason || 'โปรดตรวจสอบ'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleSubmitItem(card)}
+                disabled={isSubmitting}
+                className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
+              >
+                แก้ไข + ส่งใหม่
+              </button>
+            </div>
+          )}
+
+          {/* CANCELLED jobs */}
+          {['CANCELLED'].includes(card.jobStatus) && !isRejected && (
+            <div className="flex-1 flex flex-col gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
+              <div className="flex items-center gap-1.5 text-red-700 font-bold">
+                <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>ปฏิเสธงานนี้แล้ว</span>
+              </div>
+              {card.job.rejectReason && (
+                <span className="text-[11px] text-red-600 truncate">
+                  เหตุผล: {card.job.rejectReason}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Render slide job card (unchanged from original) ──
+  const renderSlideJobCard = (job: Job) => {
+    const cost = getJobTotalCost(job);
+    const isActiveJob = job.status === 'IN_PROGRESS' || job.status === 'PENDING_SUPPLIER';
+
+    return (
+      <div key={job.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-xs transition-all">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600 border border-purple-100">
+              <Truck className="w-4.5 h-4.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-bold text-gray-900 font-mono">{job.jobNumber}</p>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                รถสไลด์ • <span className="font-semibold text-gray-700">{job.companyCode}</span> • {job.branchName}
+              </p>
+            </div>
+          </div>
+          <span className="text-sm font-black font-mono" style={{ color: theme.primary }}>
+            {formatCurrency(cost)}
+          </span>
+        </div>
+
+        {job.vin && (
+          <div className="mb-3">
+            <span className="px-2 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-[11px] text-gray-700 font-mono">
+              🚗 {job.vin}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+          {isActiveJob && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectingJob(job);
+                  setRejectReason('');
+                }}
+                className="flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+              >
+                <XCircle className="w-4 h-4 text-red-500" />
+                <span>ปฏิเสธงาน</span>
+              </button>
+              <Link
+                href={`/vendor/submit/${job.id}`}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs sm:text-sm font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
+                style={{ backgroundColor: theme.primary }}
+              >
+                <Camera className="w-4 h-4" />
+                <span>ส่งงาน + แนบรูป</span>
+              </Link>
+            </>
+          )}
+
+          {job.status === 'CANCELLED' && (
+            <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
+              <div className="flex items-center gap-1.5 text-red-700 font-bold">
+                <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>ปฏิเสธงานนี้แล้ว</span>
+              </div>
+              {job.rejectReason && (
+                <span className="text-[11px] text-red-600 truncate max-w-xs">
+                  เหตุผล: {job.rejectReason}
+                </span>
+              )}
+            </div>
+          )}
+
+          {job.status === 'REJECTED' && (
+            <div className="flex-1 flex items-center justify-between gap-2">
+              <span className="text-xs text-red-700 font-medium truncate">
+                ⚠️ สาขาขอให้แก้ไข: {job.rejectReason || 'โปรดตรวจสอบ'}
+              </span>
+              <Link
+                href={`/vendor/submit/${job.id}`}
+                className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+              >
+                แก้ไข + ส่งใหม่
+              </Link>
+            </div>
+          )}
+
+          {job.status === 'WAITING_APPROVAL' && (
+            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs sm:text-sm font-bold">
+              <Clock className="w-4 h-4" />
+              <span>ส่งงานแล้ว • รอสาขาตรวจรับ...</span>
+            </div>
+          )}
+
+          {['APPROVED', 'INVOICED'].includes(job.status) && (
+            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold"
+              style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">รายการงานของฉัน</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            งานทั้งหมด {myJobs.length} รายการ {activeBranch ? `(${activeBranch.name})` : '(ทุกสาขา)'}
+            งานทั้งหมด {myJobs.length} ใบงาน • {allItemCards.length} รายการรถ {activeBranch ? `(${activeBranch.name})` : '(ทุกสาขา)'}
           </p>
         </div>
         <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
-          {filteredJobs.length} งานในหมวดนี้
+          {totalFilteredCount} รายการในหมวดนี้
         </span>
       </div>
 
-      {/* Tab Bar (Native Mobile Segmented Control) */}
+      {/* Tab Bar */}
       <div className="flex items-center gap-1.5 p-1.5 bg-gray-200/60 backdrop-blur-sm rounded-2xl overflow-x-auto scrollbar-none shadow-inner">
         {tabConfig.map(tab => {
           const Icon = tab.icon;
-          const count = myJobs.filter(j => tab.status.includes(j.status)).length;
+          const count = getTabCount(tab.key);
           const isActive = activeTab === tab.key;
           return (
             <button
@@ -154,8 +606,8 @@ function SupplierJobsPageContent() {
         })}
       </div>
 
-      {/* Job Cards */}
-      {filteredJobs.length === 0 ? (
+      {/* Content */}
+      {totalFilteredCount === 0 ? (
         <div className="text-center py-16 px-4 bg-white/60 rounded-3xl border border-gray-100 shadow-2xs text-gray-400">
           <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-bold text-gray-600">ไม่มีงานในหมวดนี้</p>
@@ -163,152 +615,29 @@ function SupplierJobsPageContent() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {filteredJobs.map(job => {
-            const cost = getJobTotalCost(job);
-            const isWash = job.jobType === 'CAR_WASH';
-            const isActiveJob = job.status === 'IN_PROGRESS' || job.status === 'PENDING_SUPPLIER';
-
-            return (
-              <div
-                key={job.id}
-                className="p-4 rounded-2xl bg-white border border-gray-100 shadow-xs transition-all"
-              >
-                {/* Job Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                      isWash ? 'bg-sky-50 text-sky-600 border border-sky-100' : 'bg-purple-50 text-purple-600 border border-purple-100'
-                    }`}>
-                      {isWash
-                        ? <Sparkles className="w-4.5 h-4.5" />
-                        : <Truck className="w-4.5 h-4.5" />
-                      }
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-bold text-gray-900 font-mono">{job.jobNumber}</p>
-                        {isActiveJob && (
-                          <span className="px-1.5 py-0.2 rounded-sm bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200/50">
-                            เข้าอัตโนมัติ
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        {isWash ? 'ล้างรถ' : 'รถสไลด์'} •{' '}
-                        <span className="font-semibold text-gray-700">{job.companyCode}</span> • {job.branchName}
-                        {isAll && (
-                          <span className="ml-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium">
-                            🏢 {job.supplierName}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-sm font-black font-mono" style={{ color: theme.primary }}>
-                    {formatCurrency(cost)}
-                  </span>
-                </div>
-
-                {/* Job Details */}
-                {isWash && job.carWashItems && (
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    {job.carWashItems.map((item, idx) => (
-                      <span key={idx} className="px-2 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-[11px] text-gray-700 font-mono">
-                        🚗 {item.vin.slice(-6)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {!isWash && job.vin && (
-                  <div className="mb-3">
-                    <span className="px-2 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-[11px] text-gray-700 font-mono">
-                      🚗 {job.vin}
-                    </span>
-                  </div>
-                )}
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-                  {/* Active Jobs: Both PENDING_SUPPLIER & IN_PROGRESS have REJECT button & SUBMIT button */}
-                  {isActiveJob && (
-                    <>
-                      {/* เปลี่ยนจากปุ่มรับงาน เป็นปุ่มปฏิเสธงาน */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRejectingJob(job);
-                          setRejectReason('');
-                        }}
-                        className="flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
-                      >
-                        <XCircle className="w-4 h-4 text-red-500" />
-                        <span>ปฏิเสธงาน</span>
-                      </button>
-
-                      {/* Primary action: Submit Evidence */}
-                      <Link
-                        href={`/vendor/submit/${job.id}`}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs sm:text-sm font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
-                        style={{ backgroundColor: theme.primary }}
-                      >
-                        <Camera className="w-4 h-4" />
-                        <span>ส่งงาน + แนบรูป</span>
-                      </Link>
-                    </>
-                  )}
-
-                  {/* CANCELLED: Job was declined by supplier */}
-                  {job.status === 'CANCELLED' && (
-                    <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
-                      <div className="flex items-center gap-1.5 text-red-700 font-bold">
-                        <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                        <span>ปฏิเสธงานนี้แล้ว</span>
-                      </div>
-                      {job.rejectReason && (
-                        <span className="text-[11px] text-red-600 truncate max-w-xs">
-                          เหตุผล: {job.rejectReason}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* REJECTED: Branch asked for rework */}
-                  {job.status === 'REJECTED' && (
-                    <div className="flex-1 flex items-center justify-between gap-2">
-                      <span className="text-xs text-red-700 font-medium truncate">
-                        ⚠️ สาขาขอให้แก้ไข: {job.rejectReason || 'โปรดตรวจสอบ'}
-                      </span>
-                      <Link
-                        href={`/vendor/submit/${job.id}`}
-                        className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
-                      >
-                        แก้ไข + ส่งใหม่
-                      </Link>
-                    </div>
-                  )}
-
-                  {/* WAITING_APPROVAL */}
-                  {job.status === 'WAITING_APPROVAL' && (
-                    <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs sm:text-sm font-bold">
-                      <Clock className="w-4 h-4" />
-                      <span>ส่งงานแล้ว • รอสาขาตรวจรับ...</span>
-                    </div>
-                  )}
-
-                  {/* APPROVED / INVOICED */}
-                  {['APPROVED', 'INVOICED'].includes(job.status) && (
-                    <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold"
-                      style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
-                    </div>
-                  )}
-                </div>
+          {/* Section Header for Car Wash Items */}
+          {filteredItems.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-1">
+                <Sparkles className="w-4 h-4 text-sky-500" />
+                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">ล้างรถ (รายคัน)</span>
+                <span className="text-[10px] text-gray-400">{filteredItems.length} คัน</span>
               </div>
-            );
-          })}
+              {filteredItems.map(card => renderItemCard(card))}
+            </>
+          )}
+
+          {/* Section Header for Vehicle Slide */}
+          {filteredSlides.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-1 mt-2">
+                <Truck className="w-4 h-4 text-purple-500" />
+                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">รถสไลด์</span>
+                <span className="text-[10px] text-gray-400">{filteredSlides.length} งาน</span>
+              </div>
+              {filteredSlides.map(job => renderSlideJobCard(job))}
+            </>
+          )}
         </div>
       )}
 
@@ -336,7 +665,7 @@ function SupplierJobsPageContent() {
             </div>
 
             <p className="text-xs text-gray-600">
-              เมื่อกดยืนยัน ระบบจะยกเลิกคำสั่งงานและคืนสถานะรถให้สาขาเพื่อจัดสรรใหม่
+              เมื่อกดยืนยัน ระบบจะยกเลิกคำสั่งงานทั้งใบ ({rejectingJob.carWashItems?.length || 1} คัน) และคืนสถานะรถให้สาขาเพื่อจัดสรรใหม่
             </p>
 
             {/* Quick Reason Chips */}
