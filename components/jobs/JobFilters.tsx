@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check } from 'lucide-react';
+import TagSearch from '@/components/ui/TagSearch';
 import { JobType, JobStatus, Supplier } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 
 interface JobFiltersProps {
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
+  searchTags: string[];
+  onSearchTagsChange: (tags: string[]) => void;
   typeFilter: 'ALL' | JobType;
   onTypeFilterChange: (value: 'ALL' | JobType) => void;
   statusFilter: 'ALL' | JobStatus;
@@ -37,8 +38,8 @@ const statusOptions: { value: 'ALL' | JobStatus; label: string; dot?: string }[]
 type FilterKey = 'type' | 'status' | 'supplier';
 
 export const JobFilters: React.FC<JobFiltersProps> = ({
-  searchTerm,
-  onSearchChange,
+  searchTags,
+  onSearchTagsChange,
   typeFilter,
   onTypeFilterChange,
   statusFilter,
@@ -95,15 +96,12 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
   return (
     <div ref={containerRef} className="p-4 rounded-2xl bg-white border shadow-xs flex flex-col gap-3 relative" style={{ borderColor: theme.borderSoft }}>
       {/* Search */}
-      <div className="relative w-full">
-        <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="ค้นหา Job No., VIN, ทะเบียนรถ..."
-          className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 text-xs text-gray-900 focus:outline-none focus:ring-2"
-          style={{ backgroundColor: theme.bgSoft, '--tw-ring-color': theme.primary } as React.CSSProperties}
+      <div className="w-full">
+        <TagSearch
+          tags={searchTags}
+          onTagsChange={onSearchTagsChange}
+          placeholder="ค้นหา Job No., VIN, ทะเบียนรถ... (กด Enter เพื่อเพิ่ม)"
+          accentColor={theme.primary}
         />
       </div>
 

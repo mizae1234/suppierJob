@@ -76,13 +76,18 @@ function SupplierJobsPageContent() {
     if (!config) return [];
     let list = myJobs.filter(j => config.status.includes(j.status));
     if (searchQuery) {
-      list = list.filter(j =>
-        j.jobNumber.toLowerCase().includes(searchQuery) ||
-        (j.vehicle?.licensePlate && j.vehicle.licensePlate.toLowerCase().includes(searchQuery)) ||
-        (j.carWashItems && j.carWashItems.some(it => (it.licensePlate && it.licensePlate.toLowerCase().includes(searchQuery)) || (it.vin && it.vin.toLowerCase().includes(searchQuery)))) ||
-        (j.vin && j.vin.toLowerCase().includes(searchQuery)) ||
-        (j.branchName && j.branchName.toLowerCase().includes(searchQuery))
-      );
+      const terms = searchQuery.split(/[,\s]+/).filter(t => t.length > 0);
+      if (terms.length > 0) {
+        list = list.filter(j =>
+          terms.some(q =>
+            j.jobNumber.toLowerCase().includes(q) ||
+            (j.vehicle?.licensePlate && j.vehicle.licensePlate.toLowerCase().includes(q)) ||
+            (j.carWashItems && j.carWashItems.some(it => (it.licensePlate && it.licensePlate.toLowerCase().includes(q)) || (it.vin && it.vin.toLowerCase().includes(q)))) ||
+            (j.vin && j.vin.toLowerCase().includes(q)) ||
+            (j.branchName && j.branchName.toLowerCase().includes(q))
+          )
+        );
+      }
     }
     return list;
   }, [myJobs, activeTab, searchQuery]);

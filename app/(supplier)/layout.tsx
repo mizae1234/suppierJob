@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
+import TagSearch from '@/components/ui/TagSearch';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -30,7 +31,7 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
   const router = useRouter();
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTags, setSearchTags] = useState<string[]>([]);
 
   const isMaster = user?.role === 'MASTER';
   const isAll = !activeSupplier || currentSupplierId === 'ALL' || !currentSupplierId;
@@ -63,12 +64,12 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
     { label: 'ใบวางบิล', href: '/vendor/invoices', icon: Receipt, badge: readyInvoiceCount },
   ];
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/vendor/jobs?q=${encodeURIComponent(searchQuery.trim())}`);
+  const handleSearchTagsChange = useCallback((tags: string[]) => {
+    setSearchTags(tags);
+    if (tags.length > 0) {
+      router.push(`/vendor/jobs?q=${encodeURIComponent(tags.join(','))}`);
     }
-  };
+  }, [router]);
 
 
 
@@ -103,26 +104,15 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
           </div>
 
           {/* Desktop Only: Search Bar */}
-          <form onSubmit={handleSearchSubmit} className="hidden lg:block relative w-full">
-            <Search
-              className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-300"
-              style={{ color: theme.iconColor, opacity: 0.6 }}
+          <div className="hidden lg:block w-full">
+            <TagSearch
+              variant="header"
+              tags={searchTags}
+              onTagsChange={handleSearchTagsChange}
+              placeholder="ค้นหาเลขที่งาน / ทะเบียนรถ / เลข VIN... (กด Enter เพื่อเพิ่ม)"
+              accentColor={theme.primary}
             />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ค้นหาเลขที่งาน / ทะเบียนรถ / เลข VIN..."
-              className="w-full h-10 pl-10 pr-4 rounded-full border text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:bg-white transition-all shadow-2xs"
-              style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
-              onFocus={(e) => {
-                e.currentTarget.style.boxShadow = `0 0 0 2px ${theme.primary}`;
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.boxShadow = '';
-              }}
-            />
-          </form>
+          </div>
         </div>
 
         {/* Right Side: Master Switcher + Notifications + User Profile */}

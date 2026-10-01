@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { UserRole, CompanyCode } from '@/types';
+import TagSearch from '@/components/ui/TagSearch';
 import { 
-  Search, 
   Bell, 
   User, 
   Building, 
@@ -20,6 +20,47 @@ import {
   Smartphone,
   LogOut
 } from 'lucide-react';
+
+function HeaderSearch({ accentColor }: { accentColor: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+
+  const queryParam = searchParams.get('q') || '';
+  const [searchTags, setSearchTags] = useState<string[]>(() => {
+    return queryParam ? queryParam.split(',').map(s => s.trim()).filter(Boolean) : [];
+  });
+
+  useEffect(() => {
+    const q = searchParams.get('q') || '';
+    if (q) {
+      setSearchTags(q.split(',').map(s => s.trim()).filter(Boolean));
+    } else if (pathname === '/jobs') {
+      setSearchTags([]);
+    }
+  }, [searchParams, pathname]);
+
+  const handleTagsChange = (tags: string[]) => {
+    setSearchTags(tags);
+    if (tags.length > 0) {
+      router.push(`/jobs?q=${encodeURIComponent(tags.join(','))}`);
+    } else {
+      if (pathname === '/jobs') {
+        router.push('/jobs');
+      }
+    }
+  };
+
+  return (
+    <TagSearch
+      variant="header"
+      tags={searchTags}
+      onTagsChange={handleTagsChange}
+      placeholder="ค้นหาเลข VIN / รหัสงาน (Job No.) / ทะเบียนรถ... (กด Enter เพื่อเพิ่ม)"
+      accentColor={accentColor}
+    />
+  );
+}
 
 export const Header: React.FC = () => {
   const router = useRouter();
@@ -39,7 +80,6 @@ export const Header: React.FC = () => {
     waitingApprovalCount,
   } = useApp();
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [isCompanyOpen, setIsCompanyOpen] = useState(false);
 
   const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
@@ -48,13 +88,6 @@ export const Header: React.FC = () => {
     { value: 'GI', label: 'GI', color: '#1e3a5f', dot: '#3b82f6' },
   ];
   const activeCompanyOption = companyOptions.find(o => o.value === currentCompany) || companyOptions[0];
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/jobs?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
 
   // Branches filtered by current company if company selected
   const availableBranches = branches.filter(b => {
@@ -148,21 +181,9 @@ export const Header: React.FC = () => {
     >
       {/* Search Bar */}
       <div className="flex items-center gap-3 flex-1 max-w-xl">
-        {/* Hamburger removed — using MobileBottomNav instead */}
-
-        <form onSubmit={handleSearchSubmit} className="relative w-full">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-300" style={{ color: theme.iconColor, opacity: 0.6 }} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ค้นหาเลข VIN / รหัสงาน (Job No.) / ทะเบียนรถ..."
-            className="w-full h-10 pl-10 pr-4 rounded-full border text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:bg-white transition-all shadow-xs"
-            style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}
-            onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 2px ${theme.primary}`; }}
-            onBlur={(e) => { e.currentTarget.style.boxShadow = ''; }}
-          />
-        </form>
+        <Suspense fallback={<div className="w-full h-10 rounded-full bg-[#f4f9f5] animate-pulse border border-gray-200" />}>
+          <HeaderSearch accentColor={theme.primary} />
+        </Suspense>
       </div>
 
       {/* Control Center & Role Context Switcher */}

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
+import TagSearch from '@/components/ui/TagSearch';
 import { Vehicle, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { 
@@ -31,7 +32,7 @@ export default function VehicleStockPage() {
     currentCompany 
   } = useApp();
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTags, setSearchTags] = useState<string[]>([]);
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -49,18 +50,21 @@ export default function VehicleStockPage() {
       if (selectedStatusFilter !== 'ALL' && v.status !== selectedStatusFilter) return false;
 
       // Search term
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesVin = v.vin.toLowerCase().includes(q);
-        const matchesModel = v.model.toLowerCase().includes(q);
-        const matchesPlate = v.licensePlate?.toLowerCase().includes(q);
-        const matchesColor = v.color.toLowerCase().includes(q);
-        if (!matchesVin && !matchesModel && !matchesPlate && !matchesColor) return false;
+      if (searchTags.length > 0) {
+        const matches = searchTags.some(q => {
+          const term = q.toLowerCase();
+          const matchesVin = v.vin.toLowerCase().includes(term);
+          const matchesModel = v.model.toLowerCase().includes(term);
+          const matchesPlate = v.licensePlate?.toLowerCase().includes(term);
+          const matchesColor = v.color.toLowerCase().includes(term);
+          return matchesVin || matchesModel || matchesPlate || matchesColor;
+        });
+        if (!matches) return false;
       }
 
       return true;
     });
-  }, [vehicles, currentCompany, selectedBranchFilter, selectedStatusFilter, searchQuery]);
+  }, [vehicles, currentCompany, selectedBranchFilter, selectedStatusFilter, searchTags]);
 
   // Find job history for selected VIN
   const vinHistory: Job[] = useMemo(() => {
@@ -98,14 +102,12 @@ export default function VehicleStockPage() {
       {/* Filter Bar */}
       <div className="p-4 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col lg:flex-row items-center gap-3">
         {/* Search */}
-        <div className="relative flex-1 w-full">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="ค้นหาตามเลขตัวถัง (VIN) / รุ่น / ทะเบียน / สี..."
-            className="w-full h-10 pl-10 pr-4 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
+        <div className="flex-1 w-full">
+          <TagSearch
+            tags={searchTags}
+            onTagsChange={setSearchTags}
+            placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน / สี... (กด Enter เพื่อเพิ่ม)"
+            accentColor="#0f5238"
           />
         </div>
 

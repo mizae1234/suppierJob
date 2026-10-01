@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Job, JobStatus, JobType } from '@/types';
@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 
 function JobsContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
   const initialJobId = searchParams.get('jobId') || '';
@@ -60,10 +61,22 @@ function JobsContent() {
   const [viewMode, setViewMode] = useState<'TABLE' | 'KANBAN'>('TABLE');
 
   // Filters state
-  const [searchTerm, setSearchTerm] = useState(initialQuery);
+  const [searchTags, setSearchTags] = useState<string[]>(() => {
+    return initialQuery ? initialQuery.split(',').map(s => s.trim()).filter(Boolean) : [];
+  });
   const [typeFilter, setTypeFilter] = useState<'ALL' | JobType>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | JobStatus>('ALL');
   const [supplierFilter, setSupplierFilter] = useState<string>('ALL');
+
+  // Sync searchTags when URL query param changes
+  useEffect(() => {
+    const q = searchParams.get('q') || '';
+    if (q) {
+      setSearchTags(q.split(',').map(s => s.trim()).filter(Boolean));
+    } else {
+      setSearchTags([]);
+    }
+  }, [searchParams]);
 
   // Modal & Drawer states
   const [selectedJob, setSelectedJob] = useState<Job | null>(
@@ -84,17 +97,18 @@ function JobsContent() {
   const displayedJobs = useMemo(() => {
     return filteredJobs.filter(job => {
       // Search
-      if (searchTerm) {
-        const q = searchTerm.toLowerCase();
-        const matchesJobNo = job.jobNumber.toLowerCase().includes(q);
-        const matchesSupplier = job.supplierName.toLowerCase().includes(q);
-        const matchesBranch = job.branchName.toLowerCase().includes(q);
-        const matchesVin = job.jobType === 'VEHICLE_SLIDE' 
-          ? job.vin?.toLowerCase().includes(q) 
-          : job.carWashItems?.some(it => it.vin.toLowerCase().includes(q) || it.licensePlate?.toLowerCase().includes(q));
-        if (!matchesJobNo && !matchesSupplier && !matchesBranch && !matchesVin) {
-          return false;
-        }
+      if (searchTags.length > 0) {
+        const matches = searchTags.some(q => {
+          const term = q.toLowerCase();
+          const matchesJobNo = job.jobNumber.toLowerCase().includes(term);
+          const matchesSupplier = job.supplierName.toLowerCase().includes(term);
+          const matchesBranch = job.branchName.toLowerCase().includes(term);
+          const matchesVin = job.jobType === 'VEHICLE_SLIDE' 
+            ? (job.vin?.toLowerCase().includes(term) || job.vehicle?.licensePlate?.toLowerCase().includes(term) || job.vehicle?.model?.toLowerCase().includes(term))
+            : job.carWashItems?.some(it => it.vin?.toLowerCase().includes(term) || it.licensePlate?.toLowerCase().includes(term) || it.vehicleModel?.toLowerCase().includes(term));
+          return matchesJobNo || matchesSupplier || matchesBranch || matchesVin;
+        });
+        if (!matches) return false;
       }
 
       // Type
@@ -108,7 +122,7 @@ function JobsContent() {
 
       return true;
     });
-  }, [filteredJobs, searchTerm, typeFilter, statusFilter, supplierFilter]);
+  }, [filteredJobs, searchTags, typeFilter, statusFilter, supplierFilter]);
 
   // Job navigation in Drawer
   const currentJobIndex = useMemo(() => {
@@ -255,8 +269,15 @@ function JobsContent() {
       </div>
 
       <JobFilters
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
+        searchTags={searchTags}
+        onSearchTagsChange={(tags) => {
+          setSearchTags(tags);
+          if (tags.length > 0) {
+            router.replace(`/jobs?q=${encodeURIComponent(tags.join(','))}`, { scroll: false });
+          } else {
+            router.replace('/jobs', { scroll: false });
+          }
+        }}
         typeFilter={typeFilter}
         onTypeFilterChange={setTypeFilter}
         statusFilter={statusFilter}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
+import TagSearch from '@/components/ui/TagSearch';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import dynamic from 'next/dynamic';
@@ -112,7 +113,7 @@ export default function CreateVehicleSlidePage() {
   const [showMapPicker, setShowMapPicker] = useState(false);
 
   // Search in branch vehicles
-  const [vinSearch, setVinSearch] = useState('');
+  const [searchTags, setSearchTags] = useState<string[]>([]);
 
   // Created job modal
   const [createdJob, setCreatedJob] = useState<Job | null>(null);
@@ -124,9 +125,11 @@ export default function CreateVehicleSlidePage() {
   const destBranch = branches.find(b => b.id === destBranchId);
 
   const filteredVehicles = branchStockVehicles.filter(v => {
-    if (!vinSearch) return true;
-    const q = vinSearch.toLowerCase();
-    return v.vin.toLowerCase().includes(q) || v.model.toLowerCase().includes(q) || (v.licensePlate && v.licensePlate.toLowerCase().includes(q));
+    if (searchTags.length === 0) return true;
+    return searchTags.some(q => {
+      const term = q.toLowerCase();
+      return v.vin.toLowerCase().includes(term) || v.model.toLowerCase().includes(term) || (v.licensePlate && v.licensePlate.toLowerCase().includes(term));
+    });
   });
 
   const { showToast } = useToast();
@@ -260,16 +263,12 @@ export default function CreateVehicleSlidePage() {
               </h2>
             </div>
 
-            <div className="relative w-full">
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={vinSearch}
-                onChange={(e) => setVinSearch(e.target.value)}
-                placeholder="ค้นหาตาม VIN / รุ่น..."
-                className="w-full h-8 pl-8 pr-3 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238]"
-              />
-            </div>
+            <TagSearch
+              tags={searchTags}
+              onTagsChange={setSearchTags}
+              placeholder="ค้นหาตาม VIN / รุ่น... (กด Enter เพื่อเพิ่ม)"
+              accentColor="#0f5238"
+            />
 
             <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
               {filteredVehicles.length === 0 ? (

@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
+import TagSearch from '@/components/ui/TagSearch';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { 
@@ -14,6 +15,7 @@ import {
   Store, 
   Calendar, 
   Check, 
+  Minus,
   Trash2, 
   FileDown, 
   Printer, 
@@ -94,8 +96,8 @@ export default function CreateCarWashPage() {
     return vehicles.filter(v => v.currentBranchId === selectedBranchId);
   }, [vehicles, selectedBranchId]);
 
-  // VIN search
-  const [vinSearch, setVinSearch] = useState('');
+  // VIN search tags
+  const [searchTags, setSearchTags] = useState<string[]>([]);
 
   // Selected vehicle items list
   interface SelectedWashItem {
@@ -150,12 +152,42 @@ export default function CreateCarWashPage() {
     }));
   };
 
-  // Filtered available vehicles by search
+  // Filtered available vehicles by search tags
   const filteredVehicles = branchStockVehicles.filter(v => {
-    if (!vinSearch) return true;
-    const q = vinSearch.toLowerCase();
-    return v.vin.toLowerCase().includes(q) || v.model.toLowerCase().includes(q) || (v.licensePlate && v.licensePlate.toLowerCase().includes(q));
+    if (searchTags.length === 0) return true;
+    return searchTags.some(q => {
+      const term = q.toLowerCase();
+      return v.vin.toLowerCase().includes(term) || v.model.toLowerCase().includes(term) || (v.licensePlate && v.licensePlate.toLowerCase().includes(term));
+    });
   });
+
+  // Select all filtered vehicles state and handlers
+  const isAllFilteredSelected = filteredVehicles.length > 0 && filteredVehicles.every(v => selectedItems.some(it => it.vin === v.vin));
+  const someFilteredSelected = filteredVehicles.some(v => selectedItems.some(it => it.vin === v.vin));
+
+  const handleToggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      // Deselect all filtered vehicles
+      const filteredVins = new Set(filteredVehicles.map(v => v.vin));
+      setSelectedItems(prev => prev.filter(it => !filteredVins.has(it.vin)));
+    } else {
+      // Add all missing filtered vehicles to selected items
+      const existingVins = new Set(selectedItems.map(it => it.vin));
+      const toAdd: SelectedWashItem[] = filteredVehicles
+        .filter(v => !existingVins.has(v.vin))
+        .map(v => ({
+          vin: v.vin,
+          model: v.model,
+          color: v.color,
+          licensePlate: v.licensePlate,
+          actualWashDate: new Date().toISOString().slice(0, 10),
+          washType: 'STANDARD',
+          unitPrice: 180,
+          remarks: 'ล้างทำความสะอาดทั่วไป + ดูดฝุ่น',
+        }));
+      setSelectedItems(prev => [...prev, ...toAdd]);
+    }
+  };
 
   const totalEstimatedCost = selectedItems.reduce((sum, it) => sum + it.unitPrice, 0);
 
@@ -345,17 +377,46 @@ export default function CreateCarWashPage() {
               <span className="text-xs text-gray-500">เลือกแล้ว {selectedItems.length} คัน</span>
             </div>
 
-            {/* VIN search */}
-            <div className="relative w-full">
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={vinSearch}
-                onChange={(e) => setVinSearch(e.target.value)}
-                placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน..."
-                className="w-full h-8 pl-8 pr-3 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-[#0f5238]"
-              />
-            </div>
+            {/* VIN search — Tag-based */}
+            <TagSearch
+              tags={searchTags}
+              onTagsChange={setSearchTags}
+              placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน... (กด Enter เพื่อเพิ่ม)"
+              accentColor={theme.primary}
+            />
+
+            {/* Select All Bar */}
+            {filteredVehicles.length > 0 && (
+              <div className="flex items-center justify-between px-1 py-1 text-xs border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleToggleSelectAllFiltered}
+                  className="flex items-center gap-2 font-medium text-gray-700 hover:text-emerald-900 transition-colors select-none py-1 group"
+                >
+                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                    isAllFilteredSelected
+                      ? 'bg-[#0f5238] border-[#0f5238] text-white'
+                      : someFilteredSelected
+                        ? 'bg-emerald-100 border-[#0f5238] text-[#0f5238]'
+                        : 'border-gray-300 group-hover:border-gray-400 bg-white'
+                  }`}>
+                    {isAllFilteredSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                    {!isAllFilteredSelected && someFilteredSelected && <Minus className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                  <span className="font-semibold text-xs text-gray-800 group-hover:text-emerald-900">
+                    {isAllFilteredSelected
+                      ? 'ยกเลิกการเลือกทั้งหมด'
+                      : `เลือกทั้งหมด (${filteredVehicles.length} คัน)`}
+                  </span>
+                </button>
+
+                {searchTags.length > 0 && (
+                  <span className="text-[11px] text-emerald-800 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                    ผลการค้นหา {filteredVehicles.length} คัน
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Vehicles List */}
             <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
