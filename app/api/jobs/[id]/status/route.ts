@@ -33,11 +33,11 @@ export async function PATCH(
       if (job.supplierId !== user.supplierId) {
         return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขงานของ Supplier อื่น' }, { status: 403 });
       }
-      // Supplier can only transition to IN_PROGRESS or WAITING_APPROVAL
-      const allowedTransitions = ['IN_PROGRESS', 'WAITING_APPROVAL'];
+      // Supplier can transition to IN_PROGRESS, WAITING_APPROVAL, or CANCELLED (ปฏิเสธงาน)
+      const allowedTransitions = ['IN_PROGRESS', 'WAITING_APPROVAL', 'CANCELLED'];
       if (!allowedTransitions.includes(status)) {
         return NextResponse.json(
-          { error: 'Supplier ไม่มีสิทธิ์อนุมัติ ตีกลับ หรือยกเลิกงานนี้' },
+          { error: 'Supplier ไม่มีสิทธิ์อนุมัติ หรือแก้ไขสถานะนี้' },
           { status: 403 }
         );
       }
@@ -89,6 +89,22 @@ export async function PATCH(
         }
       } else if (status === 'REJECTED') {
         updateData.rejectReason = rejectReason || 'ขอให้แก้ไขรายละเอียดงาน';
+      } else if (status === 'CANCELLED') {
+        updateData.rejectReason = rejectReason || (user.role === 'SUPPLIER' ? 'Supplier ปฏิเสธงาน' : 'ยกเลิกคำสั่งงาน');
+
+        // Reset vehicle status back to AVAILABLE
+        if (job.jobType === 'VEHICLE_SLIDE' && job.vin) {
+          await tx.vehicle.update({
+            where: { vin: job.vin },
+            data: { status: 'AVAILABLE' },
+          });
+        } else if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+          const vins = job.carWashItems.map(c => c.vin);
+          await tx.vehicle.updateMany({
+            where: { vin: { in: vins } },
+            data: { status: 'AVAILABLE' },
+          });
+        }
       }
 
       return tx.job.update({

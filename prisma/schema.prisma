@@ -111,7 +111,7 @@ model Job {
   id               String        @id @default(uuid())
   jobNumber        String        @unique // CW-202609-001, VS-202609-001
   jobType          String        // CAR_WASH, VEHICLE_SLIDE
-  status           String        @default("PENDING_SUPPLIER") // PENDING_SUPPLIER, IN_PROGRESS, WAITING_APPROVAL, APPROVED, REJECTED, INVOICED, CANCELLED
+  status           String        @default("IN_PROGRESS") // PENDING_SUPPLIER, IN_PROGRESS, WAITING_APPROVAL, APPROVED, REJECTED, INVOICED, CANCELLED
   companyId        String
   company          Company       @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   branchId         String

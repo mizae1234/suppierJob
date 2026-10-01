@@ -246,7 +246,7 @@ export async function POST(request: NextRequest) {
         data: {
           jobNumber,
           jobType: 'CAR_WASH',
-          status: 'PENDING_SUPPLIER',
+          status: 'IN_PROGRESS',
           companyId,
           branchId,
           supplierId,
@@ -299,7 +299,7 @@ export async function POST(request: NextRequest) {
         data: {
           jobNumber,
           jobType: 'VEHICLE_SLIDE',
-          status: 'PENDING_SUPPLIER',
+          status: 'IN_PROGRESS',
           companyId,
           branchId: originBranchId,
           supplierId,

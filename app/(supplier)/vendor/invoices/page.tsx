@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function SupplierInvoicesPage() {
-  const { jobs, invoices, createInvoice, activeSupplier, currentSupplierId, suppliers } = useApp();
+  const { jobs, invoices, createInvoice, activeSupplier, currentSupplierId, currentBranchId, activeBranch, suppliers } = useApp();
   const { user } = useAuth();
   const theme = useTheme();
 
@@ -37,11 +37,14 @@ export default function SupplierInvoicesPage() {
 
   // Jobs that are APPROVED and belong to this supplier (or all for Master)
   const approvedJobs = useMemo(() => {
-    if (isAll) {
-      return jobs.filter(j => j.status === 'APPROVED');
+    let list = isAll
+      ? jobs.filter(j => j.status === 'APPROVED')
+      : jobs.filter(j => j.supplierId === supplierId && j.status === 'APPROVED');
+    if (currentBranchId) {
+      list = list.filter(j => j.branchId === currentBranchId);
     }
-    return jobs.filter(j => j.supplierId === supplierId && j.status === 'APPROVED');
-  }, [jobs, supplierId, isAll]);
+    return list;
+  }, [jobs, supplierId, isAll, currentBranchId]);
 
   // Invoices for this supplier (or all for Master)
   const myInvoices = useMemo(() => {
