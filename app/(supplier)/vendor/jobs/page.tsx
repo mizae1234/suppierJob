@@ -460,7 +460,7 @@ function SupplierJobsPageContent() {
     return (
       <div
         key={card.itemId}
-        className={`p-4 rounded-2xl bg-white border shadow-xs transition-all ${
+        className={`p-4 rounded-2xl bg-white border shadow-xs transition-all overflow-hidden ${
           isPending
             ? 'border-amber-200/80 hover:border-amber-300'
             : isCompleted
@@ -510,16 +510,18 @@ function SupplierJobsPageContent() {
         </div>
 
         {/* Job Reference Badge + Progress */}
-        <div className="flex items-center justify-between mb-3 gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0">
+        <div className="flex items-center justify-between mb-3 gap-2 overflow-hidden">
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0 overflow-hidden">
             <Hash className="w-3 h-3 shrink-0 text-gray-400" />
             <span className="font-mono font-semibold text-gray-700 shrink-0">{card.jobNumber}</span>
             <span>•</span>
-            <span className="truncate">{card.branchName}</span>
             {isAll && (
-              <span className="ml-0.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium shrink-0">
+              <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[140px]" title={card.supplierName}>
                 🏢 {card.supplierName}
               </span>
+            )}
+            {!isAll && (
+              <span className="truncate">{card.branchName}</span>
             )}
           </div>
           {/* Mini progress bar */}
