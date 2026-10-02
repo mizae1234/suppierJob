@@ -24,10 +24,7 @@ import {
   Table as TableIcon,
   Copy,
   Check,
-  Clock,
-  Coins,
   ArrowUpRight,
-  ShieldCheck,
   ChevronRight
 } from 'lucide-react';
 
@@ -48,16 +45,6 @@ export default function SupplierManagementPage() {
     setCopiedAccount(id);
     setTimeout(() => setCopiedAccount(null), 2000);
   };
-
-  // Compute overall KPI metrics
-  const kpiStats = useMemo(() => {
-    const totalSuppliers = suppliers.length;
-    const activeJobs = jobs.filter(j => ['PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL'].includes(j.status)).length;
-    const completedJobs = jobs.filter(j => ['APPROVED', 'INVOICED'].includes(j.status)).length;
-    const totalBilled = jobs.reduce((sum, j) => sum + getJobTotalCost(j), 0);
-
-    return { totalSuppliers, activeJobs, completedJobs, totalBilled };
-  }, [suppliers, jobs]);
 
   // Filtered suppliers
   const filteredSuppliers = useMemo(() => {
@@ -122,77 +109,7 @@ export default function SupplierManagementPage() {
         </div>
       </div>
 
-      {/* ── KPI Overview Cards ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Suppliers */}
-        <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">คู่ค้าทั้งหมด</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#0f5238] flex items-center justify-center">
-              <Store className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-gray-900">{kpiStats.totalSuppliers}</span>
-            <span className="text-xs font-semibold text-gray-500">ราย</span>
-          </div>
-          <p className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Active พร้อมรับงาน 100%</span>
-          </p>
-        </div>
 
-        {/* Card 2: Active Ongoing Jobs */}
-        <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">งานกำลังทำ</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Clock className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-amber-600">{kpiStats.activeJobs}</span>
-            <span className="text-xs font-semibold text-gray-500">งาน</span>
-          </div>
-          <p className="text-[11px] text-gray-500 font-medium mt-1">
-            ระหว่างล้าง หรือกำลังขนส่ง
-          </p>
-        </div>
-
-        {/* Card 3: Completed Jobs */}
-        <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">งานที่ตรวจรับแล้ว</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-[#0f5238]">{kpiStats.completedJobs}</span>
-            <span className="text-xs font-semibold text-gray-500">งาน</span>
-          </div>
-          <p className="text-[11px] text-gray-500 font-medium mt-1">
-            พร้อมวางบิลหรือเบิกจ่าย
-          </p>
-        </div>
-
-        {/* Card 4: Total Volume */}
-        <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">ยอดงานรวมสะสม</span>
-            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Coins className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="text-xs font-bold text-gray-400">฿</span>
-            <span className="text-2xl font-black text-gray-900">{kpiStats.totalBilled.toLocaleString()}</span>
-          </div>
-          <p className="text-[11px] text-gray-500 font-medium mt-1">
-            มูลค่าบริการรวมทุกคู่ค้า
-          </p>
-        </div>
-      </div>
 
       {/* ── Toolbar: Search, Filter Tabs & View Toggle ── */}
       <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">

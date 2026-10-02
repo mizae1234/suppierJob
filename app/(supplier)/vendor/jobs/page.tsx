@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useMemo, useState, useRef, useCallback, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
-import { Job, JobStatus, CarWashItem } from '@/types';
+import { Job, JobStatus } from '@/types';
 import {
   ClipboardList,
   Clock,
@@ -19,10 +18,8 @@ import {
   Truck,
   Camera,
   XCircle,
-  ArrowRight,
   AlertTriangle,
   X,
-  ChevronRight,
   Car,
   Hash,
   Send,
@@ -58,8 +55,27 @@ interface SupplierItemCard {
   job: Job; // Full reference
 }
 
+// ─── Unified Modal Target for submission & rejection ──
+interface WorkModalTarget {
+  type: 'CAR_WASH' | 'VEHICLE_SLIDE';
+  jobId: string;
+  jobNumber: string;
+  itemId?: string; // Car Wash only
+  vin: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  licensePlate?: string;
+  serviceType: string;
+  serviceLabel: string;
+  unitPrice: number;
+  branchName: string;
+  routeText?: string;
+  rejectReason?: string;
+  job: Job;
+}
+
 function SupplierJobsPageContent() {
-  const { jobs, updateJobStatus, updateCarWashItemStatus, addJobEvidence, activeSupplier, currentSupplierId, currentBranchId, activeBranch } = useApp();
+  const { jobs, vehicles, updateJobStatus, updateCarWashItemStatus, addJobEvidence, activeSupplier, currentSupplierId, currentBranchId, activeBranch } = useApp();
   const { user } = useAuth();
   const { showToast } = useToast();
   const theme = useTheme();
@@ -73,27 +89,35 @@ function SupplierJobsPageContent() {
   const initialTab: TabKey = rawTab === 'new' ? 'progress' : (rawTab as TabKey) || 'progress';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
-  // Rejection modal state — per-item rejection
-  const [rejectingCard, setRejectingCard] = useState<SupplierItemCard | null>(null);
+  // Rejection modal state
+  const [rejectingTarget, setRejectingTarget] = useState<WorkModalTarget | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
   const [isSubmittingReject, setIsSubmittingReject] = useState<boolean>(false);
 
-  // Item submit state
-  const [submittingItemId, setSubmittingItemId] = useState<string | null>(null);
+  // Submit progress state (itemId for car wash, jobId for vehicle slide)
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   // Photo upload modal state
-  const [photoModalCard, setPhotoModalCard] = useState<SupplierItemCard | null>(null);
+  const [photoModalTarget, setPhotoModalTarget] = useState<WorkModalTarget | null>(null);
   const [uploadedPhotos, setUploadedPhotos] = useState<{ url: string; file: File }[]>([]);
   const [photoCaption, setPhotoCaption] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const presetReasons = [
-    'คิวงานเต็ม / ช่างไม่พอ',
-    'เกินเวลาทำการ',
-    'อุปกรณ์ซ่อมบำรุง',
-    'ไม่สามารถให้บริการประเภทนี้ได้',
-    'รถไม่อยู่ในจุดนัดหมาย',
-  ];
+  const presetReasons = rejectingTarget?.type === 'VEHICLE_SLIDE'
+    ? [
+        'คิวงานเต็ม / คนขับไม่พอ',
+        'เกินเวลาทำการ',
+        'รถสไลด์ซ่อมบำรุง / ไม่พร้อม',
+        'ระยะทางเกินพื้นที่ให้บริการ',
+        'รถไม่อยู่ในจุดนัดหมาย',
+      ]
+    : [
+        'คิวงานเต็ม / ช่างไม่พอ',
+        'เกินเวลาทำการ',
+        'อุปกรณ์ซ่อมบำรุง',
+        'ไม่สามารถให้บริการประเภทนี้ได้',
+        'รถไม่อยู่ในจุดนัดหมาย',
+      ];
 
   // ─── Filter jobs by supplier ──
   const myJobs = useMemo(() => {
@@ -104,12 +128,12 @@ function SupplierJobsPageContent() {
     return list;
   }, [jobs, supplierId, isAll, currentBranchId]);
 
-  // ─── Flatten CAR_WASH jobs into item-level cards ──
+  // ─── Flatten jobs with items (Car Wash and Vehicle Slide) into item-level cards ──
   const allItemCards: SupplierItemCard[] = useMemo(() => {
     const cards: SupplierItemCard[] = [];
 
     myJobs.forEach(job => {
-      if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+      if (job.carWashItems && job.carWashItems.length > 0) {
         const completedCount = job.carWashItems.filter(i => i.status === 'COMPLETED').length;
         
         job.carWashItems.forEach(item => {
@@ -142,8 +166,8 @@ function SupplierJobsPageContent() {
     return cards;
   }, [myJobs]);
 
-  // ─── Keep Vehicle Slide jobs as-is ──
-  const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE'), [myJobs]);
+  // ─── Keep single Vehicle Slide jobs without items as-is ──
+  const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE' && (!j.carWashItems || j.carWashItems.length === 0)), [myJobs]);
 
   const tabConfig: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
     { key: 'progress', label: 'งานที่ต้องทำ', icon: Clock, color: '#f59e0b' },
@@ -240,11 +264,79 @@ function SupplierJobsPageContent() {
 
   const totalFilteredCount = filteredItems.length + filteredSlides.length;
 
-  // ─── Open photo modal for item submission ──
-  const handleOpenPhotoModal = (card: SupplierItemCard) => {
-    setPhotoModalCard(card);
+  // ─── Modal Target Conversion Helpers ──
+  const itemCardToTarget = (card: SupplierItemCard): WorkModalTarget => {
+    const isSlide = card.job.jobType === 'VEHICLE_SLIDE';
+    const origin = card.job.originBranchName || card.job.branchName;
+    const dest = card.job.destBranchName || card.job.customDestAddress || 'ปลายทาง';
+    const routeText = isSlide ? `${origin} → ${dest}${card.job.distance ? ` (${card.job.distance} กม.)` : ''}` : undefined;
+
+    return {
+      type: isSlide ? 'VEHICLE_SLIDE' : 'CAR_WASH',
+      jobId: card.jobId,
+      jobNumber: card.jobNumber,
+      itemId: card.itemId,
+      vin: card.vin,
+      vehicleModel: card.vehicleModel,
+      vehicleColor: card.vehicleColor,
+      licensePlate: card.licensePlate,
+      serviceType: card.washType,
+      serviceLabel: isSlide ? 'รถสไลด์ขนส่ง' : card.washType === 'STANDARD' ? 'ล้างปกติ' : card.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : 'ขัดเคลือบ',
+      unitPrice: card.unitPrice,
+      branchName: card.branchName,
+      routeText,
+      rejectReason: card.itemRemarks || card.job.rejectReason,
+      job: card.job,
+    };
+  };
+
+  const slideJobToTarget = (job: Job): WorkModalTarget => {
+    const vehicleObj = vehicles.find(v => v.vin === job.vin) || job.vehicle;
+    const cost = getJobTotalCost(job);
+    const origin = job.originBranchName || job.branchName;
+    const dest = job.destBranchName || job.customDestAddress || 'ปลายทาง';
+    const routeText = `${origin} → ${dest}${job.distance ? ` (${job.distance} กม.)` : ''}`;
+
+    return {
+      type: 'VEHICLE_SLIDE',
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      vin: job.vin || 'ไม่ระบุ VIN',
+      vehicleModel: vehicleObj?.model,
+      vehicleColor: vehicleObj?.color,
+      licensePlate: vehicleObj?.licensePlate,
+      serviceType: 'VEHICLE_SLIDE',
+      serviceLabel: 'รถสไลด์ขนส่ง',
+      unitPrice: cost,
+      branchName: job.branchName,
+      routeText,
+      rejectReason: job.rejectReason,
+      job,
+    };
+  };
+
+  // ─── Open photo modal handlers ──
+  const handleOpenPhotoModalForWash = (card: SupplierItemCard) => {
+    setPhotoModalTarget(itemCardToTarget(card));
     setUploadedPhotos([]);
     setPhotoCaption('');
+  };
+
+  const handleOpenPhotoModalForSlide = (job: Job) => {
+    setPhotoModalTarget(slideJobToTarget(job));
+    setUploadedPhotos([]);
+    setPhotoCaption('');
+  };
+
+  // ─── Open reject modal handlers ──
+  const handleOpenRejectModalForWash = (card: SupplierItemCard) => {
+    setRejectingTarget(itemCardToTarget(card));
+    setRejectReason('');
+  };
+
+  const handleOpenRejectModalForSlide = (job: Job) => {
+    setRejectingTarget(slideJobToTarget(job));
+    setRejectReason('');
   };
 
   // ─── Handle file selection (camera / gallery) ──
@@ -280,55 +372,75 @@ function SupplierJobsPageContent() {
     setUploadedPhotos(prev => prev.filter((_, i) => i !== index));
   }, []);
 
-  // ─── Handle item-level submit (mark COMPLETED) — requires photos ──
-  const handleSubmitItem = async () => {
-    if (!photoModalCard) return;
+  // ─── Handle submit (Car Wash item or Vehicle Slide job) — requires photos ──
+  const handleSubmitWork = async () => {
+    if (!photoModalTarget) return;
     if (uploadedPhotos.length === 0) {
       showToast('กรุณาถ่ายรูปหรือแนบรูปอย่างน้อย 1 รูป', 'error');
       return;
     }
 
-    const card = photoModalCard;
-    setSubmittingItemId(card.itemId);
+    const target = photoModalTarget;
+    const currentId = target.type === 'CAR_WASH' ? target.itemId! : target.jobId;
+    setSubmittingId(currentId);
+
     try {
       // Add each photo as evidence
       for (let i = 0; i < uploadedPhotos.length; i++) {
-        await addJobEvidence(card.jobId, {
+        const defaultCaption = target.type === 'CAR_WASH'
+          ? `ล้างรถเสร็จเรียบร้อย — ${target.vin} (${i + 1}/${uploadedPhotos.length})`
+          : `ส่งมอบรถสไลด์เรียบร้อย — ${target.vin} (${i + 1}/${uploadedPhotos.length})`;
+
+        await addJobEvidence(target.jobId, {
           photoUrl: uploadedPhotos[i].url,
-          caption: photoCaption || `ล้างรถเสร็จเรียบร้อย — ${card.vin} (${i + 1}/${uploadedPhotos.length})`,
+          caption: photoCaption || defaultCaption,
           evidenceType: 'AFTER',
-          vin: card.vin,
+          vin: target.vin,
         });
       }
 
-      // Update item status to COMPLETED
-      const progress = await updateCarWashItemStatus(card.jobId, card.itemId, 'COMPLETED');
+      // Update status depending on whether target has itemId (per-item) or is whole job
+      if (target.itemId) {
+        const progress = await updateCarWashItemStatus(target.jobId, target.itemId, 'COMPLETED');
 
-      if (progress?.allCompleted) {
-        showToast(`🎉 ส่งงานรถคัน ${card.vin.slice(-6)} เสร็จ — ใบงาน ${card.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
-      } else if (progress) {
-        showToast(`✅ ส่งงานรถคัน ${card.vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
+        if (progress?.allCompleted) {
+          showToast(`🎉 ส่งงานรถคัน ${target.vin.slice(-6)} เสร็จ — ใบงาน ${target.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
+        } else if (progress) {
+          showToast(`✅ ส่งงานรถคัน ${target.vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
+        }
+      } else {
+        // Single vehicle slide without items: update job status to WAITING_APPROVAL
+        await updateJobStatus(target.jobId, 'WAITING_APPROVAL');
+        showToast(`🎉 ส่งงานรถสไลด์ ${target.jobNumber} เสร็จเรียบร้อย! รอสาขาตรวจรับ`, 'success');
       }
 
-      setPhotoModalCard(null);
+      setPhotoModalTarget(null);
       setUploadedPhotos([]);
       setPhotoCaption('');
     } catch (e) {
+      console.error(e);
       showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
     } finally {
-      setSubmittingItemId(null);
+      setSubmittingId(null);
     }
   };
 
-  // ─── Handle reject item (per-item, NOT entire job) ──
+  // ─── Handle reject (per-item for item cards, or entire job for slide jobs) ──
   const handleConfirmReject = async () => {
-    if (!rejectingCard) return;
+    if (!rejectingTarget) return;
     setIsSubmittingReject(true);
     try {
       const reason = rejectReason.trim() || 'Supplier ปฏิเสธรายการนี้';
-      await updateCarWashItemStatus(rejectingCard.jobId, rejectingCard.itemId, 'CANCELLED', reason);
-      showToast(`ปฏิเสธรถคัน ${rejectingCard.vin.slice(-6)} เรียบร้อยแล้ว`, 'info');
-      setRejectingCard(null);
+
+      if (rejectingTarget.itemId) {
+        await updateCarWashItemStatus(rejectingTarget.jobId, rejectingTarget.itemId, 'CANCELLED', reason);
+        showToast(`ปฏิเสธรถคัน ${rejectingTarget.vin.slice(-6)} เรียบร้อยแล้ว`, 'info');
+      } else {
+        await updateJobStatus(rejectingTarget.jobId, 'CANCELLED', { rejectReason: reason });
+        showToast(`ปฏิเสธงานรถสไลด์ ${rejectingTarget.jobNumber} เรียบร้อยแล้ว`, 'info');
+      }
+
+      setRejectingTarget(null);
       setRejectReason('');
     } catch (e) {
       console.error(e);
@@ -340,7 +452,7 @@ function SupplierJobsPageContent() {
 
   // ─── Render item card ──
   const renderItemCard = (card: SupplierItemCard) => {
-    const isSubmitting = submittingItemId === card.itemId;
+    const isSubmitting = submittingId === card.itemId;
     const isPending = card.itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(card.jobStatus);
     const isCompleted = card.itemStatus === 'COMPLETED';
     const isRejected = card.itemStatus === 'REJECTED';
@@ -434,10 +546,7 @@ function SupplierJobsPageContent() {
             <>
               <button
                 type="button"
-                onClick={() => {
-                  setRejectingCard(card);
-                  setRejectReason('');
-                }}
+                onClick={() => handleOpenRejectModalForWash(card)}
                 className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
               >
                 <XCircle className="w-3.5 h-3.5 text-red-500" />
@@ -446,7 +555,7 @@ function SupplierJobsPageContent() {
 
               <button
                 type="button"
-                onClick={() => handleOpenPhotoModal(card)}
+                onClick={() => handleOpenPhotoModalForWash(card)}
                 disabled={isSubmitting}
                 className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
@@ -483,7 +592,7 @@ function SupplierJobsPageContent() {
               </span>
               <button
                 type="button"
-                onClick={() => handleOpenPhotoModal(card)}
+                onClick={() => handleOpenPhotoModalForWash(card)}
                 disabled={isSubmitting}
                 className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
               >
@@ -511,10 +620,12 @@ function SupplierJobsPageContent() {
     );
   };
 
-  // ─── Render slide job card (unchanged from original) ──
+  // ─── Render slide job card ──
   const renderSlideJobCard = (job: Job) => {
     const cost = getJobTotalCost(job);
     const isActiveJob = job.status === 'IN_PROGRESS' || job.status === 'PENDING_SUPPLIER';
+    const isSubmitting = submittingId === job.id;
+    const vehicleObj = vehicles.find(v => v.vin === job.vin) || job.vehicle;
 
     return (
       <div key={job.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-xs transition-all">
@@ -538,10 +649,24 @@ function SupplierJobsPageContent() {
         </div>
 
         {job.vin && (
-          <div className="mb-3">
+          <div className="mb-3 flex items-center gap-2 flex-wrap">
             <span className="px-2 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-[11px] text-gray-700 font-mono">
               🚗 {job.vin}
             </span>
+            {vehicleObj && (
+              <span className="text-[11px] text-gray-500">
+                {vehicleObj.model} {vehicleObj.color ? `• ${vehicleObj.color}` : ''}
+                {vehicleObj.licensePlate ? ` • ${vehicleObj.licensePlate}` : ''}
+              </span>
+            )}
+          </div>
+        )}
+
+        {(job.originBranchName || job.destBranchName || job.customDestAddress) && (
+          <div className="mb-3 text-[11px] text-gray-500 flex items-center gap-1">
+            <span className="text-gray-400">📍</span>
+            <span>{job.originBranchName || job.branchName} → {job.destBranchName || job.customDestAddress || 'ปลายทาง'}</span>
+            {job.distance ? <span className="font-semibold text-gray-700">({job.distance} กม.)</span> : null}
           </div>
         )}
 
@@ -550,24 +675,22 @@ function SupplierJobsPageContent() {
             <>
               <button
                 type="button"
-                onClick={() => {
-                  // Vehicle Slide: reject entire job (single vehicle)
-                  updateJobStatus(job.id, 'CANCELLED', { rejectReason: 'Supplier ปฏิเสธงาน' });
-                  showToast(`ปฏิเสธงาน ${job.jobNumber} เรียบร้อยแล้ว`, 'info');
-                }}
+                onClick={() => handleOpenRejectModalForSlide(job)}
                 className="flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
               >
                 <XCircle className="w-4 h-4 text-red-500" />
                 <span>ปฏิเสธงาน</span>
               </button>
-              <Link
-                href={`/vendor/submit/${job.id}`}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs sm:text-sm font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
+              <button
+                type="button"
+                onClick={() => handleOpenPhotoModalForSlide(job)}
+                disabled={isSubmitting}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs sm:text-sm font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
               >
                 <Camera className="w-4 h-4" />
                 <span>ส่งงาน + แนบรูป</span>
-              </Link>
+              </button>
             </>
           )}
 
@@ -590,12 +713,14 @@ function SupplierJobsPageContent() {
               <span className="text-xs text-red-700 font-medium truncate">
                 ⚠️ สาขาขอให้แก้ไข: {job.rejectReason || 'โปรดตรวจสอบ'}
               </span>
-              <Link
-                href={`/vendor/submit/${job.id}`}
-                className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+              <button
+                type="button"
+                onClick={() => handleOpenPhotoModalForSlide(job)}
+                disabled={isSubmitting}
+                className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
               >
                 แก้ไข + ส่งใหม่
-              </Link>
+              </button>
             </div>
           )}
 
@@ -699,8 +824,8 @@ function SupplierJobsPageContent() {
         </div>
       )}
 
-      {/* Reject Item Confirmation Modal (PER-ITEM) */}
-      {rejectingCard && (
+      {/* Reject Modal (Car Wash Item or Vehicle Slide Job) */}
+      {rejectingTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-100 flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -709,13 +834,15 @@ function SupplierJobsPageContent() {
                   <AlertTriangle className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">ปฏิเสธรถคันนี้</h3>
-                  <p className="text-[11px] text-gray-500 font-mono">VIN: {rejectingCard.vin}</p>
+                  <h3 className="text-base font-bold text-gray-900">
+                    {rejectingTarget.type === 'VEHICLE_SLIDE' ? 'ปฏิเสธงานรถสไลด์' : 'ปฏิเสธรถคันนี้'}
+                  </h3>
+                  <p className="text-[11px] text-gray-500 font-mono">VIN: {rejectingTarget.vin}</p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setRejectingCard(null)}
+                onClick={() => setRejectingTarget(null)}
                 className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -725,13 +852,22 @@ function SupplierJobsPageContent() {
             {/* Car info */}
             <div className="p-3 rounded-xl bg-red-50/50 border border-red-100 text-xs">
               <p className="font-semibold text-gray-800">
-                {rejectingCard.vehicleModel} {rejectingCard.vehicleColor && `• สี ${rejectingCard.vehicleColor}`}
+                {rejectingTarget.vehicleModel || (rejectingTarget.type === 'VEHICLE_SLIDE' ? 'รถสไลด์ขนส่ง' : 'รถยนต์')}
+                {rejectingTarget.vehicleColor ? ` • สี ${rejectingTarget.vehicleColor}` : ''}
+                {rejectingTarget.licensePlate ? ` • ${rejectingTarget.licensePlate}` : ''}
               </p>
               <p className="text-gray-500 mt-0.5">
-                ใบงาน: <span className="font-mono font-bold">{rejectingCard.jobNumber}</span> • {rejectingCard.branchName}
+                ใบงาน: <span className="font-mono font-bold">{rejectingTarget.jobNumber}</span> • {rejectingTarget.branchName}
               </p>
+              {rejectingTarget.routeText && (
+                <p className="text-gray-600 mt-0.5">
+                  📍 {rejectingTarget.routeText}
+                </p>
+              )}
               <p className="text-red-600 font-medium mt-1">
-                ⚠️ ปฏิเสธเฉพาะคันนี้เท่านั้น — คันอื่นในใบงานเดียวกันไม่ได้รับผลกระทบ
+                {rejectingTarget.type === 'VEHICLE_SLIDE'
+                  ? '⚠️ ยืนยันการปฏิเสธใบงานรถสไลด์นี้ — ระบบจะแจ้งเตือนสาขาผู้สั่งงาน'
+                  : '⚠️ ปฏิเสธเฉพาะคันนี้เท่านั้น — คันอื่นในใบงานเดียวกันไม่ได้รับผลกระทบ'}
               </p>
             </div>
 
@@ -764,7 +900,11 @@ function SupplierJobsPageContent() {
               <textarea
                 value={rejectReason}
                 onChange={e => setRejectReason(e.target.value)}
-                placeholder="ระบุเหตุผลในการปฏิเสธรถคันนี้..."
+                placeholder={
+                  rejectingTarget.type === 'VEHICLE_SLIDE'
+                    ? 'ระบุเหตุผลในการปฏิเสธงานรถสไลด์...'
+                    : 'ระบุเหตุผลในการปฏิเสธรถคันนี้...'
+                }
                 rows={3}
                 className="w-full p-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none resize-none"
               />
@@ -774,7 +914,7 @@ function SupplierJobsPageContent() {
             <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setRejectingCard(null)}
+                onClick={() => setRejectingTarget(null)}
                 disabled={isSubmittingReject}
                 className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer"
               >
@@ -787,7 +927,13 @@ function SupplierJobsPageContent() {
                 className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <XCircle className="w-4 h-4" />
-                <span>{isSubmittingReject ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธคันนี้'}</span>
+                <span>
+                  {isSubmittingReject
+                    ? 'กำลังปฏิเสธ...'
+                    : rejectingTarget.type === 'VEHICLE_SLIDE'
+                    ? 'ยืนยันปฏิเสธงาน'
+                    : 'ยืนยันปฏิเสธคันนี้'}
+                </span>
               </button>
             </div>
           </div>
@@ -795,7 +941,7 @@ function SupplierJobsPageContent() {
       )}
 
       {/* Photo Upload + Submit Modal */}
-      {photoModalCard && (
+      {photoModalTarget && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-gray-100 flex flex-col">
             {/* Modal Header */}
@@ -806,17 +952,23 @@ function SupplierJobsPageContent() {
                     className="w-10 h-10 rounded-2xl flex items-center justify-center"
                     style={{ backgroundColor: `${theme.primary}15`, color: theme.primary }}
                   >
-                    <Camera className="w-5 h-5" />
+                    {photoModalTarget.type === 'VEHICLE_SLIDE' ? (
+                      <Truck className="w-5 h-5" />
+                    ) : (
+                      <Camera className="w-5 h-5" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="text-base font-bold text-gray-900">ส่งงานรถคันนี้</h3>
+                    <h3 className="text-base font-bold text-gray-900">
+                      {photoModalTarget.type === 'VEHICLE_SLIDE' ? 'ส่งงานรถสไลด์' : 'ส่งงานรถคันนี้'}
+                    </h3>
                     <p className="text-[11px] text-gray-500">ถ่ายรูปหลักฐานก่อนส่งงาน</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setPhotoModalCard(null);
+                    setPhotoModalTarget(null);
                     setUploadedPhotos([]);
                     setPhotoCaption('');
                   }}
@@ -826,25 +978,44 @@ function SupplierJobsPageContent() {
                 </button>
               </div>
 
-              {/* Car Info Card */}
+              {/* Vehicle Info Card */}
               <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                  <Car className="w-4 h-4" />
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  photoModalTarget.type === 'VEHICLE_SLIDE'
+                    ? 'bg-purple-50 text-purple-600'
+                    : 'bg-amber-50 text-amber-600'
+                }`}>
+                  {photoModalTarget.type === 'VEHICLE_SLIDE' ? (
+                    <Truck className="w-4 h-4" />
+                  ) : (
+                    <Car className="w-4 h-4" />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-gray-900 font-mono">{photoModalCard.vin}</span>
-                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                      {photoModalCard.washType === 'STANDARD' ? 'ล้างปกติ' : photoModalCard.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : 'ขัดเคลือบ'}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-sm font-bold text-gray-900 font-mono">{photoModalTarget.vin}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
+                      photoModalTarget.type === 'VEHICLE_SLIDE'
+                        ? 'bg-purple-50 text-purple-700 border border-purple-100'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                    }`}>
+                      {photoModalTarget.serviceLabel}
                     </span>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-0.5 truncate">
-                    {photoModalCard.vehicleModel} {photoModalCard.vehicleColor && `• ${photoModalCard.vehicleColor}`}
-                    <span className="ml-1 font-mono text-gray-400">#{photoModalCard.jobNumber}</span>
+                    {photoModalTarget.vehicleModel || (photoModalTarget.type === 'VEHICLE_SLIDE' ? 'รถสไลด์ขนส่ง' : 'รถยนต์')}
+                    {photoModalTarget.vehicleColor ? ` • ${photoModalTarget.vehicleColor}` : ''}
+                    {photoModalTarget.licensePlate ? ` • ${photoModalTarget.licensePlate}` : ''}
+                    <span className="ml-1 font-mono text-gray-400">#{photoModalTarget.jobNumber}</span>
                   </p>
+                  {photoModalTarget.routeText && (
+                    <p className="text-[10px] text-gray-600 mt-0.5 truncate">
+                      📍 {photoModalTarget.routeText}
+                    </p>
+                  )}
                 </div>
                 <span className="text-sm font-bold font-mono shrink-0" style={{ color: theme.primary }}>
-                  ฿{photoModalCard.unitPrice.toLocaleString()}
+                  ฿{photoModalTarget.unitPrice.toLocaleString()}
                 </span>
               </div>
             </div>
@@ -944,7 +1115,11 @@ function SupplierJobsPageContent() {
                 <textarea
                   value={photoCaption}
                   onChange={(e) => setPhotoCaption(e.target.value)}
-                  placeholder="เช่น ล้างรถเสร็จเรียบร้อย ทำความสะอาดภายใน..."
+                  placeholder={
+                    photoModalTarget.type === 'VEHICLE_SLIDE'
+                      ? 'เช่น ขนส่งและส่งมอบรถเรียบร้อย สภาพรถปกติ...'
+                      : 'เช่น ล้างรถเสร็จเรียบร้อย ทำความสะอาดภายใน...'
+                  }
                   rows={2}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 text-xs focus:outline-none focus:ring-2 transition-all resize-none"
                   style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
@@ -956,12 +1131,15 @@ function SupplierJobsPageContent() {
             <div className="p-5 pt-0 shrink-0">
               <button
                 type="button"
-                onClick={handleSubmitItem}
-                disabled={uploadedPhotos.length === 0 || submittingItemId === photoModalCard.itemId}
+                onClick={handleSubmitWork}
+                disabled={
+                  uploadedPhotos.length === 0 ||
+                  submittingId === (photoModalTarget.type === 'CAR_WASH' ? photoModalTarget.itemId : photoModalTarget.jobId)
+                }
                 className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer hover:opacity-95 active:scale-[0.98]"
                 style={{ backgroundColor: uploadedPhotos.length > 0 ? theme.primary : '#9ca3af' }}
               >
-                {submittingItemId === photoModalCard.itemId ? (
+                {submittingId === (photoModalTarget.type === 'CAR_WASH' ? photoModalTarget.itemId : photoModalTarget.jobId) ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     <span>กำลังส่งงาน...</span>

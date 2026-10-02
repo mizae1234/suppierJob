@@ -48,6 +48,7 @@ interface CreateVehicleSlideParams {
   requesterPosition?: string;
   requesterPhone?: string;
   estimatedCost: number;
+  distance?: number;
   // Custom destination (map pin) — optional
   customDestAddress?: string;
   customDestLat?: number;
@@ -269,6 +270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           requesterPosition: params.requesterPosition,
           requesterPhone: params.requesterPhone,
           estimatedCost: params.estimatedCost,
+          distance: params.distance,
         }),
       });
       const data = await res.json();

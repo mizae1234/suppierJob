@@ -40,7 +40,6 @@ function ApprovalsContent() {
   // Also include jobs that are IN_PROGRESS but have some items COMPLETED (partial submissions)
   const partiallyCompletedJobs = jobs.filter(j => 
     j.status === 'IN_PROGRESS' && 
-    j.jobType === 'CAR_WASH' &&
     j.carWashItems &&
     j.carWashItems.some(i => i.status === 'COMPLETED')
   );
@@ -347,8 +346,8 @@ function ApprovalsContent() {
                   </div>
                 </div>
 
-                {/* Car Wash Items — Per-VIN Cards with Item-level Actions */}
-                {isCarWash && job.carWashItems && (
+                {/* Per-VIN Cards with Item-level Actions */}
+                {job.carWashItems && job.carWashItems.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-3">
                     {job.carWashItems.map((item) => {
                       const isItemCompleted = item.status === 'COMPLETED';

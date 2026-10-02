@@ -33,9 +33,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
     }
 
-    if (job.jobType !== 'CAR_WASH') {
+    if (job.jobType !== 'CAR_WASH' && job.jobType !== 'VEHICLE_SLIDE') {
       return NextResponse.json(
-        { error: 'ฟีเจอร์นี้ใช้ได้เฉพาะงาน Car Wash เท่านั้น' },
+        { error: 'ฟีเจอร์นี้ใช้ได้เฉพาะงาน Car Wash หรือ Vehicle Slide เท่านั้น' },
         { status: 400 }
       );
     }

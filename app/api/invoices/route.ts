@@ -152,9 +152,9 @@ export async function POST(request: NextRequest) {
         throw new Error('มีบางรายการงานที่ถูกวางบิลไปแล้ว กรุณารีเฟรชหน้ารายการ');
       }
 
-      // Calculate amounts (exclude cancelled car wash items)
+      // Calculate amounts (exclude cancelled items)
       const subtotal = targetJobs.reduce((sum, j) => {
-        if (j.jobType === 'CAR_WASH' && j.carWashItems && j.carWashItems.length > 0) {
+        if (j.carWashItems && j.carWashItems.length > 0) {
           const valid = j.carWashItems.filter(i => i.status !== 'CANCELLED');
           return sum + valid.reduce((s, i) => s + (i.unitPrice || 0), 0);
         }

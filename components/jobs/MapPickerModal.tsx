@@ -28,7 +28,7 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 function estimateSlideCost(distanceKm: number): number {
-  return Math.round(1500 + distanceKm * 15);
+  return Math.round(distanceKm * 50);
 }
 
 export default function MapPickerModal({

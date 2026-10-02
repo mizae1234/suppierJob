@@ -8,7 +8,7 @@ export const STATUS_MAP: Record<string, { label: string; bg: string; text: strin
   APPROVED: { label: 'Approved พร้อมวางบิล', bg: 'bg-emerald-100', text: 'text-emerald-900 font-bold', dot: 'bg-emerald-600' },
   REJECTED: { label: 'ขอแก้ไข', bg: 'bg-red-100', text: 'text-red-800 font-bold', dot: 'bg-red-500' },
   INVOICED: { label: 'วางบิลแล้ว', bg: 'bg-purple-100', text: 'text-purple-800', dot: 'bg-purple-500' },
-  CANCELLED: { label: 'ยกเลิก', bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' },
+  CANCELLED: { label: 'ปฏิเสธงาน / ยกเลิก', bg: 'bg-red-50', text: 'text-red-700 font-bold', dot: 'bg-red-500' },
 };
 
 // Kanban column definitions

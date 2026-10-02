@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
       estimatedCost: job.estimatedCost || 0,
       actualCost: (() => {
         if (job.status === 'CANCELLED') return 0;
-        if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+        if (job.carWashItems && job.carWashItems.length > 0) {
           const hasCancelled = job.carWashItems.some(i => i.status === 'CANCELLED');
           if (hasCancelled) {
             const validItems = job.carWashItems.filter(i => i.status !== 'CANCELLED');
@@ -338,8 +338,13 @@ export async function POST(request: NextRequest) {
         contactPerson, 
         contactPhone, 
         transferReason, 
-        estimatedCost 
+        estimatedCost,
+        distance,
       } = body;
+
+      const finalTransferReason = transferReason
+        ? (distance && !transferReason.includes('ระยะทาง') ? `${transferReason} (ระยะทาง ${distance} กม.)` : transferReason)
+        : (distance ? `ขนส่งรถสไลด์ (ระยะทาง ${distance} กม.)` : null);
 
       const vinsList: string[] = Array.isArray(vins) && vins.length > 0
         ? vins
@@ -350,54 +355,62 @@ export async function POST(request: NextRequest) {
       }
 
       const costPerCar = estimatedCost ? parseFloat(estimatedCost) : 0;
-      const createdJobs = [];
+      const totalEstimatedCost = costPerCar * vinsList.length;
 
-      for (let i = 0; i < vinsList.length; i++) {
-        const currentVin = vinsList[i];
-        const uniqueSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 900 + 100)}`;
-        const currentJobNumber = `VS-${company.code}-${dateStr}-${uniqueSuffix}`;
-
-        const job = await prisma.job.create({
-          data: {
-            jobNumber: currentJobNumber,
-            jobType: 'VEHICLE_SLIDE',
-            status: 'IN_PROGRESS',
-            companyId,
-            branchId: originBranchId,
-            supplierId,
-            vin: currentVin,
-            originBranchId,
-            destBranchId: destBranchId || null,
-            customDestAddress: customDestAddress || null,
-            customDestLat: customDestLat ? parseFloat(customDestLat) : null,
-            customDestLng: customDestLng ? parseFloat(customDestLng) : null,
-            pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
-            deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
-            contactPerson,
-            contactPhone,
-            transferReason,
-            requestedById: user.id,
-            requestedBy: snapshotName,
-            requesterPosition: snapshotPosition,
-            requesterPhone: snapshotPhone,
-            estimatedCost: costPerCar,
+      const job = await prisma.job.create({
+        data: {
+          jobNumber,
+          jobType: 'VEHICLE_SLIDE',
+          status: 'IN_PROGRESS',
+          companyId,
+          branchId: originBranchId,
+          supplierId,
+          vin: vinsList[0],
+          originBranchId,
+          destBranchId: destBranchId || null,
+          customDestAddress: customDestAddress || null,
+          customDestLat: customDestLat ? parseFloat(customDestLat) : null,
+          customDestLng: customDestLng ? parseFloat(customDestLng) : null,
+          pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
+          deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
+          contactPerson,
+          contactPhone,
+          transferReason: finalTransferReason,
+          requestedById: user.id,
+          requestedBy: snapshotName,
+          requesterPosition: snapshotPosition,
+          requesterPhone: snapshotPhone,
+          estimatedCost: totalEstimatedCost,
+          actualCost: totalEstimatedCost,
+          carWashItems: {
+            create: vinsList.map((v) => ({
+              vin: v,
+              actualWashDate: pickupDateTime ? new Date(pickupDateTime) : new Date(),
+              washType: 'VEHICLE_SLIDE',
+              unitPrice: costPerCar,
+              status: 'PENDING',
+            })),
           },
-        });
+        },
+        include: {
+          carWashItems: {
+            include: {
+              vehicle: { select: { model: true, color: true, licensePlate: true } },
+            },
+          },
+        },
+      });
 
-        // Update vehicle status to IN_TRANSIT
-        await prisma.vehicle.update({
-          where: { vin: currentVin },
-          data: { status: 'IN_TRANSIT' },
-        });
-
-        createdJobs.push(job);
-      }
+      // Update vehicle status to IN_TRANSIT
+      await prisma.vehicle.updateMany({
+        where: { vin: { in: vinsList } },
+        data: { status: 'IN_TRANSIT' },
+      });
 
       return NextResponse.json({ 
         success: true, 
-        job: createdJobs[0], 
-        jobs: createdJobs, 
-        count: createdJobs.length 
+        job, 
+        count: vinsList.length 
       }, { status: 201 });
     }
 

@@ -127,7 +127,7 @@ export function getJobVehicleDisplay(job: Job) {
 export function getJobTotalCost(job: Job): number {
   if (job.status === 'CANCELLED') return 0;
 
-  if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+  if (job.carWashItems && job.carWashItems.length > 0) {
     const validItems = job.carWashItems.filter(i => i.status !== 'CANCELLED');
     return validItems.reduce((sum, i) => sum + (i.unitPrice || 0), 0);
   }

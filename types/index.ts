@@ -119,6 +119,7 @@ export interface Job {
   contactPerson?: string;
   contactPhone?: string;
   transferReason?: string;
+  distance?: number;
 
   // สำหรับ Car Wash
   carWashItems?: CarWashItem[];

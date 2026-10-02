@@ -97,6 +97,12 @@ export const Sidebar: React.FC = () => {
       badge: null,
     },
     {
+      label: 'ใบรายคัน (Per-Vehicle)',
+      href: '/vehicle-reports',
+      icon: Car,
+      badge: null,
+    },
+    {
       label: 'ตั้งค่าระบบ',
       href: '/settings',
       icon: Settings,

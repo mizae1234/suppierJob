@@ -37,6 +37,7 @@ const moreMenuItems = [
   { label: 'จัดการ Supplier', icon: Store, href: '/suppliers', color: '#6b7280' },
   { label: 'ใบวางบิล / Invoice', icon: Receipt, href: '/invoices', color: '#6b7280' },
   { label: 'รายงาน', icon: BarChart3, href: '/reports', color: '#6b7280' },
+  { label: 'ใบรายคัน', icon: Car, href: '/vehicle-reports', color: '#059669' },
   { label: 'ตั้งค่าระบบ', icon: Settings, href: '/settings', color: '#6b7280' },
 ];
 

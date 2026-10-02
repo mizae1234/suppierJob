@@ -40,6 +40,10 @@ import {
   ImageIcon,
   ZoomIn,
   Clock,
+  Car,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
 } from 'lucide-react';
 
 function JobsContent() {
@@ -55,7 +59,8 @@ function JobsContent() {
     updateJobStatus, 
     addJobEvidence,
     suppliers,
-    branches 
+    branches,
+    vehicles,
   } = useApp();
   const theme = useTheme();
 
@@ -436,11 +441,11 @@ function JobsContent() {
                           <><Truck className="w-3 h-3" /> Vehicle Slide</>
                         )}
                       </span>
-                      {activeJob.carWashItems && (
-                        <span className="text-[10px] text-gray-500 font-medium">
-                          {activeJob.carWashItems.length} คัน
-                        </span>
-                      )}
+                      <span className="text-[10px] text-gray-500 font-medium">
+                        {activeJob.jobType === 'CAR_WASH'
+                          ? `${activeJob.carWashItems?.length || 0} คัน`
+                          : '1 คัน'}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1.5 text-[11px]">
@@ -461,27 +466,38 @@ function JobsContent() {
 
                   {/* Right: Cost */}
                   {(() => {
+                    const isJobCancelled = activeJob.status === 'CANCELLED';
                     const effectiveCost = getJobTotalCost(activeJob);
-                    const hasCancelled = activeJob.jobType === 'CAR_WASH' && 
+                    const hasCancelledWash = activeJob.jobType === 'CAR_WASH' && 
                       activeJob.carWashItems?.some(i => i.status === 'CANCELLED');
                     const originalCost = activeJob.estimatedCost || 0;
 
                     return (
                       <div className="text-right shrink-0">
                         <span className="text-[10px] text-gray-400 block">
-                          {hasCancelled ? 'ค่าบริการสุทธิ' : 'ค่าบริการ'}
+                          {isJobCancelled ? 'ค่าบริการ' : hasCancelledWash ? 'ค่าบริการสุทธิ' : 'ค่าบริการ'}
                         </span>
                         <div className="flex items-baseline justify-end gap-1.5">
-                          {hasCancelled && originalCost > effectiveCost && (
+                          {isJobCancelled && originalCost > 0 && (
                             <span className="text-xs text-gray-400 line-through font-mono">
                               ฿{originalCost.toLocaleString()}
                             </span>
                           )}
-                          <p className="text-xl font-black tracking-tight" style={{ color: hasCancelled ? '#059669' : theme.textPrimary }}>
+                          {hasCancelledWash && originalCost > effectiveCost && (
+                            <span className="text-xs text-gray-400 line-through font-mono">
+                              ฿{originalCost.toLocaleString()}
+                            </span>
+                          )}
+                          <p className="text-xl font-black tracking-tight" style={{ color: isJobCancelled ? '#dc2626' : hasCancelledWash ? '#059669' : theme.textPrimary }}>
                             ฿{effectiveCost.toLocaleString()}
                           </p>
                         </div>
-                        {hasCancelled && (
+                        {isJobCancelled && (
+                          <span className="text-[9px] text-red-500 font-semibold block">
+                            (ปฏิเสธงาน / ไม่คิดค่าบริการ)
+                          </span>
+                        )}
+                        {hasCancelledWash && !isJobCancelled && (
                           <span className="text-[9px] text-red-500 font-semibold block">
                             (หักคันที่ปฏิเสธแล้ว)
                           </span>
@@ -496,85 +512,113 @@ function JobsContent() {
                   <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-50 border border-red-200 text-xs">
                     <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-bold text-red-700">หมายเหตุจากสาขา:</p>
+                      <p className="font-bold text-red-700">
+                        {activeJob.status === 'CANCELLED'
+                          ? 'เหตุผลที่ Supplier ปฏิเสธงาน:'
+                          : 'หมายเหตุขอแก้ไขจากสาขา (ตีกลับ):'}
+                      </p>
                       <p className="text-red-600 mt-0.5">{activeJob.rejectReason}</p>
                     </div>
                   </div>
                 )}
 
                 {/* ─── Compact Workflow Stepper ─── */}
-                <div className="flex items-center gap-1 text-[10px]">
-                  {(() => {
-                    const steps = [
-                      { label: 'เปิดงาน', key: 'CREATED' },
-                      { label: 'รับงาน', key: 'PENDING_SUPPLIER' },
-                      { label: 'ดำเนินการ', key: 'IN_PROGRESS' },
-                      { label: activeJob.status === 'REJECTED' ? 'ขอแก้ไข' : 'ตรวจรับ', key: 'WAITING_APPROVAL' },
-                      { label: 'อนุมัติ', key: 'APPROVED' },
-                    ];
+                {activeJob.status === 'CANCELLED' ? (
+                  <div className="p-3.5 rounded-2xl bg-red-50/80 border border-red-200 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-bold text-sm shrink-0">
+                        ✕
+                      </div>
+                      <div>
+                        <p className="font-bold text-red-800">
+                          {activeJob.rejectReason?.includes('Supplier') ? 'Supplier ปฏิเสธงานนี้' : 'งานนี้ถูกปฏิเสธ / ยกเลิกแล้ว'}
+                        </p>
+                        <p className="text-[11px] text-red-600 mt-0.5">
+                          {activeJob.rejectReason ? `เหตุผล: ${activeJob.rejectReason}` : 'คำสั่งงานสิ้นสุด ไม่มีการดำเนินการต่อ'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-600 text-white shrink-0">
+                      ปฏิเสธงาน
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 text-[10px]">
+                    {(() => {
+                      const steps = [
+                        { label: 'เปิดงาน', key: 'CREATED' },
+                        { label: 'รับงาน', key: 'PENDING_SUPPLIER' },
+                        { label: 'ดำเนินการ', key: 'IN_PROGRESS' },
+                        { label: activeJob.status === 'REJECTED' ? 'ขอแก้ไข' : 'ตรวจรับ', key: 'WAITING_APPROVAL' },
+                        { label: 'อนุมัติ', key: 'APPROVED' },
+                      ];
 
-                    const statusOrder = ['CREATED', 'PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL', 'APPROVED'];
-                    const currentIdx = (() => {
-                      if (['APPROVED', 'INVOICED'].includes(activeJob.status)) return 4;
-                      if (activeJob.status === 'WAITING_APPROVAL') return 3;
-                      if (activeJob.status === 'REJECTED') return 3;
-                      if (activeJob.status === 'IN_PROGRESS') return 2;
-                      if (activeJob.status === 'PENDING_SUPPLIER') return 1;
-                      return 0;
-                    })();
+                      const currentIdx = (() => {
+                        if (['APPROVED', 'INVOICED'].includes(activeJob.status)) return 4;
+                        if (activeJob.status === 'WAITING_APPROVAL') return 3;
+                        if (activeJob.status === 'REJECTED') return 3;
+                        if (activeJob.status === 'IN_PROGRESS') return 2;
+                        if (activeJob.status === 'PENDING_SUPPLIER') return 1;
+                        return 0;
+                      })();
 
-                    return steps.map((step, idx) => {
-                      const isCompleted = idx < currentIdx || (idx === currentIdx && ['APPROVED', 'INVOICED'].includes(activeJob.status));
-                      const isCurrent = idx === currentIdx && !['APPROVED', 'INVOICED'].includes(activeJob.status);
-                      const isRejected = isCurrent && activeJob.status === 'REJECTED';
+                      return steps.map((step, idx) => {
+                        const isCompleted = idx < currentIdx || (idx === currentIdx && ['APPROVED', 'INVOICED'].includes(activeJob.status));
+                        const isCurrent = idx === currentIdx && !['APPROVED', 'INVOICED'].includes(activeJob.status);
+                        const isRejected = isCurrent && activeJob.status === 'REJECTED';
 
-                      return (
-                        <React.Fragment key={idx}>
-                          {idx > 0 && (
-                            <div className={`flex-1 h-px ${isCompleted || isCurrent ? '' : 'bg-gray-200'}`}
-                              style={isCompleted || isCurrent ? { backgroundColor: isRejected ? '#dc2626' : theme.primary } : {}}
-                            />
-                          )}
-                          <div className="flex items-center gap-1">
-                            <div
-                              className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
-                                isCompleted
-                                  ? 'text-white'
-                                  : isCurrent
-                                    ? isRejected
-                                      ? 'bg-red-600 text-white ring-2 ring-red-100'
-                                      : 'text-white ring-2'
-                                    : 'bg-gray-200 text-gray-400'
+                        return (
+                          <React.Fragment key={idx}>
+                            {idx > 0 && (
+                              <div className={`flex-1 h-px ${isCompleted || isCurrent ? '' : 'bg-gray-200'}`}
+                                style={isCompleted || isCurrent ? { backgroundColor: isRejected ? '#dc2626' : theme.primary } : {}}
+                              />
+                            )}
+                            <div className="flex items-center gap-1">
+                              <div
+                                className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] ${
+                                  isCompleted
+                                    ? 'text-white'
+                                    : isCurrent
+                                      ? isRejected
+                                        ? 'bg-red-600 text-white ring-2 ring-red-100'
+                                        : 'text-white ring-2'
+                                      : 'bg-gray-200 text-gray-400'
+                                }`}
+                                style={{
+                                  ...(isCompleted ? { backgroundColor: theme.primary } : {}),
+                                  ...(isCurrent && !isRejected ? { backgroundColor: theme.primary, '--tw-ring-color': theme.badgeBg } as React.CSSProperties : {}),
+                                }}
+                              >
+                                {isCompleted ? '✓' : isRejected ? '!' : idx + 1}
+                              </div>
+                              <span className={`hidden sm:inline whitespace-nowrap ${
+                                isCurrent ? (isRejected ? 'font-bold text-red-600' : 'font-bold') : isCompleted ? 'text-gray-600' : 'text-gray-400'
                               }`}
-                              style={{
-                                ...(isCompleted ? { backgroundColor: theme.primary } : {}),
-                                ...(isCurrent && !isRejected ? { backgroundColor: theme.primary, '--tw-ring-color': theme.badgeBg } as React.CSSProperties : {}),
-                              }}
-                            >
-                              {isCompleted ? '✓' : isRejected ? '!' : idx + 1}
+                                style={isCurrent && !isRejected ? { color: theme.textPrimary } : {}}
+                              >
+                                {step.label}
+                              </span>
                             </div>
-                            <span className={`hidden sm:inline whitespace-nowrap ${
-                              isCurrent ? (isRejected ? 'font-bold text-red-600' : 'font-bold') : isCompleted ? 'text-gray-600' : 'text-gray-400'
-                            }`}
-                              style={isCurrent && !isRejected ? { color: theme.textPrimary } : {}}
-                            >
-                              {step.label}
-                            </span>
-                          </div>
-                        </React.Fragment>
-                      );
-                    });
-                  })()}
-                </div>
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
 
-                {/* ─── Car Wash Items ─── */}
-                {activeJob.jobType === 'CAR_WASH' && activeJob.carWashItems && (
+                {/* ─── Job Items (Car Wash & Vehicle Slide) ─── */}
+                {activeJob.carWashItems && activeJob.carWashItems.length > 0 && (
                   <div>
                     {/* Header + Progress */}
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                        <Sparkles className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
-                        รายการรถ
+                        {activeJob.jobType === 'CAR_WASH' ? (
+                          <Sparkles className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
+                        ) : (
+                          <Car className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
+                        )}
+                        <span>{activeJob.jobType === 'CAR_WASH' ? 'รายการรถในคำสั่งล้าง' : 'รายการรถในคำสั่งรถสไลด์'}</span>
                       </h4>
                       <div className="flex items-center gap-2 text-[10px]">
                         {(() => {
@@ -699,78 +743,312 @@ function JobsContent() {
                 )}
 
                 {/* Specific Job Details: Vehicle Slide */}
-                {activeJob.jobType === 'VEHICLE_SLIDE' && (
-                  <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-2xs space-y-4">
-                    <h4 className="font-bold text-gray-800 uppercase tracking-wider text-xs flex items-center gap-1.5">
-                      <Truck className="w-4 h-4" style={{ color: theme.iconColor }} />
-                      <span>ข้อมูลเส้นทางและการขนส่งรถสไลด์</span>
-                    </h4>
+                {activeJob.jobType === 'VEHICLE_SLIDE' && (() => {
+                  const slideVehicle = vehicles.find(v => v.vin === activeJob.vin) || activeJob.vehicle;
+                  const vModel = slideVehicle?.model || activeJob.vehicle?.model || 'ไม่ระบุรุ่น';
+                  const vColor = slideVehicle?.color || activeJob.vehicle?.color || '';
+                  const vPlate = slideVehicle?.licensePlate || activeJob.vehicle?.licensePlate || '';
+                  const vType = slideVehicle?.vehicleType || activeJob.vehicle?.vehicleType || '';
+                  const isCancelled = activeJob.status === 'CANCELLED';
+                  const isRejected = activeJob.status === 'REJECTED';
+                  const isApproved = ['APPROVED', 'INVOICED'].includes(activeJob.status);
+                  const isWaiting = activeJob.status === 'WAITING_APPROVAL';
+                  const isInProgress = activeJob.status === 'IN_PROGRESS';
+                  const isPending = activeJob.status === 'PENDING_SUPPLIER';
 
-                    {/* Route Visualizer */}
-                    <div className="p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 shrink-0" style={{ color: theme.iconColor }} />
-                        <div>
-                          <span className="text-[10px] text-gray-500">ต้นทาง (Origin):</span>
-                          <p className="font-bold text-gray-900">{activeJob.originBranchName || '-'}</p>
+                  return (
+                    <div className="space-y-4">
+                      {/* Vehicle Main Card with Status (Only for single vehicle slide without items) */}
+                      {(!activeJob.carWashItems || activeJob.carWashItems.length === 0) && (
+                      <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-2xs space-y-3.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="font-bold text-gray-800 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                            <Car className="w-4 h-4" style={{ color: theme.iconColor }} />
+                            <span>ข้อมูลรถยนต์และสถานะงาน (1 คัน)</span>
+                          </h4>
+
+                          {/* Dynamic Status Badge */}
+                          {isApproved && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>ตรวจรับเรียบร้อย</span>
+                            </span>
+                          )}
+                          {isWaiting && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              <span>ส่งงานแล้ว • รอตรวจรับ</span>
+                            </span>
+                          )}
+                          {isCancelled && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 shrink-0">
+                              <XCircle className="w-3 h-3 text-red-600" />
+                              <span>ปฏิเสธงาน (ยกเลิก)</span>
+                            </span>
+                          )}
+                          {isRejected && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 shrink-0">
+                              <AlertTriangle className="w-3 h-3 text-red-600" />
+                              <span>ตีกลับขอแก้ไข</span>
+                            </span>
+                          )}
+                          {isInProgress && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                              <Truck className="w-3 h-3 text-blue-600" />
+                              <span>กำลังขนส่ง</span>
+                            </span>
+                          )}
+                          {isPending && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700 border border-gray-200 shrink-0">
+                              <Clock className="w-3 h-3 text-gray-500" />
+                              <span>รอ Supplier รับงาน</span>
+                            </span>
+                          )}
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-1 px-2" style={{ color: theme.iconColor }}>
-                        <span className="border-b border-dashed w-8" style={{ borderColor: `${theme.primary}88` }} />
-                        <ArrowRight className="w-4 h-4" />
-                      </div>
 
-                      <div className="flex items-center gap-2 text-right">
-                        <div>
-                          <span className="text-[10px] text-gray-500">ปลายทาง (Destination):</span>
-                          <p className="font-bold text-gray-900">{activeJob.destBranchName || '-'}</p>
+                        {/* Vehicle Info Box */}
+                        <div className={`p-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                          isCancelled ? 'bg-red-50/30 border-red-100' : 'bg-gray-50/80 border-gray-100'
+                        }`}>
+                          <div className="flex items-start sm:items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              isCancelled ? 'bg-red-100 text-red-500' : 'bg-white shadow-2xs'
+                            }`} style={!isCancelled ? { color: theme.iconColor } : undefined}>
+                              <Car className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`font-mono font-bold text-sm ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                  {activeJob.vin || '-'}
+                                </span>
+                                {activeJob.vin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyText(activeJob.vin!)}
+                                    className="p-1 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                                    title="คัดลอก VIN"
+                                  >
+                                    {copiedText === activeJob.vin ? <CheckCheck className="w-3.5 h-3.5" style={{ color: theme.iconColor }} /> : <Copy className="w-3.5 h-3.5" />}
+                                  </button>
+                                )}
+                                {vPlate ? (
+                                  <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
+                                    isCancelled ? 'bg-gray-100 text-gray-400 line-through' : 'bg-white text-gray-800 border border-gray-200 shadow-2xs'
+                                  }`}>
+                                    {vPlate}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] text-gray-400 bg-gray-100">
+                                    ไม่มีป้ายทะเบียน
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-gray-600 mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-gray-800">{vModel}</span>
+                                {vColor && <span>• {vColor}</span>}
+                                {vType && <span className="px-1.5 py-0.5 rounded bg-gray-200/70 text-[10px] text-gray-600 font-medium">{vType}</span>}
+                                {slideVehicle?.status && (
+                                  <span className="text-[10px] text-gray-400">
+                                    (สถานะรถ: {slideVehicle.status === 'AVAILABLE' ? 'พร้อมใช้งาน' : slideVehicle.status === 'IN_TRANSIT' ? 'กำลังขนส่ง' : slideVehicle.status})
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Cost on card */}
+                          <div className="text-right sm:shrink-0 self-end sm:self-center">
+                            <span className="text-[10px] text-gray-500 block">ค่าบริการ</span>
+                            <div className="flex items-baseline gap-1.5">
+                              {isCancelled ? (
+                                <>
+                                  <span className="text-gray-400 line-through text-xs font-mono">
+                                    ฿{(activeJob.estimatedCost || 0).toLocaleString()}
+                                  </span>
+                                  <span className="text-sm font-bold text-red-600 font-mono">฿0</span>
+                                </>
+                              ) : (
+                                <span className="text-sm font-bold font-mono" style={{ color: theme.textPrimary }}>
+                                  ฿{(activeJob.actualCost ?? activeJob.estimatedCost ?? 0).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            {isCancelled && (
+                              <span className="text-[10px] text-red-500 font-medium block">ปฏิเสธงาน</span>
+                            )}
+                          </div>
                         </div>
-                        <MapPin className="w-4 h-4 text-red-500 shrink-0" />
-                      </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                        <span className="text-gray-500">ข้อมูลรถที่ขนย้าย:</span>
-                        <p className="font-mono font-bold text-gray-900 text-sm mt-0.5">{activeJob.vin}</p>
-                        <p className="text-gray-600 text-[11px] mt-0.5">{activeJob.vehicle?.model || 'ไม่ระบุรุ่น'}</p>
-                      </div>
+                        {/* Detailed Status Result / Rejection / Completion Box */}
+                        {isCancelled && (
+                          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs space-y-1.5">
+                            <div className="flex items-center gap-1.5 font-bold text-red-800">
+                              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                              <span>ข้อมูลการปฏิเสธงาน:</span>
+                            </div>
+                            <div className="pl-5 text-red-700 space-y-1">
+                              <p><span className="font-semibold">เหตุผล:</span> {activeJob.rejectReason || 'ไม่มีการระบุเหตุผล'}</p>
+                              <p className="text-[11px] text-red-500">
+                                • สถานะถูกปรับเป็น "ยกเลิก/ปฏิเสธงาน" และไม่มีการคิดค่าบริการรถสไลด์
+                              </p>
+                            </div>
+                          </div>
+                        )}
 
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                        <span className="text-gray-500">ผู้รับมอบปลายทาง:</span>
-                        <p className="font-bold text-gray-900 mt-0.5">{activeJob.contactPerson || '-'}</p>
-                        {activeJob.contactPhone && (
-                          <a 
-                            href={`tel:${activeJob.contactPhone}`}
-                            className="text-[11px] hover:underline flex items-center gap-1 mt-0.5"
-                            style={{ color: theme.textMuted }}
-                          >
-                            <Phone className="w-3 h-3" />
-                            <span>{activeJob.contactPhone}</span>
-                          </a>
+                        {isRejected && (
+                          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1.5">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>ข้อมูลขอแก้ไขจากสาขา (ตีกลับ):</span>
+                            </div>
+                            <div className="pl-5 text-amber-700 space-y-1">
+                              <p><span className="font-semibold">ข้อความจากสาขา:</span> {activeJob.rejectReason || 'โปรดตรวจสอบและแก้ไขงาน'}</p>
+                              <p className="text-[11px] text-amber-600">
+                                • Supplier สามารถแก้ไขและกดส่งงานใหม่ได้
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {isApproved && (
+                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5 font-bold text-emerald-800">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                <span>ผ่านการตรวจรับมอบรถแล้ว</span>
+                              </div>
+                              {activeJob.approvedAt && (
+                                <span className="text-[10px] text-emerald-600">
+                                  อนุมัติเมื่อ: {formatThaiDateTime(activeJob.approvedAt)}
+                                </span>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-emerald-700 text-[11px] mt-1">
+                              <div>
+                                <span className="text-emerald-800 font-semibold">ผู้ตรวจรับอนุมัติ: </span>
+                                <span>{activeJob.approvedBy || activeJob.branchName || '-'}</span>
+                              </div>
+                              {activeJob.completedAt && (
+                                <div>
+                                  <span className="text-emerald-800 font-semibold">เวลาส่งงานเสร็จ: </span>
+                                  <span>{formatThaiDateTime(activeJob.completedAt)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {isWaiting && (
+                          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                                <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>Supplier ดำเนินการส่งมอบรถแล้ว (รอการตรวจรับ)</span>
+                              </div>
+                              {activeJob.completedAt && (
+                                <span className="text-[10px] text-amber-600">
+                                  ส่งงานเมื่อ: {formatThaiDateTime(activeJob.completedAt)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-amber-700">
+                              หลักฐานการขนส่งพร้อมให้สาขาตรวจสอบ ({activeJob.evidences.length} รูป)
+                            </p>
+                          </div>
                         )}
                       </div>
+                      )}
 
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                        <span className="text-gray-500">เวลานัดรับรถ:</span>
-                        <p className="font-bold text-gray-900 mt-0.5">{formatThaiDateTime(activeJob.pickupDateTime)}</p>
-                      </div>
+                      {/* Route & Transport Logistics Details */}
+                      <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-2xs space-y-4">
+                        <h4 className="font-bold text-gray-800 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                          <Truck className="w-4 h-4" style={{ color: theme.iconColor }} />
+                          <span>ข้อมูลเส้นทางและการขนส่งรถสไลด์</span>
+                        </h4>
 
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                        <span className="text-gray-500">เวลาส่งมอบโดยประมาณ:</span>
-                        <p className="font-bold text-gray-900 mt-0.5">{formatThaiDateTime(activeJob.deliveryDateTime)}</p>
+                        {/* Route Visualizer */}
+                        <div className="p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 shrink-0" style={{ color: theme.iconColor }} />
+                            <div>
+                              <span className="text-[10px] text-gray-500">ต้นทาง (Origin):</span>
+                              <p className="font-bold text-gray-900">{activeJob.originBranchName || '-'}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex flex-col items-center gap-0.5 px-2">
+                            {activeJob.distance ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-700 shadow-2xs">
+                                {activeJob.distance} กม.
+                              </span>
+                            ) : null}
+                            <div className="flex items-center gap-1" style={{ color: theme.iconColor }}>
+                              <span className="border-b border-dashed w-8" style={{ borderColor: `${theme.primary}88` }} />
+                              <ArrowRight className="w-4 h-4" />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-right">
+                            <div>
+                              <span className="text-[10px] text-gray-500">ปลายทาง (Destination):</span>
+                              <p className="font-bold text-gray-900">{activeJob.destBranchName || activeJob.customDestAddress || '-'}</p>
+                            </div>
+                            <MapPin className="w-4 h-4 text-red-500 shrink-0" />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">ผู้รับมอบปลายทาง:</span>
+                            <p className="font-bold text-gray-900 mt-0.5">{activeJob.contactPerson || '-'}</p>
+                            {activeJob.contactPhone && (
+                              <a 
+                                href={`tel:${activeJob.contactPhone}`}
+                                className="text-[11px] hover:underline flex items-center gap-1 mt-0.5"
+                                style={{ color: theme.textMuted }}
+                              >
+                                <Phone className="w-3 h-3" />
+                                <span>{activeJob.contactPhone}</span>
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">ผู้สั่งงาน (Requester):</span>
+                            <p className="font-bold text-gray-900 mt-0.5">{activeJob.requestedBy || '-'}</p>
+                            {activeJob.requesterPhone && (
+                              <a 
+                                href={`tel:${activeJob.requesterPhone}`}
+                                className="text-[11px] hover:underline flex items-center gap-1 mt-0.5"
+                                style={{ color: theme.textMuted }}
+                              >
+                                <Phone className="w-3 h-3" />
+                                <span>{activeJob.requesterPhone}</span>
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">เวลานัดรับรถ:</span>
+                            <p className="font-bold text-gray-900 mt-0.5">{formatThaiDateTime(activeJob.pickupDateTime)}</p>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">เวลาส่งมอบโดยประมาณ:</span>
+                            <p className="font-bold text-gray-900 mt-0.5">{formatThaiDateTime(activeJob.deliveryDateTime)}</p>
+                          </div>
+                        </div>
+
+                        {activeJob.transferReason && (
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">เหตุผลในการขนย้าย / หมายเหตุ:</span>
+                            <p className="font-medium text-gray-800 mt-0.5">{activeJob.transferReason}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    {activeJob.transferReason && (
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
-                        <span className="text-gray-500">เหตุผลในการขนย้าย / หมายเหตุ:</span>
-                        <p className="font-medium text-gray-800 mt-0.5">{activeJob.transferReason}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Photo Evidences Gallery */}
                 <div>
@@ -933,48 +1211,59 @@ function JobsContent() {
                 </dl>
 
                 {/* Vehicle Slide specific info */}
-                {activeJob.jobType === 'VEHICLE_SLIDE' && (
-                  <dl className="print-wo-info-grid">
-                    <div>
-                      <dt>VIN รถ</dt>
-                      <dd style={{ fontFamily: 'monospace' }}>{activeJob.vin || '-'}</dd>
-                    </div>
-                    <div>
-                      <dt>รุ่น / สี</dt>
-                      <dd>{activeJob.vehicle ? `${activeJob.vehicle.model} (${activeJob.vehicle.color})` : '-'}</dd>
-                    </div>
-                    <div>
-                      <dt>สาขาต้นทาง</dt>
-                      <dd>{activeJob.originBranchName || activeJob.branchName}</dd>
-                    </div>
-                    <div>
-                      <dt>สาขาปลายทาง</dt>
-                      <dd>{activeJob.destBranchName || '-'}</dd>
-                    </div>
-                    <div>
-                      <dt>วันเวลารับรถ</dt>
-                      <dd>{activeJob.pickupDateTime ? formatThaiDateTime(activeJob.pickupDateTime) : '-'}</dd>
-                    </div>
-                    <div>
-                      <dt>วันเวลาส่งรถ</dt>
-                      <dd>{activeJob.deliveryDateTime ? formatThaiDateTime(activeJob.deliveryDateTime) : '-'}</dd>
-                    </div>
-                    <div>
-                      <dt>ผู้ติดต่อปลายทาง</dt>
-                      <dd>{activeJob.contactPerson || '-'}</dd>
-                    </div>
-                    <div>
-                      <dt>เบอร์โทรปลายทาง</dt>
-                      <dd>{activeJob.contactPhone || '-'}</dd>
-                    </div>
-                    {activeJob.transferReason && (
-                      <div style={{ gridColumn: '1 / -1' }}>
-                        <dt>เหตุผลในการเคลื่อนย้าย</dt>
-                        <dd>{activeJob.transferReason}</dd>
+                {activeJob.jobType === 'VEHICLE_SLIDE' && (() => {
+                  const v = vehicles.find(item => item.vin === activeJob.vin) || activeJob.vehicle;
+                  return (
+                    <dl className="print-wo-info-grid">
+                      <div>
+                        <dt>VIN รถ</dt>
+                        <dd style={{ fontFamily: 'monospace', fontWeight: 700 }}>{activeJob.vin || '-'}</dd>
                       </div>
-                    )}
-                  </dl>
-                )}
+                      <div>
+                        <dt>รุ่น / สี</dt>
+                        <dd>{v ? `${v.model || ''} ${v.color ? `(${v.color})` : ''}`.trim() : '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>ทะเบียนรถ</dt>
+                        <dd style={{ fontWeight: 700 }}>{v?.licensePlate || '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>ประเภทรถ</dt>
+                        <dd>{v?.vehicleType || '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>สาขาต้นทาง</dt>
+                        <dd>{activeJob.originBranchName || activeJob.branchName}</dd>
+                      </div>
+                      <div>
+                        <dt>สาขาปลายทาง</dt>
+                        <dd>{activeJob.destBranchName || activeJob.customDestAddress || '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>วันเวลารับรถ</dt>
+                        <dd>{activeJob.pickupDateTime ? formatThaiDateTime(activeJob.pickupDateTime) : '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>วันเวลาส่งรถ</dt>
+                        <dd>{activeJob.deliveryDateTime ? formatThaiDateTime(activeJob.deliveryDateTime) : '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>ผู้ติดต่อปลายทาง</dt>
+                        <dd>{activeJob.contactPerson || '-'}</dd>
+                      </div>
+                      <div>
+                        <dt>เบอร์โทรปลายทาง</dt>
+                        <dd>{activeJob.contactPhone || '-'}</dd>
+                      </div>
+                      {activeJob.transferReason && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <dt>เหตุผลในการเคลื่อนย้าย / หมายเหตุ</dt>
+                          <dd>{activeJob.transferReason}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  );
+                })()}
 
                 {/* Car Wash Items Table */}
                 {activeJob.jobType === 'CAR_WASH' && activeJob.carWashItems && (
@@ -1038,12 +1327,179 @@ function JobsContent() {
                   </>
                 )}
 
-                {/* Vehicle Slide Cost */}
-                {activeJob.jobType === 'VEHICLE_SLIDE' && (
-                  <div style={{ textAlign: 'right', fontSize: '11pt', fontWeight: 800, marginBottom: '12pt', padding: '8pt', border: '0.5pt solid #ccc', borderRadius: '4pt', background: '#fafafa' }}>
-                    ค่าบริการโดยประมาณ: ฿{(activeJob.estimatedCost || 0).toLocaleString()}
-                  </div>
-                )}
+                {/* Vehicle Slide Table */}
+                {activeJob.jobType === 'VEHICLE_SLIDE' && (() => {
+                  const slideItems = activeJob.carWashItems;
+                  const isJobCancelled = activeJob.status === 'CANCELLED';
+                  const isJobApproved = ['APPROVED', 'INVOICED'].includes(activeJob.status);
+
+                  if (slideItems && slideItems.length > 0) {
+                    const validItems = slideItems.filter(i => i.status !== 'CANCELLED');
+                    const totalCost = validItems.reduce((s, i) => s + i.unitPrice, 0);
+
+                    return (
+                      <div style={{ marginBottom: '14pt' }}>
+                        <div style={{ fontSize: '10pt', fontWeight: 700, marginBottom: '6pt' }}>
+                          รายการรถในคำสั่งขนส่งรถสไลด์ ({slideItems.length} คัน)
+                        </div>
+                        <table className="print-wo-table">
+                          <thead>
+                            <tr>
+                              <th className="text-center" style={{ width: '28pt' }}>ลำดับ</th>
+                              <th>เลขตัวถัง (VIN)</th>
+                              <th>รุ่น / สี</th>
+                              <th>ทะเบียน</th>
+                              <th>เส้นทางขนส่ง</th>
+                              <th className="text-center" style={{ width: '80pt' }}>สถานะ</th>
+                              <th className="text-right" style={{ width: '60pt' }}>ราคา (฿)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {slideItems.map((item, idx) => {
+                              const isItemCancelled = item.status === 'CANCELLED';
+                              const isItemDone = item.status === 'COMPLETED';
+                              const statusLabel = isItemCancelled 
+                                ? 'ปฏิเสธ' 
+                                : isJobApproved 
+                                  ? 'ตรวจรับแล้ว' 
+                                  : isItemDone 
+                                    ? 'ส่งแล้ว' 
+                                    : 'รอดำเนินการ';
+                              const statusColor = isItemCancelled ? '#dc2626' : (isJobApproved || isItemDone) ? '#15803d' : '#b45309';
+
+                              return (
+                                <React.Fragment key={item.id}>
+                                  <tr>
+                                    <td className="text-center">{idx + 1}</td>
+                                    <td style={{ fontFamily: 'monospace', fontWeight: 700, textDecoration: isItemCancelled ? 'line-through' : 'none' }}>
+                                      {item.vin}
+                                    </td>
+                                    <td>{item.vehicleModel} {item.vehicleColor ? `(${item.vehicleColor})` : ''}</td>
+                                    <td style={{ fontWeight: 700 }}>{item.licensePlate || '-'}</td>
+                                    <td>
+                                      {(activeJob.originBranchName || activeJob.branchName)} → {(activeJob.destBranchName || activeJob.customDestAddress || '-')}
+                                      {activeJob.distance ? ` (${activeJob.distance} กม.)` : ''}
+                                    </td>
+                                    <td className="text-center" style={{ fontWeight: 700, color: statusColor }}>
+                                      {statusLabel}
+                                    </td>
+                                    <td className="text-right" style={{ fontWeight: 700, color: isItemCancelled ? '#dc2626' : undefined }}>
+                                      {isItemCancelled ? '0' : item.unitPrice.toLocaleString()}
+                                    </td>
+                                  </tr>
+                                  {isItemCancelled && item.remarks && (
+                                    <tr>
+                                      <td colSpan={7} style={{ color: '#dc2626', background: '#fef2f2', padding: '4pt 8pt', fontSize: '8.5pt' }}>
+                                        ↳ เหตุผลที่ปฏิเสธ: {item.remarks} (ไม่คิดค่าบริการ)
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="print-wo-total-row">
+                              <td colSpan={6} className="text-right">
+                                ยอดรวมสุทธิ {slideItems.some(i => i.status === 'CANCELLED') ? `(เฉพาะ ${validItems.length} จาก ${slideItems.length} คัน)` : 'ทั้งสิ้น'}
+                              </td>
+                              <td className="text-right">
+                                ฿{totalCost.toLocaleString()}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    );
+                  }
+
+                  // Single car fallback
+                  const v = vehicles.find(item => item.vin === activeJob.vin) || activeJob.vehicle;
+                  const vModel = v?.model || 'ไม่ระบุรุ่น';
+                  const vColor = v?.color || '';
+                  const vPlate = v?.licensePlate || '-';
+                  const statusText = isJobCancelled
+                    ? 'ปฏิเสธงาน / ยกเลิก'
+                    : isJobApproved
+                      ? 'ผ่านการตรวจรับแล้ว'
+                      : activeJob.status === 'WAITING_APPROVAL'
+                        ? 'ส่งงานแล้ว (รอตรวจรับ)'
+                        : activeJob.status === 'IN_PROGRESS'
+                          ? 'กำลังขนส่ง'
+                          : 'รอ Supplier รับงาน';
+
+                  const statusColor = isJobCancelled ? '#dc2626' : isJobApproved ? '#15803d' : '#374151';
+                  const finalCost = isJobCancelled ? 0 : (activeJob.actualCost ?? activeJob.estimatedCost ?? 0);
+
+                  return (
+                    <div style={{ marginBottom: '14pt' }}>
+                      <div style={{ fontSize: '10pt', fontWeight: 700, marginBottom: '6pt' }}>
+                        รายการรถในคำสั่งขนส่งรถสไลด์ (1 คัน)
+                      </div>
+                      <table className="print-wo-table">
+                        <thead>
+                          <tr>
+                            <th className="text-center" style={{ width: '28pt' }}>ลำดับ</th>
+                            <th>เลขตัวถัง (VIN)</th>
+                            <th>รุ่น / สี</th>
+                            <th>ทะเบียน</th>
+                            <th>เส้นทางขนส่ง</th>
+                            <th>วันเวลารับ / ส่งมอบ</th>
+                            <th className="text-center" style={{ width: '80pt' }}>สถานะ</th>
+                            <th className="text-right" style={{ width: '60pt' }}>ราคา (฿)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="text-center">1</td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 700, textDecoration: isJobCancelled ? 'line-through' : 'none' }}>
+                              {activeJob.vin || '-'}
+                            </td>
+                            <td>{vModel} {vColor ? `(${vColor})` : ''}</td>
+                            <td style={{ fontWeight: 700 }}>{vPlate}</td>
+                            <td>
+                              {(activeJob.originBranchName || activeJob.branchName)} → {(activeJob.destBranchName || activeJob.customDestAddress || '-')}
+                              {activeJob.distance ? ` (${activeJob.distance} กม.)` : ''}
+                            </td>
+                            <td>
+                              {activeJob.pickupDateTime ? formatThaiDateTime(activeJob.pickupDateTime) : '-'}
+                            </td>
+                            <td className="text-center" style={{ fontWeight: 700, color: statusColor }}>
+                              {statusText}
+                            </td>
+                            <td className="text-right" style={{ fontWeight: 700, color: isJobCancelled ? '#dc2626' : undefined }}>
+                              {isJobCancelled ? '0' : finalCost.toLocaleString()}
+                            </td>
+                          </tr>
+                          {isJobCancelled && activeJob.rejectReason && (
+                            <tr>
+                              <td colSpan={8} style={{ color: '#dc2626', background: '#fef2f2', padding: '6pt 8pt', fontSize: '9pt', borderTop: '0.5pt solid #fca5a5' }}>
+                                <strong>เหตุผลที่ปฏิเสธงาน / ยกเลิก:</strong> {activeJob.rejectReason} (ไม่คิดค่าบริการ)
+                              </td>
+                            </tr>
+                          )}
+                          {isJobApproved && (
+                            <tr>
+                              <td colSpan={8} style={{ color: '#15803d', background: '#f0fdf4', padding: '6pt 8pt', fontSize: '9pt', borderTop: '0.5pt solid #86efac' }}>
+                                <strong>ผลการตรวจรับ:</strong> ผ่านการตรวจรับแล้ว {activeJob.approvedBy ? `โดย ${activeJob.approvedBy}` : ''} {activeJob.approvedAt ? `เมื่อ ${formatThaiDateTime(activeJob.approvedAt)}` : ''}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr className="print-wo-total-row">
+                            <td colSpan={7} className="text-right">
+                              ยอดรวมสุทธิ {isJobCancelled ? '(ยกเลิกงาน / ไม่คิดค่าบริการ)' : 'ทั้งสิ้น'}
+                            </td>
+                            <td className="text-right">
+                              ฿{finalCost.toLocaleString()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  );
+                })()}
 
                 {/* Signatures */}
                 <div className="print-wo-signatures">
