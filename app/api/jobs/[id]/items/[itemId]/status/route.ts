@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { logAuditFromUser } from '@/lib/audit-log';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
@@ -76,7 +77,7 @@ export async function PATCH(
     // ADMIN and MASTER can do anything
 
     // ─── Atomic Update with Transaction ──────────────
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       // 1. Update the individual item status
       const updatedItem = await tx.carWashItem.update({
         where: { id: itemId },
@@ -91,8 +92,8 @@ export async function PATCH(
         where: { jobId },
       });
 
-      const completedCount = allItems.filter(i => i.status === 'COMPLETED').length;
-      const cancelledCount = allItems.filter(i => i.status === 'CANCELLED').length;
+      const completedCount = allItems.filter((i: any) => i.status === 'COMPLETED').length;
+      const cancelledCount = allItems.filter((i: any) => i.status === 'CANCELLED').length;
       const totalCount = allItems.length;
       const allResolved = (completedCount + cancelledCount) === totalCount;
 
@@ -123,8 +124,8 @@ export async function PATCH(
         } else {
           // Mix of completed + cancelled → move to WAITING_APPROVAL for admin review
           const actualCost = allItems
-            .filter(i => i.status === 'COMPLETED')
-            .reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+            .filter((i: any) => i.status === 'COMPLETED')
+            .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
 
           await tx.job.update({
             where: { id: jobId },
@@ -150,8 +151,8 @@ export async function PATCH(
       } else if (cancelledCount > 0 || job.actualCost !== null) {
         // Keep actualCost in sync when items are rejected or updated
         const validSum = allItems
-          .filter(i => i.status !== 'CANCELLED')
-          .reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+          .filter((i: any) => i.status !== 'CANCELLED')
+          .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
 
         await tx.job.update({
           where: { id: jobId },
@@ -198,6 +199,22 @@ export async function PATCH(
         item: updatedItem,
         progress: { completed: completedCount, cancelled: cancelledCount, total: totalCount, allResolved },
       };
+    });
+
+    // Audit Log: UPDATE_ITEM_STATUS
+    const statusLabel: Record<string, string> = {
+      COMPLETED: 'ส่งงาน',
+      CANCELLED: 'ปฏิเสธ',
+      REJECTED: 'ตีกลับ',
+      PENDING: 'รีเซ็ต',
+    };
+    logAuditFromUser(user, {
+      action: 'UPDATE_ITEM_STATUS',
+      entityType: 'CarWashItem',
+      entityId: itemId,
+      description: `${statusLabel[status] || status}รถคัน ${item.vin} ในใบงาน ${job.jobNumber}${remarks ? ` — ${remarks}` : ''}`,
+      metadata: { jobId, jobNumber: job.jobNumber, vin: item.vin, fromStatus: item.status, toStatus: status, remarks },
+      request,
     });
 
     return NextResponse.json({

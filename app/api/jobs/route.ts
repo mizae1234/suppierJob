@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
+import { logAuditFromUser } from '@/lib/audit-log';
 
 // GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
@@ -92,17 +93,17 @@ export async function GET(request: NextRequest) {
             },
           },
           evidences: true,
-          activities: { orderBy: { createdAt: 'asc' } },
+          activities: { orderBy: { createdAt: 'asc' as const } },
           invoice: { select: { invoiceNumber: true } },
-        },
+        } as any,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
-      }),
+      }) as unknown as any[],
     ]);
 
     // Format for frontend compatibility
-    const formatted = jobs.map(job => ({
+    const formatted = jobs.map((job: any) => ({
       id: job.id,
       jobNumber: job.jobNumber,
       jobType: job.jobType,
@@ -126,7 +127,7 @@ export async function GET(request: NextRequest) {
       contactPhone: job.contactPhone,
       transferReason: job.transferReason,
       // Car Wash
-      carWashItems: job.carWashItems.map(item => ({
+      carWashItems: job.carWashItems.map((item: any) => ({
         id: item.id,
         jobId: item.jobId,
         vin: item.vin,
@@ -149,7 +150,7 @@ export async function GET(request: NextRequest) {
       approvedBy: job.approvedBy,
       rejectReason: job.rejectReason,
       // Evidence
-      evidences: job.evidences.map(e => ({
+      evidences: job.evidences.map((e: any) => ({
         id: e.id,
         jobId: e.jobId,
         vin: e.vin,
@@ -163,10 +164,10 @@ export async function GET(request: NextRequest) {
       actualCost: (() => {
         if (job.status === 'CANCELLED') return 0;
         if (job.carWashItems && job.carWashItems.length > 0) {
-          const hasCancelled = job.carWashItems.some(i => i.status === 'CANCELLED');
+          const hasCancelled = job.carWashItems.some((i: any) => i.status === 'CANCELLED');
           if (hasCancelled) {
-            const validItems = job.carWashItems.filter(i => i.status !== 'CANCELLED');
-            return validItems.reduce((sum, i) => sum + (i.unitPrice || 0), 0);
+            const validItems = job.carWashItems.filter((i: any) => i.status !== 'CANCELLED');
+            return validItems.reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
           }
         }
         return job.actualCost;
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
       invoiceId: job.invoiceId,
       invoiceNumber: job.invoice?.invoiceNumber,
       // Activities / Timeline
-      activities: (job.activities || []).map(a => ({
+      activities: (job.activities || []).map((a: any) => ({
         id: a.id,
         jobId: a.jobId,
         action: a.action,
@@ -321,6 +322,16 @@ export async function POST(request: NextRequest) {
         data: { status: 'IN_WASH' },
       });
 
+      // Audit Log: CREATE_JOB (Car Wash)
+      logAuditFromUser(user, {
+        action: 'CREATE_JOB',
+        entityType: 'Job',
+        entityId: job.id,
+        description: `สร้างใบงานล้างรถ ${jobNumber} (${items.length} คัน, ฿${totalCost.toLocaleString()})`,
+        metadata: { jobNumber, jobType: 'CAR_WASH', itemCount: items.length, totalCost },
+        request,
+      });
+
       return NextResponse.json({ success: true, job }, { status: 201 });
 
     } else if (jobType === 'VEHICLE_SLIDE') {
@@ -405,6 +416,16 @@ export async function POST(request: NextRequest) {
       await prisma.vehicle.updateMany({
         where: { vin: { in: vinsList } },
         data: { status: 'IN_TRANSIT' },
+      });
+
+      // Audit Log: CREATE_JOB (Vehicle Slide)
+      logAuditFromUser(user, {
+        action: 'CREATE_JOB',
+        entityType: 'Job',
+        entityId: job.id,
+        description: `สร้างใบงานรถสไลด์ ${jobNumber} (${vinsList.length} คัน, ฿${totalEstimatedCost.toLocaleString()})`,
+        metadata: { jobNumber, jobType: 'VEHICLE_SLIDE', vinCount: vinsList.length, totalEstimatedCost },
+        request,
       });
 
       return NextResponse.json({ 

@@ -248,3 +248,26 @@ model Invoice {
   @@index([supplierId, status])
   @@index([createdAt])
 }
+
+// บันทึก Audit Log — ใครทำอะไรเมื่อไหร่ในระบบ
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?  // FK → User (nullable สำหรับ system events)
+  userName    String?  // Snapshot ชื่อผู้กระทำ ณ เวลานั้น
+  userRole    String?  // MASTER, ADMIN, BRANCH, SUPPLIER
+  supplierId  String?  // ถ้า action เกี่ยวกับ Supplier
+  action      String   // LOGIN, LOGOUT, CREATE_JOB, APPROVE_JOB, REJECT_JOB, CREATE_INVOICE, UPDATE_ITEM_STATUS, etc.
+  entityType  String?  // Job, Invoice, Vehicle, User, CarWashItem
+  entityId    String?  // ID ของ record ที่ถูกกระทำ
+  description String   // ข้อความอธิบายสิ่งที่เกิดขึ้น
+  metadata    String?  // JSON string สำหรับข้อมูลเพิ่มเติม
+  ipAddress   String?  // IP Address ของผู้ใช้
+  userAgent   String?  // Browser / Device info
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([supplierId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

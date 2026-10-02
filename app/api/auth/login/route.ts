@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { createSessionToken } from '@/lib/auth';
+import { logAudit } from '@/lib/audit-log';
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,6 +87,20 @@ export async function POST(request: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 24 * 7, // 7 days
+    });
+
+    // Audit Log: LOGIN
+    logAudit({
+      userId: user.id,
+      userName: user.displayName,
+      userRole: user.role,
+      supplierId: user.supplierId,
+      action: 'LOGIN',
+      entityType: 'User',
+      entityId: user.id,
+      description: `${user.displayName} (${user.role}) เข้าสู่ระบบ`,
+      metadata: { username: user.username, companyCode: sessionData.companyCode },
+      request,
     });
 
     return response;

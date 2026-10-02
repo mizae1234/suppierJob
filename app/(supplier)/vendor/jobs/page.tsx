@@ -828,114 +828,121 @@ function SupplierJobsPageContent() {
 
       {/* Reject Modal (Car Wash Item or Vehicle Slide Job) */}
       {rejectingTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-100 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-red-600">
-                <div className="w-9 h-9 rounded-2xl bg-red-100 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full shadow-2xl border border-gray-100 flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Header — Clean Red Banner (fixed at top) */}
+            <div className="px-5 pt-5 pb-4 bg-gradient-to-b from-red-50 to-white shrink-0">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">
+                      {rejectingTarget.type === 'VEHICLE_SLIDE' ? 'ปฏิเสธงานรถสไลด์' : 'ปฏิเสธรถคันนี้'}
+                    </h3>
+                    <p className="text-[11px] text-gray-500 mt-0.5">
+                      {rejectingTarget.type === 'VEHICLE_SLIDE'
+                        ? 'ระบบจะแจ้งเตือนสาขาผู้สั่งงาน'
+                        : 'คันอื่นในใบงานเดียวกันไม่ได้รับผลกระทบ'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-gray-900">
-                    {rejectingTarget.type === 'VEHICLE_SLIDE' ? 'ปฏิเสธงานรถสไลด์' : 'ปฏิเสธรถคันนี้'}
-                  </h3>
-                  <p className="text-[11px] text-gray-500 font-mono">VIN: {rejectingTarget.vin}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setRejectingTarget(null)}
+                  className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setRejectingTarget(null)}
-                className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            {/* Car info */}
-            <div className="p-3 rounded-xl bg-red-50/50 border border-red-100 text-xs">
-              <p className="font-semibold text-gray-800">
-                {rejectingTarget.vehicleModel || (rejectingTarget.type === 'VEHICLE_SLIDE' ? 'รถสไลด์ขนส่ง' : 'รถยนต์')}
-                {rejectingTarget.vehicleColor ? ` • สี ${rejectingTarget.vehicleColor}` : ''}
-                {rejectingTarget.licensePlate ? ` • ${rejectingTarget.licensePlate}` : ''}
-              </p>
-              <p className="text-gray-500 mt-0.5">
-                ใบงาน: <span className="font-mono font-bold">{rejectingTarget.jobNumber}</span> • {rejectingTarget.branchName}
-              </p>
-              {rejectingTarget.routeText && (
-                <p className="text-gray-600 mt-0.5">
-                  📍 {rejectingTarget.routeText}
-                </p>
-              )}
-              <p className="text-red-600 font-medium mt-1">
-                {rejectingTarget.type === 'VEHICLE_SLIDE'
-                  ? '⚠️ ยืนยันการปฏิเสธใบงานรถสไลด์นี้ — ระบบจะแจ้งเตือนสาขาผู้สั่งงาน'
-                  : '⚠️ ปฏิเสธเฉพาะคันนี้เท่านั้น — คันอื่นในใบงานเดียวกันไม่ได้รับผลกระทบ'}
-              </p>
-            </div>
-
-            {/* Quick Reason Chips */}
-            <div>
-              <p className="text-[11px] font-bold text-gray-700 mb-1.5">เลือกเหตุผลด่วน:</p>
-              <div className="flex flex-wrap gap-1.5">
-                {presetReasons.map(r => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setRejectReason(r)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
-                      rejectReason === r
-                        ? 'bg-red-600 text-white font-bold shadow-2xs'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
+              {/* Compact Vehicle Info */}
+              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white border border-gray-100 shadow-2xs text-xs">
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                  rejectingTarget.type === 'VEHICLE_SLIDE' ? 'bg-purple-50 text-purple-500' : 'bg-sky-50 text-sky-500'
+                }`}>
+                  {rejectingTarget.type === 'VEHICLE_SLIDE' ? <Truck className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-gray-900 truncate">
+                    {rejectingTarget.vehicleModel || 'รถยนต์'}
+                    {rejectingTarget.licensePlate && <span className="text-gray-500 font-normal"> • {rejectingTarget.licensePlate}</span>}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-mono">{rejectingTarget.jobNumber}</p>
+                </div>
+                <span className="text-xs font-bold text-gray-900 font-mono shrink-0">฿{rejectingTarget.unitPrice.toLocaleString()}</span>
               </div>
             </div>
 
-            {/* Custom Reason Textarea */}
-            <div>
-              <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                หรือระบุเหตุผลเพิ่มเติม:
-              </label>
-              <textarea
-                value={rejectReason}
-                onChange={e => setRejectReason(e.target.value)}
-                placeholder={
-                  rejectingTarget.type === 'VEHICLE_SLIDE'
-                    ? 'ระบุเหตุผลในการปฏิเสธงานรถสไลด์...'
-                    : 'ระบุเหตุผลในการปฏิเสธรถคันนี้...'
-                }
-                rows={3}
-                className="w-full p-2.5 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-red-500 focus:outline-none resize-none"
-              />
+            {/* Scrollable Body — Reason Selection */}
+            <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
+              {/* Quick Reasons as Compact List */}
+              <div>
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">เลือกเหตุผล</p>
+                <div className="flex flex-col gap-1.5">
+                  {presetReasons.map(r => {
+                    const isSelected = rejectReason === r;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRejectReason(isSelected ? '' : r)}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-red-50 border-red-300 text-red-700 font-bold border'
+                            : 'bg-gray-50 border-transparent hover:bg-gray-100 text-gray-700 border'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? 'border-red-500 bg-red-500' : 'border-gray-300'
+                        }`}>
+                          {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                        </div>
+                        {r}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Reason */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                  หรือระบุเหตุผลเอง
+                </label>
+                <textarea
+                  value={presetReasons.includes(rejectReason) ? '' : rejectReason}
+                  onChange={e => setRejectReason(e.target.value)}
+                  placeholder="พิมพ์เหตุผลเพิ่มเติม..."
+                  rows={2}
+                  className="w-full p-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-red-400 focus:border-red-300 focus:outline-none resize-none bg-gray-50 placeholder:text-gray-400"
+                />
+              </div>
             </div>
 
-            {/* Modal Buttons */}
-            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+            {/* Buttons — Sticky at bottom */}
+            <div className="px-5 pb-5 pt-3 border-t border-gray-100 bg-white shrink-0 flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => setRejectingTarget(null)}
                 disabled={isSubmittingReject}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-700 text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer"
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-bold hover:bg-gray-50 transition-colors cursor-pointer"
               >
                 ยกเลิก
               </button>
               <button
                 type="button"
                 onClick={handleConfirmReject}
-                disabled={isSubmittingReject}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                disabled={isSubmittingReject || !rejectReason.trim()}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
               >
-                <XCircle className="w-4 h-4" />
-                <span>
-                  {isSubmittingReject
-                    ? 'กำลังปฏิเสธ...'
-                    : rejectingTarget.type === 'VEHICLE_SLIDE'
-                    ? 'ยืนยันปฏิเสธงาน'
-                    : 'ยืนยันปฏิเสธคันนี้'}
-                </span>
+                {isSubmittingReject ? (
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                <span>{isSubmittingReject ? 'กำลังปฏิเสธ...' : 'ยืนยันปฏิเสธ'}</span>
               </button>
             </div>
           </div>

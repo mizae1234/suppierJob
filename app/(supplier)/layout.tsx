@@ -166,7 +166,7 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
       </main>
 
       {/* Mobile Bottom Tab Bar (lg:hidden) */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-2xl border-t border-gray-200/80 shadow-[0_-4px_24px_rgba(0,0,0,0.07)] px-3 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-2xl border-t border-gray-200/80 shadow-[0_-4px_24px_rgba(0,0,0,0.07)] px-3 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-around max-w-md mx-auto">
           {navItems.map(item => {
             const isActive = item.href === '/vendor'

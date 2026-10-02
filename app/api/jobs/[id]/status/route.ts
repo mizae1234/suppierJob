@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
 
 // PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard)
 export async function PATCH(
@@ -127,6 +128,30 @@ export async function PATCH(
         where: { id },
         data: updateData,
       });
+    });
+
+    // Audit Log: Job Status Change
+    const actionMap: Record<string, AuditAction> = {
+      APPROVED: 'APPROVE_JOB',
+      REJECTED: 'REJECT_JOB',
+      CANCELLED: 'CANCEL_JOB',
+      WAITING_APPROVAL: 'SUBMIT_JOB',
+      IN_PROGRESS: 'UPDATE_JOB',
+    };
+    const descMap: Record<string, string> = {
+      APPROVED: `อนุมัติใบงาน ${job.jobNumber}`,
+      REJECTED: `ตีกลับใบงาน ${job.jobNumber}${rejectReason ? ` — ${rejectReason}` : ''}`,
+      CANCELLED: `ยกเลิกใบงาน ${job.jobNumber}${rejectReason ? ` — ${rejectReason}` : ''}`,
+      WAITING_APPROVAL: `ส่งงานใบงาน ${job.jobNumber} รอตรวจรับ`,
+      IN_PROGRESS: `เปลี่ยนสถานะใบงาน ${job.jobNumber} เป็น ${status}`,
+    };
+    logAuditFromUser(user, {
+      action: actionMap[status] || 'UPDATE_JOB',
+      entityType: 'Job',
+      entityId: id,
+      description: descMap[status] || `เปลี่ยนสถานะงาน ${job.jobNumber} เป็น ${status}`,
+      metadata: { jobNumber: job.jobNumber, fromStatus: job.status, toStatus: status, rejectReason },
+      request,
     });
 
     return NextResponse.json({ success: true, job: updatedJob });

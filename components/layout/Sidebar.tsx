@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   Wrench,
   X,
-  Smartphone
+  Smartphone,
+  Shield
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -101,6 +102,13 @@ export const Sidebar: React.FC = () => {
       href: '/vehicle-reports',
       icon: Car,
       badge: null,
+    },
+    {
+      label: 'Audit Logs',
+      href: '/audit-logs',
+      icon: Shield,
+      badge: null,
+      roleVisibility: ['MASTER'],
     },
     {
       label: 'ตั้งค่าระบบ',
