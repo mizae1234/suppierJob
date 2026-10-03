@@ -19,6 +19,7 @@ import {
   X,
   Store,
   ChevronRight,
+  Users,
 } from 'lucide-react';
 
 const mainTabs = [
@@ -34,7 +35,8 @@ const moreMenuItems = [
   { label: 'ขอรถสไลด์', icon: Truck, href: '/jobs/create-vehicle-slide', color: '#059669' },
   { divider: true },
   { label: 'รถในสต็อก / VIN', icon: Car, href: '/vehicles', color: '#6b7280' },
-  { label: 'จัดการ Supplier', icon: Store, href: '/suppliers', color: '#6b7280' },
+  { label: 'จัดการ Supplier', icon: Store, href: '/suppliers', color: '#6b7280', roleVisibility: ['MASTER'] },
+  { label: 'จัดการผู้ใช้งาน', icon: Users, href: '/users', color: '#6b7280', roleVisibility: ['MASTER'] },
   { label: 'ใบวางบิล / Invoice', icon: Receipt, href: '/invoices', color: '#6b7280' },
   { label: 'รายงาน', icon: BarChart3, href: '/reports', color: '#6b7280' },
   { label: 'ใบรายคัน', icon: Car, href: '/vehicle-reports', color: '#059669' },
@@ -48,7 +50,7 @@ const createOptions = [
 
 export const MobileBottomNav: React.FC = () => {
   const pathname = usePathname();
-  const { jobs } = useApp();
+  const { jobs, currentRole } = useApp();
   const [showMore, setShowMore] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
@@ -88,6 +90,9 @@ export const MobileBottomNav: React.FC = () => {
             {/* Menu Items */}
             <div className="px-3 py-2 pb-safe max-h-[60vh] overflow-y-auto">
               {moreMenuItems.map((item, idx) => {
+                if ('roleVisibility' in item && (item as any).roleVisibility && !(item as any).roleVisibility.includes(currentRole)) {
+                  return null;
+                }
                 if ('divider' in item && item.divider) {
                   return <div key={idx} className="h-px bg-gray-100 my-1.5 mx-2" />;
                 }

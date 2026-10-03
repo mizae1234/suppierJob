@@ -64,8 +64,11 @@ function JobsContent() {
   } = useApp();
   const theme = useTheme();
 
-  // View Mode: Table vs Kanban
-  const [viewMode, setViewMode] = useState<'TABLE' | 'KANBAN'>('TABLE');
+  // View Mode: Table vs Kanban (default to KANBAN)
+  const initialViewParam = searchParams.get('view')?.toUpperCase();
+  const [viewMode, setViewMode] = useState<'TABLE' | 'KANBAN'>(
+    initialViewParam === 'TABLE' ? 'TABLE' : 'KANBAN'
+  );
 
   // Filters state
   const [searchTags, setSearchTags] = useState<string[]>(() => {
@@ -244,18 +247,6 @@ function JobsContent() {
           {/* View Mode Switcher */}
           <div className="flex items-center p-1 rounded-full bg-white border shadow-xs" style={{ borderColor: theme.borderSoft }}>
             <button
-              onClick={() => setViewMode('TABLE')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
-                viewMode === 'TABLE'
-                  ? 'text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-              style={viewMode === 'TABLE' ? { backgroundColor: theme.primary } : {}}
-            >
-              <LayoutList className="w-3.5 h-3.5" />
-              <span>ตาราง (Table)</span>
-            </button>
-            <button
               onClick={() => setViewMode('KANBAN')}
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
                 viewMode === 'KANBAN'
@@ -266,6 +257,18 @@ function JobsContent() {
             >
               <Kanban className="w-3.5 h-3.5" />
               <span>คัมบัง (Kanban)</span>
+            </button>
+            <button
+              onClick={() => setViewMode('TABLE')}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                viewMode === 'TABLE'
+                  ? 'text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+              style={viewMode === 'TABLE' ? { backgroundColor: theme.primary } : {}}
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              <span>ตาราง (Table)</span>
             </button>
           </div>
 
