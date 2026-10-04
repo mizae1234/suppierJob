@@ -27,6 +27,7 @@ import {
   RefreshCw,
   Lock,
   ChevronDown,
+  Store,
 } from 'lucide-react';
 
 interface CompanyData {
@@ -604,26 +605,33 @@ export default function UserManagementPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[980px] text-left border-collapse">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/60 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">ผู้ใช้งาน</th>
-                  <th className="py-3.5 px-4">บทบาท (Role)</th>
-                  <th className="py-3.5 px-4">สังกัด / สาขา / คู่ค้า</th>
-                  <th className="py-3.5 px-4">เบอร์โทรศัพท์</th>
-                  <th className="py-3.5 px-4 text-center">สถานะ</th>
-                  <th className="py-3.5 px-4 text-right">การจัดการ</th>
+                <tr className="border-b border-gray-200/80 bg-gray-50/80 text-[11px] font-bold text-gray-500 uppercase tracking-wider select-none">
+                  <th className="py-4 px-5 w-[28%] min-w-[250px]">ผู้ใช้งาน</th>
+                  <th className="py-4 px-4 w-[14%] min-w-[130px] whitespace-nowrap">บทบาท (Role)</th>
+                  <th className="py-4 px-4 w-[24%] min-w-[210px]">สังกัด / สาขา / คู่ค้า</th>
+                  <th className="py-4 px-4 w-[16%] min-w-[150px] whitespace-nowrap">เบอร์โทรศัพท์</th>
+                  <th className="py-4 px-4 w-[9%] min-w-[95px] text-center whitespace-nowrap">สถานะ</th>
+                  <th className="py-4 px-5 w-[9%] min-w-[115px] text-right whitespace-nowrap">การจัดการ</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-xs">
+              <tbody className="divide-y divide-gray-100/90 text-xs">
                 {filteredUsers.map(user => {
                   const isCurrent = user.id === currentUser?.id;
 
-                  // Role badge styling
+                  // Extract clean human name (if available), otherwise fallback to displayName
+                  const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
+                  const primaryName = fullName || user.displayName;
+
+                  // Role badge styling & pastel avatar
                   let roleBadge = {
-                    bg: 'bg-gray-100',
+                    bg: 'bg-gray-50',
                     text: 'text-gray-700',
                     border: 'border-gray-200',
+                    avatarBg: 'bg-gray-100',
+                    avatarText: 'text-gray-700',
+                    avatarBorder: 'border-gray-200',
                     icon: Shield,
                     label: user.role,
                   };
@@ -632,7 +640,10 @@ export default function UserManagementPage() {
                     roleBadge = {
                       bg: 'bg-purple-50',
                       text: 'text-purple-700',
-                      border: 'border-purple-200',
+                      border: 'border-purple-200/90',
+                      avatarBg: 'bg-purple-50',
+                      avatarText: 'text-purple-700',
+                      avatarBorder: 'border-purple-200/80',
                       icon: Shield,
                       label: 'MASTER',
                     };
@@ -640,7 +651,10 @@ export default function UserManagementPage() {
                     roleBadge = {
                       bg: 'bg-blue-50',
                       text: 'text-blue-700',
-                      border: 'border-blue-200',
+                      border: 'border-blue-200/90',
+                      avatarBg: 'bg-blue-50',
+                      avatarText: 'text-blue-700',
+                      avatarBorder: 'border-blue-200/80',
                       icon: Building2,
                       label: 'ADMIN',
                     };
@@ -648,7 +662,10 @@ export default function UserManagementPage() {
                     roleBadge = {
                       bg: 'bg-emerald-50',
                       text: 'text-emerald-700',
-                      border: 'border-emerald-200',
+                      border: 'border-emerald-200/90',
+                      avatarBg: 'bg-emerald-50',
+                      avatarText: 'text-emerald-700',
+                      avatarBorder: 'border-emerald-200/80',
                       icon: MapPin,
                       label: 'BRANCH',
                     };
@@ -656,7 +673,10 @@ export default function UserManagementPage() {
                     roleBadge = {
                       bg: 'bg-amber-50',
                       text: 'text-amber-700',
-                      border: 'border-amber-200',
+                      border: 'border-amber-200/90',
+                      avatarBg: 'bg-amber-50',
+                      avatarText: 'text-amber-700',
+                      avatarBorder: 'border-amber-200/80',
                       icon: Truck,
                       label: 'SUPPLIER',
                     };
@@ -667,150 +687,182 @@ export default function UserManagementPage() {
                   return (
                     <tr
                       key={user.id}
-                      className="hover:bg-gray-50/70 transition-colors group"
+                      className="hover:bg-emerald-50/25 transition-all duration-150 group"
                     >
-                      {/* User Info */}
-                      <td className="py-3.5 px-4">
+                      {/* User Info (Clean & Minimal) */}
+                      <td className="py-4 px-5">
                         <div className="flex items-center gap-3">
+                          {/* Soft Pastel Avatar */}
                           <div
-                            className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs shrink-0 ${
-                              user.role === 'MASTER'
-                                ? 'bg-purple-600 text-white'
-                                : user.role === 'ADMIN'
-                                ? 'bg-blue-600 text-white'
-                                : user.role === 'BRANCH'
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-amber-500 text-white'
-                            }`}
+                            className={`w-9.5 h-9.5 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 border shadow-2xs transition-transform group-hover:scale-105 ${roleBadge.avatarBg} ${roleBadge.avatarText} ${roleBadge.avatarBorder}`}
                           >
-                            {user.displayName.charAt(0).toUpperCase()}
+                            {primaryName.charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
+                            {/* Primary Name */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-gray-900 truncate">
-                                {user.displayName}
+                              <span
+                                className="font-bold text-gray-900 text-sm truncate leading-snug group-hover:text-emerald-950 transition-colors"
+                                title={user.displayName !== primaryName ? `${primaryName} (${user.displayName})` : primaryName}
+                              >
+                                {primaryName}
                               </span>
                               {isCurrent && (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                                  (บัญชีของคุณ)
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 whitespace-nowrap">
+                                  คุณ
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 font-mono">
+                            {/* Clean Single-Line Username */}
+                            <p className="font-mono text-xs text-gray-400 font-medium whitespace-nowrap mt-0.5">
                               @{user.username}
-                              {user.position ? ` • ${user.position}` : ''}
                             </p>
                           </div>
                         </div>
                       </td>
 
                       {/* Role Badge */}
-                      <td className="py-3.5 px-4">
+                      <td className="py-4 px-4">
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${roleBadge.bg} ${roleBadge.text} ${roleBadge.border}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black tracking-wider border whitespace-nowrap shadow-2xs ${roleBadge.bg} ${roleBadge.text} ${roleBadge.border}`}
                         >
-                          <RoleIcon className="w-3.5 h-3.5" />
-                          {roleBadge.label}
+                          <RoleIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span>{roleBadge.label}</span>
                         </span>
                       </td>
 
                       {/* Affiliation */}
-                      <td className="py-3.5 px-4 text-gray-600">
+                      <td className="py-4 px-4">
                         {user.role === 'MASTER' ? (
-                          <span className="text-gray-400 italic">ส่วนกลาง (ทุกระบบ)</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                              <Shield className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-gray-800 leading-tight">ส่วนกลาง</p>
+                              <p className="text-[10px] text-gray-400">ควบคุมทุกระบบ</p>
+                            </div>
+                          </div>
                         ) : user.role === 'SUPPLIER' ? (
-                          <span className="font-semibold text-amber-900">
-                            {user.supplier?.name || 'ไม่ระบุ Supplier'}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                              <Store className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-900 leading-tight truncate" title={user.supplier?.name || ''}>
+                                {user.supplier?.name || 'ไม่ระบุ Supplier'}
+                              </p>
+                              <p className="text-[10px] text-gray-400">
+                                คู่ค้า • {user.supplier?.code || 'Supplier'}
+                              </p>
+                            </div>
+                          </div>
                         ) : user.role === 'BRANCH' ? (
-                          <div>
-                            <span className="font-semibold text-gray-900">
-                              {user.branch?.name || 'ไม่ระบุสาขา'}
-                            </span>
-                            {user.company && (
-                              <span className="text-[11px] text-gray-400 block">
-                                ({user.company.code})
-                              </span>
-                            )}
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                              <MapPin className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-900 leading-tight truncate" title={user.branch?.name || ''}>
+                                {user.branch?.name || 'ไม่ระบุสาขา'}
+                              </p>
+                              <p className="text-[10px] text-gray-400">
+                                สาขา • {user.company?.code || 'EV7/GI'}
+                              </p>
+                            </div>
                           </div>
                         ) : (
-                          <span className="font-semibold text-gray-900">
-                            {user.company?.name || user.company?.code || 'ไม่ระบุบริษัท'}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                              <Building2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-gray-900 leading-tight truncate" title={user.company?.name || ''}>
+                                {user.company?.name || user.company?.code || 'ไม่ระบุบริษัท'}
+                              </p>
+                              <p className="text-[10px] text-gray-400">สำนักงานใหญ่ ({user.company?.code || 'Admin'})</p>
+                            </div>
+                          </div>
                         )}
                       </td>
 
-                      {/* Phone */}
-                      <td className="py-3.5 px-4 text-gray-600">
+                      {/* Phone (Strictly Single Line) */}
+                      <td className="py-4 px-4 whitespace-nowrap">
                         {user.phone ? (
-                          <span className="inline-flex items-center gap-1 text-gray-700">
-                            <Phone className="w-3 h-3 text-gray-400" />
-                            {user.phone}
-                          </span>
+                          <div className="inline-flex items-center gap-2 text-gray-700 whitespace-nowrap select-all">
+                            <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span className="font-mono text-xs font-semibold tabular-nums tracking-tight whitespace-nowrap">
+                              {user.phone.replace(/-/g, '\u2011')}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="text-gray-300">-</span>
+                          <span className="text-gray-300 text-xs px-2">-</span>
                         )}
                       </td>
 
-                      {/* Status Toggle */}
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(user)}
-                          disabled={isCurrent}
-                          title={isCurrent ? 'ไม่สามารถระงับบัญชีตนเองได้' : user.isActive ? 'กดเพื่อระงับการใช้งาน' : 'กดเพื่อเปิดการใช้งาน'}
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
-                            isCurrent
-                              ? 'opacity-60 cursor-not-allowed'
-                              : 'hover:scale-105 active:scale-95'
-                          } ${
-                            user.isActive
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              user.isActive ? 'bg-emerald-500' : 'bg-rose-500'
+                      {/* Status Toggle (Strictly Non-Wrapping) */}
+                      <td className="py-4 px-4 text-center">
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStatus(user)}
+                            disabled={isCurrent}
+                            title={isCurrent ? 'ไม่สามารถระงับบัญชีตนเองได้' : user.isActive ? 'กดเพื่อระงับการใช้งาน' : 'กดเพื่อเปิดการใช้งาน'}
+                            className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all shadow-2xs shrink-0 select-none ${
+                              user.isActive
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/90 hover:bg-emerald-100 hover:border-emerald-300'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200/90 hover:bg-rose-100 hover:border-rose-300'
+                            } ${
+                              isCurrent
+                                ? 'opacity-50 cursor-not-allowed'
+                                : 'cursor-pointer hover:scale-105 active:scale-95'
                             }`}
-                          />
-                          {user.isActive ? 'ใช้งาน' : 'ระงับ'}
-                        </button>
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                user.isActive ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.7)]' : 'bg-rose-500'
+                              }`}
+                            />
+                            <span className="whitespace-nowrap font-bold">
+                              {user.isActive ? 'ใช้งาน' : 'ระงับ'}
+                            </span>
+                          </button>
+                        </div>
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="py-4 px-5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           {/* Reset Password */}
                           <button
                             onClick={() => handleOpenResetPassword(user)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                            className="w-8 h-8 rounded-xl bg-amber-50/80 border border-amber-200/70 text-amber-700 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all flex items-center justify-center shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
                             title="รีเซ็ตรหัสผ่าน"
                           >
-                            <KeyRound className="w-4 h-4" />
+                            <KeyRound className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Edit */}
                           <button
                             onClick={() => handleOpenEdit(user)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                            className="w-8 h-8 rounded-xl bg-blue-50/80 border border-blue-200/70 text-blue-700 hover:bg-blue-500 hover:text-white hover:border-blue-500 transition-all flex items-center justify-center shadow-2xs hover:scale-105 active:scale-95 cursor-pointer"
                             title="แก้ไขข้อมูล"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Delete */}
                           <button
                             onClick={() => setDeleteConfirmUser(user)}
                             disabled={isCurrent}
-                            className={`p-1.5 rounded-lg transition-colors ${
+                            className={`w-8 h-8 rounded-xl border transition-all flex items-center justify-center shadow-2xs ${
                               isCurrent
-                                ? 'opacity-30 cursor-not-allowed text-gray-300'
-                                : 'text-gray-400 hover:text-red-600 hover:bg-red-50 cursor-pointer'
+                                ? 'opacity-30 cursor-not-allowed text-gray-300 border-gray-100 bg-gray-50'
+                                : 'bg-rose-50/80 border-rose-200/70 text-rose-700 hover:bg-rose-500 hover:text-white hover:border-rose-500 hover:scale-105 active:scale-95 cursor-pointer'
                             }`}
                             title={isCurrent ? 'ไม่สามารถลบบัญชีตนเองได้' : 'ลบผู้ใช้งาน'}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>

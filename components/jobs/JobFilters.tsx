@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, CalendarRange, Layers, CircleDot, Users, LucideIcon } from 'lucide-react';
 import TagSearch from '@/components/ui/TagSearch';
 import { JobType, JobStatus, Supplier } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
+import { DATE_RANGE_OPTIONS, DEFAULT_DATE_RANGE, DateRangePreset } from '@/lib/job-utils';
 
 interface JobFiltersProps {
   searchTags: string[];
@@ -17,6 +18,12 @@ interface JobFiltersProps {
   onSupplierFilterChange: (value: string) => void;
   suppliers: Supplier[];
   theme: ThemeColors;
+  // Date range (วันนัดทำงาน)
+  dateRange: DateRangePreset;
+  onDateRangeChange: (value: DateRangePreset) => void;
+  customFrom: string;
+  customTo: string;
+  onCustomRangeChange: (from: string, to: string) => void;
 }
 
 const typeOptions: { value: 'ALL' | JobType; label: string }[] = [
@@ -27,7 +34,6 @@ const typeOptions: { value: 'ALL' | JobType; label: string }[] = [
 
 const statusOptions: { value: 'ALL' | JobStatus; label: string; dot?: string }[] = [
   { value: 'ALL', label: 'ทุกสถานะ', dot: '#6b7280' },
-  { value: 'PENDING_SUPPLIER', label: 'รอ Supplier', dot: '#3b82f6' },
   { value: 'IN_PROGRESS', label: 'กำลังทำ', dot: '#f59e0b' },
   { value: 'WAITING_APPROVAL', label: 'รอตรวจรับ', dot: '#8b5cf6' },
   { value: 'APPROVED', label: 'Approved', dot: '#10b981' },
@@ -35,7 +41,7 @@ const statusOptions: { value: 'ALL' | JobStatus; label: string; dot?: string }[]
   { value: 'INVOICED', label: 'วางบิลแล้ว', dot: '#6366f1' },
 ];
 
-type FilterKey = 'type' | 'status' | 'supplier';
+type FilterKey = 'type' | 'status' | 'supplier' | 'date';
 
 export const JobFilters: React.FC<JobFiltersProps> = ({
   searchTags,
@@ -48,6 +54,11 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
   onSupplierFilterChange,
   suppliers,
   theme,
+  dateRange,
+  onDateRangeChange,
+  customFrom,
+  customTo,
+  onCustomRangeChange,
 }) => {
   const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,6 +93,8 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
         return { options: statusOptions as { value: string; label: string; dot?: string }[], value: statusFilter, onChange: (v: string) => onStatusFilterChange(v as 'ALL' | JobStatus) };
       case 'supplier':
         return { options: supplierOptions as { value: string; label: string; dot?: string }[], value: supplierFilter, onChange: onSupplierFilterChange };
+      case 'date':
+        return { options: DATE_RANGE_OPTIONS as { value: string; label: string; dot?: string }[], value: dateRange, onChange: (v: string) => onDateRangeChange(v as DateRangePreset) };
       default:
         return null;
     }
@@ -92,6 +105,9 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
   const typeLabel = typeOptions.find(o => o.value === typeFilter)?.label || 'ประเภท';
   const statusLabel = statusOptions.find(o => o.value === statusFilter)?.label || 'สถานะ';
   const supplierLabel = supplierOptions.find(o => o.value === supplierFilter)?.label || 'Supplier';
+  const dateLabel = dateRange === 'CUSTOM'
+    ? 'กำหนดเอง'
+    : DATE_RANGE_OPTIONS.find(o => o.value === dateRange)?.label || 'ช่วงวันที่';
 
   return (
     <div ref={containerRef} className="p-4 rounded-2xl bg-white border shadow-xs flex flex-col gap-3 relative" style={{ borderColor: theme.borderSoft }}>
@@ -106,12 +122,13 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
       </div>
 
       {/* Filter Buttons */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {([
-          { key: 'type' as FilterKey, label: typeLabel },
-          { key: 'status' as FilterKey, label: statusLabel },
-          { key: 'supplier' as FilterKey, label: supplierLabel },
-        ]).map(({ key, label }) => (
+          { key: 'date' as FilterKey, label: dateLabel, Icon: CalendarRange, active: dateRange !== DEFAULT_DATE_RANGE },
+          { key: 'type' as FilterKey, label: typeLabel, Icon: Layers, active: typeFilter !== 'ALL' },
+          { key: 'status' as FilterKey, label: statusLabel, Icon: CircleDot, active: statusFilter !== 'ALL' },
+          { key: 'supplier' as FilterKey, label: supplierLabel, Icon: Users, active: supplierFilter !== 'ALL' },
+        ] as { key: FilterKey; label: string; Icon: LucideIcon; active: boolean }[]).map(({ key, label, Icon, active }) => (
           <button
             key={key}
             type="button"
@@ -119,15 +136,42 @@ export const JobFilters: React.FC<JobFiltersProps> = ({
             className={`h-10 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-1.5 w-full text-left transition-colors ${
               openFilter === key
                 ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                : active
+                ? 'border-emerald-200 text-emerald-800'
                 : 'border-gray-200 text-gray-700'
             }`}
             style={openFilter !== key ? { backgroundColor: theme.bgSoft } : {}}
           >
-            <span className="truncate">{label}</span>
+            <span className="flex items-center gap-1.5 min-w-0">
+              <Icon className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+              <span className="truncate">{label}</span>
+            </span>
             <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${openFilter === key ? 'rotate-180 text-emerald-600' : 'text-gray-400'}`} />
           </button>
         ))}
       </div>
+
+      {/* Custom date range inputs */}
+      {dateRange === 'CUSTOM' && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-gray-600">วันนัดทำงานตั้งแต่</span>
+          <input
+            type="date"
+            value={customFrom}
+            max={customTo || undefined}
+            onChange={(e) => onCustomRangeChange(e.target.value, customTo)}
+            className="h-9 px-2.5 rounded-lg border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+          />
+          <span className="font-semibold text-gray-600">ถึง</span>
+          <input
+            type="date"
+            value={customTo}
+            min={customFrom || undefined}
+            onChange={(e) => onCustomRangeChange(customFrom, e.target.value)}
+            className="h-9 px-2.5 rounded-lg border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none"
+          />
+        </div>
+      )}
 
       {/* Dropdown Panel — full width of container */}
       {activeDropdown && (

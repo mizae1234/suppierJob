@@ -28,7 +28,10 @@ export type AuditAction =
   | 'TOGGLE_USER_STATUS'
   | 'SWITCH_ROLE'
   | 'VIEW_REPORT'
-  | 'EXPORT_DATA';
+  | 'EXPORT_DATA'
+  | 'CREATE_BRANCH'
+  | 'UPDATE_BRANCH'
+  | 'DELETE_BRANCH';
 
 export type EntityType =
   | 'Job'

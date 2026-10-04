@@ -4,7 +4,7 @@ import React from 'react';
 import { Job, UserRole } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, getJobScheduleDate, getScheduleBadge } from '@/lib/job-utils';
 import { Sparkles, Truck } from 'lucide-react';
 import { STATUS_MAP } from './constants';
 
@@ -60,7 +60,17 @@ export const JobTable: React.FC<JobTableProps> = ({
                   <tr key={job.id} className="hover:bg-[#fbfdfc] transition-colors">
                     <td className="py-3.5 px-4 whitespace-nowrap">
                       <div className="font-bold text-gray-900">{job.jobNumber}</div>
-                      <div className="text-[11px] text-gray-400">{formatThaiDate(job.createdAt)}</div>
+                      <div className="flex items-center gap-1.5 mt-0.5" title={`วันนัดทำงาน • สั่งงานเมื่อ ${formatThaiDate(job.createdAt)}`}>
+                        <span className="text-[11px] text-gray-400">{formatThaiDate(getJobScheduleDate(job))}</span>
+                        {(() => {
+                          const badge = getScheduleBadge(job);
+                          return (
+                            <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${badge.className}`}>
+                              {badge.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
 
                     <td className="py-3.5 px-4 whitespace-nowrap">

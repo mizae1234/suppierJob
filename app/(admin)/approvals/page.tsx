@@ -353,6 +353,7 @@ function ApprovalsContent() {
                       const isItemCompleted = item.status === 'COMPLETED';
                       const isItemRejected = item.status === 'REJECTED';
                       const isItemPending = item.status === 'PENDING';
+                      const itemEvidences = (job.evidences || []).filter(e => e.vin === item.vin);
 
                       return (
                         <div
@@ -417,6 +418,48 @@ function ApprovalsContent() {
                             </p>
                           )}
 
+                          {/* ── Photo Evidences of THIS Specific Car (Option 1) ── */}
+                          {itemEvidences.length > 0 ? (
+                            <div className="mt-2 pt-2 border-t border-gray-100 flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="font-bold text-gray-700 flex items-center gap-1">
+                                  <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+                                  <span>รูปถ่ายของคันนี้ ({itemEvidences.length} รูป)</span>
+                                </span>
+                                <span className="text-[10px] text-gray-400">คลิกเพื่อดูรูปใหญ่</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {itemEvidences.map(evi => (
+                                  <div
+                                    key={evi.id}
+                                    onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: evi.evidenceType })}
+                                    className="group relative rounded-xl overflow-hidden border border-gray-200 aspect-4/3 cursor-pointer bg-gray-100 hover:shadow-md active:scale-95 transition-all"
+                                  >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={evi.photoUrl}
+                                      alt={evi.caption}
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-80" />
+                                    <span className="absolute top-1 left-1 px-1.5 py-0.2 rounded bg-black/60 backdrop-blur-xs text-white text-[9px] font-bold uppercase">
+                                      {evi.evidenceType}
+                                    </span>
+                                    {evi.caption && (
+                                      <p className="absolute bottom-1 left-1.5 right-1.5 text-white text-[10px] font-medium truncate" title={evi.caption}>
+                                        {evi.caption}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : isItemCompleted ? (
+                            <div className="mt-1.5 p-2 rounded-xl bg-gray-50 border border-gray-100 text-[10px] text-gray-400 text-center">
+                              ไม่มีรูปถ่ายแนบสำหรับคันนี้
+                            </div>
+                          ) : null}
+
                           {/* Per-item actions — only show for WAITING_APPROVAL or PARTIAL */}
                           {isItemCompleted && (job.status === 'WAITING_APPROVAL' || job.status === 'IN_PROGRESS') && (
                             <div className="flex items-center gap-1.5 mt-1 pt-1.5 border-t border-gray-100">
@@ -439,22 +482,62 @@ function ApprovalsContent() {
                   </div>
                 )}
 
-                {/* Vehicle Slide details */}
-                {job.jobType === 'VEHICLE_SLIDE' && (
-                  <div className="p-3.5 sm:p-4 rounded-2xl bg-gray-50/70 border border-gray-200/80 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <span className="text-[10px] text-gray-400 font-semibold uppercase">VIN รถที่สไลด์</span>
-                      <p className="font-mono font-bold text-sm text-gray-900">{job.vin}</p>
-                      <p className="text-gray-600 mt-0.5">{job.vehicle?.model} • สี: {job.vehicle?.color}</p>
+                {/* Vehicle Slide details (Single Car) */}
+                {job.jobType === 'VEHICLE_SLIDE' && (!job.carWashItems || job.carWashItems.length === 0) && (
+                  <div className="p-3.5 sm:p-4 rounded-2xl bg-gray-50/70 border border-gray-200/80 text-xs flex flex-col gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-semibold uppercase">VIN รถที่สไลด์</span>
+                        <p className="font-mono font-bold text-sm text-gray-900">{job.vin}</p>
+                        <p className="text-gray-600 mt-0.5">{job.vehicle?.model} • สี: {job.vehicle?.color}</p>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-gray-400 text-[10px] font-semibold">เส้นทางสไลด์:</span>
+                        <p className="font-semibold text-gray-800">{job.originBranchName} &rarr; {job.destBranchName}</p>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-gray-400 text-[10px] font-semibold">เวลาส่งมอบ:</span>
+                        <p className="font-semibold text-gray-800">{formatThaiDateTime(job.deliveryDateTime)}</p>
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-gray-400 text-[10px] font-semibold">เส้นทางสไลด์:</span>
-                      <p className="font-semibold text-gray-800">{job.originBranchName} &rarr; {job.destBranchName}</p>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-gray-400 text-[10px] font-semibold">เวลาส่งมอบ:</span>
-                      <p className="font-semibold text-gray-800">{formatThaiDateTime(job.deliveryDateTime)}</p>
-                    </div>
+
+                    {/* Single Vehicle Slide Photos */}
+                    {job.evidences && job.evidences.length > 0 && (
+                      <div className="pt-3 border-t border-gray-200/70">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                            <ImageIcon className="w-3.5 h-3.5 text-emerald-700" />
+                            <span>รูปถ่ายหลักฐานการส่งมอบรถ ({job.evidences.length} รูป)</span>
+                          </span>
+                          <span className="text-[10px] text-gray-400">คลิกเพื่อดูรูปใหญ่</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                          {job.evidences.map((evi) => (
+                            <div
+                              key={evi.id}
+                              onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: evi.evidenceType })}
+                              className="group relative rounded-xl overflow-hidden border border-gray-200 aspect-4/3 cursor-pointer bg-gray-100 hover:shadow-md active:scale-95 transition-all"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={evi.photoUrl}
+                                alt={evi.caption}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-80" />
+                              <span className="absolute top-1 left-1 px-1.5 py-0.2 rounded bg-black/60 backdrop-blur-xs text-white text-[9px] font-bold uppercase">
+                                {evi.evidenceType}
+                              </span>
+                              {evi.caption && (
+                                <p className="absolute bottom-1 left-1.5 right-1.5 text-white text-[10px] font-medium truncate" title={evi.caption}>
+                                  {evi.caption}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -466,51 +549,52 @@ function ApprovalsContent() {
                   </div>
                 )}
 
-                {/* Photo Evidence Gallery */}
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
-                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <ImageIcon className="w-4 h-4 text-emerald-700 shrink-0" />
-                      <span>หลักฐานภาพถ่ายจาก Supplier ({job.evidences.length} รูป)</span>
-                    </span>
-                    <span className="text-[10px] sm:text-[11px] text-gray-400">คลิกที่รูปเพื่อขยายดูรายละเอียด</span>
-                  </div>
+                {/* Unassigned / Additional Evidences (if any photos do not belong to a specific VIN) */}
+                {(() => {
+                  const hasCarItems = job.carWashItems && job.carWashItems.length > 0;
+                  const unassigned = hasCarItems
+                    ? job.evidences.filter(e => !job.carWashItems!.some(it => it.vin === e.vin))
+                    : (!job.vin && job.evidences.length > 0)
+                    ? job.evidences
+                    : [];
 
-                  {job.evidences.length === 0 ? (
-                    <div className="p-6 rounded-2xl border border-dashed border-gray-200 text-center text-xs text-gray-400 bg-gray-50/50">
-                      ยังไม่มีการแนบรูปภาพหลักฐาน
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3">
-                      {job.evidences.map(evi => (
-                        <div
-                          key={evi.id}
-                          onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: evi.evidenceType })}
-                          className="group relative rounded-xl sm:rounded-2xl overflow-hidden border border-gray-200 aspect-4/3 cursor-pointer bg-gray-100 hover:shadow-md active:scale-[0.98] transition-all"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={evi.photoUrl}
-                            alt={evi.caption}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-90" />
-                          <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-bold uppercase">
-                            {evi.evidenceType}
-                          </span>
-                          {evi.vin && (
-                            <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-emerald-600/80 backdrop-blur-xs text-white text-[9px] font-mono font-bold">
-                              {evi.vin.slice(-6)}
+                  if (unassigned.length === 0) return null;
+
+                  return (
+                    <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
+                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                          <ImageIcon className="w-4 h-4 text-emerald-700 shrink-0" />
+                          <span>รูปถ่ายทั่วไป / อื่นๆ ({unassigned.length} รูป)</span>
+                        </span>
+                        <span className="text-[10px] sm:text-[11px] text-gray-400">คลิกที่รูปเพื่อขยายดูรายละเอียด</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3">
+                        {unassigned.map(evi => (
+                          <div
+                            key={evi.id}
+                            onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: evi.evidenceType })}
+                            className="group relative rounded-xl sm:rounded-2xl overflow-hidden border border-gray-200 aspect-4/3 cursor-pointer bg-gray-100 hover:shadow-md active:scale-[0.98] transition-all"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={evi.photoUrl}
+                              alt={evi.caption}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-90" />
+                            <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-xs text-white text-[9px] sm:text-[10px] font-bold uppercase">
+                              {evi.evidenceType}
                             </span>
-                          )}
-                          <p className="absolute bottom-1.5 left-1.5 right-1.5 text-white text-[10px] sm:text-[11px] font-medium truncate">
-                            {evi.caption}
-                          </p>
-                        </div>
-                      ))}
+                            <p className="absolute bottom-1.5 left-1.5 right-1.5 text-white text-[10px] sm:text-[11px] font-medium truncate">
+                              {evi.caption}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
             );
           })}

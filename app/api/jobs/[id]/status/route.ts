@@ -76,6 +76,11 @@ export async function PATCH(
             ? completedItems 
             : job.carWashItems.filter(c => c.status !== 'CANCELLED');
           updateData.actualCost = validItems.reduce((sum, c) => sum + (c.unitPrice || 0), 0);
+        } else if (job.jobType === 'VEHICLE_SLIDE' && job.carWashItems && job.carWashItems.length > 0) {
+          await tx.carWashItem.updateMany({
+            where: { jobId: job.id, status: 'PENDING' },
+            data: { status: 'COMPLETED' },
+          });
         }
       } else if (status === 'APPROVED') {
         updateData.approvedAt = new Date();
@@ -91,11 +96,26 @@ export async function PATCH(
         }
 
         // Reset vehicle status atomically
-        if (job.jobType === 'VEHICLE_SLIDE' && job.vin && job.destBranchId) {
-          await tx.vehicle.update({
-            where: { vin: job.vin },
-            data: { status: 'AVAILABLE', currentBranchId: job.destBranchId },
-          });
+        if (job.jobType === 'VEHICLE_SLIDE') {
+          const slideVins = job.carWashItems && job.carWashItems.length > 0
+            ? job.carWashItems.map(c => c.vin)
+            : (job.vin ? [job.vin] : []);
+
+          if (slideVins.length > 0) {
+            await tx.vehicle.updateMany({
+              where: { vin: { in: slideVins } },
+              data: {
+                status: 'AVAILABLE',
+                ...(job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
+              },
+            });
+          }
+          if (job.carWashItems && job.carWashItems.length > 0) {
+            await tx.carWashItem.updateMany({
+              where: { jobId: job.id },
+              data: { status: 'COMPLETED' },
+            });
+          }
         } else if (job.jobType === 'CAR_WASH' && job.carWashItems.length > 0) {
           const vins = job.carWashItems.map(c => c.vin);
           await tx.vehicle.updateMany({
@@ -110,11 +130,23 @@ export async function PATCH(
         updateData.actualCost = 0;
 
         // Reset vehicle status back to AVAILABLE
-        if (job.jobType === 'VEHICLE_SLIDE' && job.vin) {
-          await tx.vehicle.update({
-            where: { vin: job.vin },
-            data: { status: 'AVAILABLE' },
-          });
+        if (job.jobType === 'VEHICLE_SLIDE') {
+          const slideVins = job.carWashItems && job.carWashItems.length > 0
+            ? job.carWashItems.map(c => c.vin)
+            : (job.vin ? [job.vin] : []);
+
+          if (slideVins.length > 0) {
+            await tx.vehicle.updateMany({
+              where: { vin: { in: slideVins } },
+              data: { status: 'AVAILABLE' },
+            });
+          }
+          if (job.carWashItems && job.carWashItems.length > 0) {
+            await tx.carWashItem.updateMany({
+              where: { jobId: job.id },
+              data: { status: 'CANCELLED' },
+            });
+          }
         } else if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
           const vins = job.carWashItems.map(c => c.vin);
           await tx.vehicle.updateMany({

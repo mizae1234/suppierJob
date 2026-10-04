@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import TagSearch from '@/components/ui/TagSearch';
+import BranchSelect from '@/components/ui/BranchSelect';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import dynamic from 'next/dynamic';
@@ -66,7 +67,8 @@ export default function CreateVehicleSlidePage() {
     companies,
     suppliers, 
     vehicles, 
-    createVehicleSlideJob 
+    createVehicleSlideJob,
+    refreshData,
   } = useApp();
   const { user: authUser } = useAuth();
 
@@ -133,7 +135,21 @@ export default function CreateVehicleSlidePage() {
     address: string;
     distance: number;
   } | null>(null);
-  const [showMapPicker, setShowMapPicker] = useState(false);
+
+  // ── Hybrid Pickup (Origin) Mode ──
+  // 'branch' = รับรถที่สาขาต้นทาง, 'custom' = ปักหมุดจุดรับรถเอง (เช่น รถจอดอยู่ลานนอกสาขา)
+  const [originMode, setOriginMode] = useState<'branch' | 'custom'>('branch');
+  const [customOrigin, setCustomOrigin] = useState<{
+    lat: number;
+    lng: number;
+    address: string;
+  } | null>(null);
+
+  // Which point the map picker is currently editing (null = closed)
+  // 'branch' = แก้พิกัดถาวรของสาขาต้นทาง (บันทึกลงฐานข้อมูลสาขา)
+  const [mapPickerMode, setMapPickerMode] = useState<'origin' | 'dest' | 'branch' | null>(null);
+  const [isSavingBranchPin, setIsSavingBranchPin] = useState(false);
+  const canEditBranchPin = currentRole === 'ADMIN' || currentRole === 'MASTER';
 
   // Search in branch vehicles
   const [searchTags, setSearchTags] = useState<string[]>([]);
@@ -150,23 +166,41 @@ export default function CreateVehicleSlidePage() {
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
   const destBranch = branches.find(b => b.id === destBranchId);
 
-  // Auto-calculate distance and cost when branch destination changes
-  useEffect(() => {
-    if (destMode === 'branch' && originBranchObj && destBranch) {
-      if (originBranchObj.latitude && originBranchObj.longitude && destBranch.latitude && destBranch.longitude) {
-        const straight = haversineDistance(
-          originBranchObj.latitude,
-          originBranchObj.longitude,
-          destBranch.latitude,
-          destBranch.longitude
-        );
-        // Estimate road distance with 1.25x routing factor
-        const roadDist = Math.round(straight * 1.25 * 10) / 10;
-        setDistance(roadDist);
-        setEstimatedCost(calculateSlideCost(roadDist));
-      }
+  // Effective pickup / drop-off coordinates (custom pin overrides branch location)
+  const originPoint = useMemo(() => {
+    if (originMode === 'custom' && customOrigin) {
+      return { lat: customOrigin.lat, lng: customOrigin.lng, name: customOrigin.address.split(',')[0] || 'จุดรับรถ' };
     }
-  }, [destMode, destBranchId, selectedOriginBranchId, originBranchObj?.latitude, originBranchObj?.longitude, destBranch?.latitude, destBranch?.longitude]);
+    if (originBranchObj?.latitude && originBranchObj?.longitude) {
+      return { lat: originBranchObj.latitude, lng: originBranchObj.longitude, name: originBranchObj.name };
+    }
+    return null;
+  }, [originMode, customOrigin, originBranchObj?.latitude, originBranchObj?.longitude, originBranchObj?.name]);
+
+  const destPoint = useMemo(() => {
+    if (destMode === 'custom') {
+      return customDest ? { lat: customDest.lat, lng: customDest.lng, name: customDest.address.split(',')[0] || 'ปลายทาง' } : null;
+    }
+    if (destBranch?.latitude && destBranch?.longitude) {
+      return { lat: destBranch.latitude, lng: destBranch.longitude, name: destBranch.name };
+    }
+    return null;
+  }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name]);
+
+  // Auto-calculate distance and cost whenever pickup or drop-off point changes
+  useEffect(() => {
+    if (!originPoint || !destPoint) return;
+    const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
+    // Branch-to-branch uses a 1.25x road routing factor; custom map pins keep straight-line (same as map preview)
+    const factor = destMode === 'branch' && originMode === 'branch' ? 1.25 : 1;
+    const roadDist = Math.round(straight * factor * 10) / 10;
+    setDistance(roadDist);
+    setEstimatedCost(calculateSlideCost(roadDist));
+  }, [originPoint?.lat, originPoint?.lng, destPoint?.lat, destPoint?.lng, destMode, originMode]);
+
+  const originLabel = originMode === 'custom' && customOrigin
+    ? customOrigin.address.split(',').slice(0, 2).join(',')
+    : originBranchObj?.name;
 
   const filteredVehicles = branchStockVehicles.filter(v => {
     if (searchTags.length === 0) return true;
@@ -198,10 +232,39 @@ export default function CreateVehicleSlidePage() {
 
   const { showToast } = useToast();
 
+  // Save a permanent GPS pin for the origin branch (affects all future jobs)
+  const handleSaveBranchPin = async (data: { lat: number; lng: number; address: string }) => {
+    if (!originBranchObj) return;
+    setIsSavingBranchPin(true);
+    try {
+      const res = await fetch(`/api/branches/${originBranchObj.id}/location`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude: data.lat, longitude: data.lng, address: data.address }),
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        showToast(result.error || 'บันทึกพิกัดสาขาไม่สำเร็จ', 'error');
+        return;
+      }
+      await refreshData();
+      showToast(`บันทึกพิกัดสาขา ${originBranchObj.name} เรียบร้อยแล้ว`, 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', 'error');
+    } finally {
+      setIsSavingBranchPin(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedVins.length === 0) {
       showToast('กรุณาเลือกรถ (VIN) อย่างน้อย 1 คันที่ต้องการสไลด์', 'warning');
+      return;
+    }
+    if (originMode === 'custom' && !customOrigin) {
+      showToast('กรุณาปักหมุดจุดรับรถบนแผนที่', 'warning');
       return;
     }
     if (destMode === 'branch') {
@@ -209,7 +272,7 @@ export default function CreateVehicleSlidePage() {
         showToast('กรุณาเลือกสาขาปลายทาง', 'warning');
         return;
       }
-      if (destBranchId === selectedOriginBranchId) {
+      if (destBranchId === selectedOriginBranchId && originMode === 'branch') {
         showToast('สาขาปลายทางต้องไม่ซ้ำกับสาขาต้นทาง', 'error');
         return;
       }
@@ -254,6 +317,11 @@ export default function CreateVehicleSlidePage() {
           customDestAddress: customDest.address,
           customDestLat: customDest.lat,
           customDestLng: customDest.lng,
+        } : {}),
+        ...(originMode === 'custom' && customOrigin ? {
+          customOriginAddress: customOrigin.address,
+          customOriginLat: customOrigin.lat,
+          customOriginLng: customOrigin.lng,
         } : {}),
       } as Parameters<typeof createVehicleSlideJob>[0]);
 
@@ -506,28 +574,134 @@ export default function CreateVehicleSlidePage() {
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Origin Branch */}
-              <div>
+              {/* Origin Branch + Pickup Point */}
+              <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
                   สาขาต้นทาง (Origin Branch):
                 </label>
-                {currentRole === 'ADMIN' ? (
-                  <select
-                    value={selectedOriginBranchId}
-                    onChange={(e) => { setSelectedOriginBranchId(e.target.value); setSelectedVins([]); }}
-                    className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {currentRole === 'ADMIN' ? (
+                    <BranchSelect
+                      branches={branches}
+                      value={selectedOriginBranchId}
+                      onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); }}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      value={originBranchObj?.name || ''}
+                      className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-600 font-medium"
+                    />
+                  )}
+
+                  {/* Pickup Mode Toggle */}
+                  <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 h-10">
+                    <button
+                      type="button"
+                      onClick={() => setOriginMode('branch')}
+                      className={`flex-1 h-full flex items-center justify-center gap-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                        originMode === 'branch'
+                          ? 'bg-white text-[#0f5238] shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      <Building2 className="w-3.5 h-3.5" />
+                      <span>รับที่สาขา</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOriginMode('custom');
+                        // First time: open the map right away, pre-pinned at the branch location
+                        if (!customOrigin) setMapPickerMode('origin');
+                      }}
+                      className={`flex-1 h-full flex items-center justify-center gap-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
+                        originMode === 'custom'
+                          ? 'bg-white text-amber-700 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      <Map className="w-3.5 h-3.5" />
+                      <span>ปักหมุดจุดรับรถ</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Branch pickup: show branch address / coordinate status + edit branch pin */}
+                {originMode === 'branch' && (
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    <div className={`min-w-0 text-[11px] flex items-center gap-1.5 flex-wrap ${
+                      originBranchObj?.latitude && originBranchObj?.longitude ? 'text-gray-600' : 'text-amber-600'
+                    }`}>
+                      <MapPin className={`w-3.5 h-3.5 shrink-0 ${originBranchObj?.latitude && originBranchObj?.longitude ? 'text-emerald-600' : 'text-amber-500'}`} />
+                      <span className="truncate flex items-center gap-1.5 flex-wrap">
+                        {originBranchObj?.latitude && originBranchObj?.longitude
+                          ? (
+                              <>
+                                <span className="text-gray-700 font-medium">{originBranchObj.address || 'ปักหมุดแล้ว'}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-mono border border-emerald-200">
+                                  GPS: {originBranchObj.latitude.toFixed(5)}, {originBranchObj.longitude.toFixed(5)}
+                                </span>
+                              </>
+                            )
+                          : 'สาขานี้ยังไม่มีพิกัด GPS — Supplier จะนำทางได้ไม่แม่น'}
+                      </span>
+                    </div>
+                    {canEditBranchPin && originBranchObj && (
+                      <button
+                        type="button"
+                        onClick={() => setMapPickerMode('branch')}
+                        disabled={isSavingBranchPin}
+                        className={`shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
+                          originBranchObj.latitude && originBranchObj.longitude
+                            ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                            : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                        }`}
+                        title="แก้พิกัดสาขาถาวร (มีผลกับทุกงานที่ใช้สาขานี้)"
+                      >
+                        {isSavingBranchPin ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+                        <span>{originBranchObj.latitude && originBranchObj.longitude ? 'แก้หมุดสาขา' : 'ปักหมุดสาขา'}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Custom pickup pin */}
+                {originMode === 'custom' && (
+                  <button
+                    type="button"
+                    onClick={() => setMapPickerMode('origin')}
+                    className={`mt-3 w-full flex items-center gap-3 p-4 rounded-xl border-2 border-dashed transition-all overflow-hidden ${
+                      customOrigin
+                        ? 'border-amber-300 bg-amber-50/50 hover:bg-amber-50'
+                        : 'border-gray-300 bg-gray-50 hover:bg-white hover:border-amber-500'
+                    }`}
                   >
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    disabled
-                    value={originBranchObj?.name || ''}
-                    className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-600 font-medium"
-                  />
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      customOrigin ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-500'
+                    }`}>
+                      <MapPin className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                      {customOrigin ? (
+                        <>
+                          <p className="text-xs font-bold text-gray-900 line-clamp-2 leading-relaxed break-words" title={customOrigin.address}>
+                            {customOrigin.address}
+                          </p>
+                          <span className="text-[10px] text-gray-500 font-mono">
+                            {customOrigin.lat.toFixed(5)}, {customOrigin.lng.toFixed(5)}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs font-semibold text-gray-700">คลิกเพื่อปักหมุดจุดรับรถ</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5">ใช้เมื่อรถไม่ได้จอดที่สาขา เช่น ลานจอดสำรอง, บ้านลูกค้า</p>
+                        </>
+                      )}
+                    </div>
+                    <Navigation className={`w-4 h-4 flex-shrink-0 ${customOrigin ? 'text-amber-600' : 'text-gray-400'}`} />
+                  </button>
                 )}
               </div>
 
@@ -567,18 +741,13 @@ export default function CreateVehicleSlidePage() {
 
                 {/* Branch Mode */}
                 {destMode === 'branch' && (
-                  <select
+                  <BranchSelect
+                    branches={branches}
                     value={destBranchId}
-                    onChange={(e) => setDestBranchId(e.target.value)}
-                    required
-                    className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none"
-                  >
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id} disabled={b.id === selectedOriginBranchId}>
-                        {b.name} {b.id === selectedOriginBranchId ? '(ต้นทาง)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setDestBranchId}
+                    disabledIds={selectedOriginBranchId ? { [selectedOriginBranchId]: 'ต้นทาง' } : {}}
+                    placeholder="เลือกสาขาปลายทาง"
+                  />
                 )}
 
                 {/* Custom Map Mode */}
@@ -586,8 +755,8 @@ export default function CreateVehicleSlidePage() {
                   <div className="flex flex-col gap-3">
                     <button
                       type="button"
-                      onClick={() => setShowMapPicker(true)}
-                      className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 border-dashed transition-all ${
+                      onClick={() => setMapPickerMode('dest')}
+                      className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 border-dashed transition-all overflow-hidden ${
                         customDest
                           ? 'border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50'
                           : 'border-gray-300 bg-gray-50 hover:bg-white hover:border-[#0f5238]'
@@ -598,16 +767,18 @@ export default function CreateVehicleSlidePage() {
                       }`}>
                         <MapPin className="w-5 h-5" />
                       </div>
-                      <div className="flex-1 text-left">
+                      <div className="flex-1 text-left min-w-0">
                         {customDest ? (
                           <>
-                            <p className="text-xs font-bold text-gray-900 truncate">{customDest.address}</p>
+                            <p className="text-xs font-bold text-gray-900 line-clamp-2 leading-relaxed break-words" title={customDest.address}>
+                              {customDest.address}
+                            </p>
                             <div className="flex items-center gap-3 mt-1">
                               <span className="text-[10px] text-gray-500 font-mono">
                                 {customDest.lat.toFixed(4)}, {customDest.lng.toFixed(4)}
                               </span>
                               <span className="text-[10px] font-bold text-emerald-700">
-                                ~{customDest.distance.toFixed(1)} กม.
+                                ~{distance.toFixed(1)} กม.
                               </span>
                             </div>
                           </>
@@ -628,12 +799,12 @@ export default function CreateVehicleSlidePage() {
                       <div className="grid grid-cols-2 gap-2">
                         <div className="p-2.5 rounded-xl bg-[#f4f9f5] border border-emerald-950/10">
                           <p className="text-[10px] text-gray-500 font-semibold">ระยะทาง</p>
-                          <p className="text-sm font-bold text-[#0f5238]">{customDest.distance.toFixed(1)} กม.</p>
+                          <p className="text-sm font-bold text-[#0f5238]">{distance.toFixed(1)} กม.</p>
                         </div>
                         <div className="p-2.5 rounded-xl bg-[#f4f9f5] border border-emerald-950/10">
                           <p className="text-[10px] text-gray-500 font-semibold">ค่าบริการ (ประมาณ)</p>
                           <p className="text-sm font-bold text-[#0f5238]">
-                            ฿{Math.round(customDest.distance * 50).toLocaleString()}
+                            ฿{calculateSlideCost(distance).toLocaleString()}
                           </p>
                         </div>
                       </div>
@@ -654,7 +825,7 @@ export default function CreateVehicleSlidePage() {
                   <input
                     type="number"
                     min={0}
-                    step="0.1"
+                    step="any"
                     value={distance === 0 ? '' : distance}
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
@@ -689,7 +860,7 @@ export default function CreateVehicleSlidePage() {
                   <input
                     type="number"
                     min={0}
-                    step="10"
+                    step="any"
                     value={estimatedCost === 0 ? '' : estimatedCost}
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
@@ -796,7 +967,7 @@ export default function CreateVehicleSlidePage() {
                 <p className="text-xs text-gray-600 mt-0.5">
                   <span className="text-gray-500">เส้นทาง:</span>{' '}
                   <span className="font-semibold text-gray-800">
-                    {originBranchObj?.name} &rarr;{' '}
+                    {originLabel} &rarr;{' '}
                     {destMode === 'branch'
                       ? destBranch?.name
                       : customDest
@@ -869,7 +1040,7 @@ export default function CreateVehicleSlidePage() {
               <div className="flex items-center justify-between pb-2 border-b border-gray-200">
                 <span className="text-gray-500">เส้นทางขนส่ง:</span>
                 <span className="font-medium text-gray-800 text-right max-w-[220px] truncate">
-                  {originBranchObj?.name} &rarr; {destMode === 'branch' ? destBranch?.name : customDest?.address}
+                  {originLabel} &rarr; {destMode === 'branch' ? destBranch?.name : customDest?.address}
                 </span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-gray-200">
@@ -986,19 +1157,51 @@ export default function CreateVehicleSlidePage() {
         </div>
       )}
 
-      {/* Map Picker Modal */}
+      {/* Map Picker Modal — shared for pickup pin, destination pin and branch pin */}
       <MapPickerModal
-        isOpen={showMapPicker}
-        onClose={() => setShowMapPicker(false)}
+        isOpen={mapPickerMode !== null}
+        onClose={() => setMapPickerMode(null)}
+        mode={mapPickerMode === 'dest' ? 'dest' : 'origin'}
         onConfirm={(data) => {
-          setCustomDest(data);
-          const dist = Math.round(data.distance * 10) / 10;
-          setDistance(dist);
-          setEstimatedCost(calculateSlideCost(dist));
+          if (mapPickerMode === 'branch') {
+            handleSaveBranchPin(data);
+          } else if (mapPickerMode === 'origin') {
+            setCustomOrigin({ lat: data.lat, lng: data.lng, address: data.address });
+          } else {
+            setCustomDest(data);
+          }
+          // Distance & cost are recalculated by the origin/dest effect
         }}
-        originLat={originBranchObj?.latitude}
-        originLng={originBranchObj?.longitude}
-        originName={originBranchObj?.name || 'สาขาต้นทาง'}
+        {...(mapPickerMode === 'branch'
+          ? {
+              // Edit the branch's permanent location — start from current branch pin
+              pointLabel: `ตำแหน่งสาขา ${originBranchObj?.name || ''}`.trim(),
+              originLat: destPoint?.lat ?? originBranchObj?.latitude,
+              originLng: destPoint?.lng ?? originBranchObj?.longitude,
+              originName: destPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
+              referenceCaption: destPoint ? 'ปลายทาง' : 'ตำแหน่งเดิม',
+              initialLat: originBranchObj?.latitude,
+              initialLng: originBranchObj?.longitude,
+            }
+          : mapPickerMode === 'origin'
+          ? {
+              // Reference = drop-off if known, otherwise the origin branch
+              originLat: destPoint?.lat ?? originBranchObj?.latitude,
+              originLng: destPoint?.lng ?? originBranchObj?.longitude,
+              originName: destPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
+              referenceCaption: destPoint ? 'ปลายทาง' : 'สาขาต้นทาง',
+              // Start from the existing job pin, or from the branch location so the user just drags it
+              initialLat: customOrigin?.lat ?? originBranchObj?.latitude,
+              initialLng: customOrigin?.lng ?? originBranchObj?.longitude,
+            }
+          : {
+              originLat: originPoint?.lat,
+              originLng: originPoint?.lng,
+              originName: originPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
+              referenceCaption: originMode === 'custom' && customOrigin ? 'จุดรับรถ' : 'สาขาต้นทาง',
+              initialLat: customDest?.lat,
+              initialLng: customDest?.lng,
+            })}
       />
     </div>
   );

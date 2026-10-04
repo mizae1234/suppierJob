@@ -43,7 +43,7 @@ export const Header: React.FC = () => {
   const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
     { value: 'ALL', label: 'ทุกบริษัท', color: '#0f5238', dot: '#52b788' },
     { value: 'EV7', label: 'EV7', color: '#0f5238', dot: '#2d6a4f' },
-    { value: 'GI', label: 'GI', color: '#1e3a5f', dot: '#3b82f6' },
+    { value: 'GI', label: 'GI-สำนักงานใหญ่', color: '#1e3a5f', dot: '#3b82f6' },
   ];
   const activeCompanyOption = companyOptions.find(o => o.value === currentCompany) || companyOptions[0];
 
@@ -83,6 +83,11 @@ export const Header: React.FC = () => {
         const companyBranches = branches.filter(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
         // EV7 ไม่มีสาขาย่อย; เฉพาะ GI ที่มีสาขาย่อยแยกตาม Hub
         const showSubBranches = opt.value === 'GI';
+
+        // สำหรับ GI: ถ้าเลือกดูสาขาย่อยอยู่ ตัว GI-สำนักงานใหญ่ จะไม่ขึ้น active
+        const isMainActive = opt.value === 'GI'
+          ? isCompanySelected && !currentBranchId
+          : isCompanySelected;
         
         return (
           <div key={opt.value}>
@@ -95,38 +100,41 @@ export const Header: React.FC = () => {
                 setIsCompanyOpen(false); 
               }}
               className={`w-full flex items-center gap-3 px-4 py-3 text-xs font-bold transition-colors ${
-                isCompanySelected
-                  ? 'bg-gray-50 text-gray-900'
+                isMainActive
+                  ? 'bg-emerald-50 text-gray-900'
                   : 'text-gray-700 hover:bg-gray-50'
               }`}
             >
               <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: opt.dot }} />
               <span className="flex-1 text-left">{opt.label}</span>
-              {isCompanySelected && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+              {isMainActive && <Check className="w-3.5 h-3.5 text-emerald-600" />}
             </button>
             
-            {showSubBranches && companyBranches.map((branch) => (
-              <button
-                key={branch.id}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setCurrentCompany(opt.value);
-                  setCurrentBranchId(branch.id);
-                  setIsCompanyOpen(false);
-                }}
-                className={`w-full flex items-center gap-2 pl-9 pr-4 py-2.5 text-[11px] transition-colors ${
-                  currentBranchId === branch.id && isCompanySelected
-                    ? 'bg-gray-50 text-gray-900 font-semibold'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 font-medium'
-                }`}
-              >
-                <Building className="w-3 h-3 shrink-0 opacity-50" />
-                <span className="flex-1 text-left truncate">{branch.name}</span>
-                {currentBranchId === branch.id && isCompanySelected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                )}
-              </button>
-            ))}
+            {showSubBranches && companyBranches.map((branch) => {
+              const isBranchActive = currentBranchId === branch.id && isCompanySelected;
+              return (
+                <button
+                  key={branch.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setCurrentCompany(opt.value);
+                    setCurrentBranchId(branch.id);
+                    setIsCompanyOpen(false);
+                  }}
+                  className={`w-full flex items-center gap-2 pl-9 pr-4 py-2.5 text-[11px] transition-colors ${
+                    isBranchActive
+                      ? 'bg-emerald-50 text-gray-900 font-semibold'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700 font-medium'
+                  }`}
+                >
+                  <Building className="w-3 h-3 shrink-0 opacity-50" />
+                  <span className="flex-1 text-left truncate">{branch.name}</span>
+                  {isBranchActive && (
+                    <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  )}
+                </button>
+              );
+            })}
             
             <div className="h-px bg-gray-100 last:hidden" />
           </div>

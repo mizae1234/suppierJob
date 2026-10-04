@@ -6,7 +6,15 @@ import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Job, JobStatus, JobType } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
-import { getJobTotalCost } from '@/lib/job-utils';
+import {
+  getJobTotalCost,
+  getJobScheduleDate,
+  getDateRange,
+  isJobInDateRange,
+  DATE_RANGE_OPTIONS,
+  DEFAULT_DATE_RANGE,
+  DateRangePreset,
+} from '@/lib/job-utils';
 import {
   JobFilters,
   JobTable,
@@ -78,6 +86,55 @@ function JobsContent() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | JobStatus>('ALL');
   const [supplierFilter, setSupplierFilter] = useState<string>('ALL');
 
+  // Date range filter (anchored on today: default = 7 days back → 1 month ahead)
+  const [dateRange, setDateRange] = useState<DateRangePreset>(() => {
+    const r = searchParams.get('range')?.toUpperCase();
+    return DATE_RANGE_OPTIONS.some(o => o.value === r) ? (r as DateRangePreset) : DEFAULT_DATE_RANGE;
+  });
+  const [customFrom, setCustomFrom] = useState<string>(searchParams.get('from') || '');
+  const [customTo, setCustomTo] = useState<string>(searchParams.get('to') || '');
+
+  // Merge-update URL params without dropping others
+  const updateUrlParams = (updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+      else params.delete(k);
+    });
+    const qs = params.toString();
+    router.replace(qs ? `/jobs?${qs}` : '/jobs', { scroll: false });
+  };
+
+  const handleDateRangeChange = (preset: DateRangePreset) => {
+    setDateRange(preset);
+    updateUrlParams({
+      range: preset === DEFAULT_DATE_RANGE ? null : preset,
+      from: preset === 'CUSTOM' ? customFrom || null : null,
+      to: preset === 'CUSTOM' ? customTo || null : null,
+    });
+  };
+
+  const handleCustomRangeChange = (from: string, to: string) => {
+    setCustomFrom(from);
+    setCustomTo(to);
+    updateUrlParams({ range: 'CUSTOM', from: from || null, to: to || null });
+  };
+
+  const activeRange = useMemo(
+    () => getDateRange(dateRange, { from: customFrom, to: customTo }),
+    [dateRange, customFrom, customTo]
+  );
+
+  const rangeSummary = useMemo(() => {
+    if (!activeRange) return '';
+    const fromOk = activeRange.from.getTime() > 0;
+    const toOk = activeRange.to.getTime() < 8640000000000000;
+    if (fromOk && toOk) return `${formatThaiDate(activeRange.from)} – ${formatThaiDate(activeRange.to)}`;
+    if (fromOk) return `ตั้งแต่ ${formatThaiDate(activeRange.from)}`;
+    if (toOk) return `ถึง ${formatThaiDate(activeRange.to)}`;
+    return '';
+  }, [activeRange]);
+
   // Sync searchTags when URL query param changes
   useEffect(() => {
     const q = searchParams.get('q') || '';
@@ -105,7 +162,10 @@ function JobsContent() {
 
   // Filtering
   const displayedJobs = useMemo(() => {
-    return filteredJobs.filter(job => {
+    const filtered = filteredJobs.filter(job => {
+      // Date range (scheduled work date)
+      if (!isJobInDateRange(job, activeRange)) return false;
+
       // Search
       if (searchTags.length > 0) {
         const matches = searchTags.some(q => {
@@ -132,7 +192,13 @@ function JobsContent() {
 
       return true;
     });
-  }, [filteredJobs, searchTags, typeFilter, statusFilter, supplierFilter]);
+
+    // Sort by scheduled work date (earliest first)
+    return filtered
+      .map(job => ({ job, t: getJobScheduleDate(job).getTime() }))
+      .sort((a, b) => a.t - b.t)
+      .map(x => x.job);
+  }, [filteredJobs, searchTags, typeFilter, statusFilter, supplierFilter, activeRange]);
 
   // Job navigation in Drawer
   const currentJobIndex = useMemo(() => {
@@ -274,6 +340,9 @@ function JobsContent() {
 
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
             พบ {displayedJobs.length} รายการ
+            {rangeSummary && (
+              <span className="font-normal text-gray-500 ml-1">({rangeSummary})</span>
+            )}
           </span>
         </div>
       </div>
@@ -282,12 +351,13 @@ function JobsContent() {
         searchTags={searchTags}
         onSearchTagsChange={(tags) => {
           setSearchTags(tags);
-          if (tags.length > 0) {
-            router.replace(`/jobs?q=${encodeURIComponent(tags.join(','))}`, { scroll: false });
-          } else {
-            router.replace('/jobs', { scroll: false });
-          }
+          updateUrlParams({ q: tags.length > 0 ? tags.join(',') : null });
         }}
+        dateRange={dateRange}
+        onDateRangeChange={handleDateRangeChange}
+        customFrom={customFrom}
+        customTo={customTo}
+        onCustomRangeChange={handleCustomRangeChange}
         typeFilter={typeFilter}
         onTypeFilterChange={setTypeFilter}
         statusFilter={statusFilter}
@@ -550,18 +620,16 @@ function JobsContent() {
                     {(() => {
                       const steps = [
                         { label: 'เปิดงาน', key: 'CREATED' },
-                        { label: 'รับงาน', key: 'PENDING_SUPPLIER' },
                         { label: 'ดำเนินการ', key: 'IN_PROGRESS' },
                         { label: activeJob.status === 'REJECTED' ? 'ขอแก้ไข' : 'ตรวจรับ', key: 'WAITING_APPROVAL' },
                         { label: 'อนุมัติ', key: 'APPROVED' },
                       ];
 
                       const currentIdx = (() => {
-                        if (['APPROVED', 'INVOICED'].includes(activeJob.status)) return 4;
-                        if (activeJob.status === 'WAITING_APPROVAL') return 3;
-                        if (activeJob.status === 'REJECTED') return 3;
-                        if (activeJob.status === 'IN_PROGRESS') return 2;
-                        if (activeJob.status === 'PENDING_SUPPLIER') return 1;
+                        if (['APPROVED', 'INVOICED'].includes(activeJob.status)) return 3;
+                        if (activeJob.status === 'WAITING_APPROVAL') return 2;
+                        if (activeJob.status === 'REJECTED') return 2;
+                        if (activeJob.status === 'IN_PROGRESS' || activeJob.status === 'PENDING_SUPPLIER') return 1;
                         return 0;
                       })();
 
@@ -1064,7 +1132,114 @@ function JobsContent() {
 
                   {activeJob.evidences.length === 0 ? (
                     <p className="text-[11px] text-gray-400 italic">ยังไม่มีรูปหลักฐาน</p>
+                  ) : activeJob.carWashItems && activeJob.carWashItems.length > 0 ? (
+                    /* Grouped Per Vehicle (Option 1) */
+                    <div className="flex flex-col gap-4">
+                      {activeJob.carWashItems.map((item) => {
+                        const itemEvidences = activeJob.evidences.filter(e => e.vin === item.vin);
+                        if (itemEvidences.length === 0) return null;
+
+                        return (
+                          <div key={item.id} className="p-3.5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col gap-2.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                                  🚗
+                                </span>
+                                <div>
+                                  <p className="text-xs font-bold text-gray-900">
+                                    {item.vehicleModel || 'รถยนต์'} {item.licensePlate && `(${item.licensePlate})`}
+                                  </p>
+                                  <span className="font-mono text-[10px] text-gray-400">
+                                    VIN: {item.vin}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/50">
+                                {itemEvidences.length} รูป
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {itemEvidences.map(evi => (
+                                <div 
+                                  key={evi.id} 
+                                  onClick={() => setPreviewPhotoUrl(evi.photoUrl)}
+                                  className="group relative rounded-xl overflow-hidden border border-gray-200 bg-white shadow-2xs cursor-pointer transition-all"
+                                >
+                                  <div className="relative h-40 w-full overflow-hidden bg-gray-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img 
+                                      src={evi.photoUrl} 
+                                      alt={evi.caption} 
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                      <div className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white">
+                                        <ZoomIn className="w-4 h-4" />
+                                      </div>
+                                    </div>
+                                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-bold uppercase backdrop-blur-xs">
+                                      {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5">
+                                    <p className="text-xs font-semibold text-gray-800 line-clamp-1">{evi.caption}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{formatThaiDateTime(evi.uploadedAt)}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Any unassigned photos in drawer */}
+                      {(() => {
+                        const unassigned = activeJob.evidences.filter(
+                          e => !activeJob.carWashItems!.some(it => it.vin === e.vin)
+                        );
+                        if (unassigned.length === 0) return null;
+
+                        return (
+                          <div className="p-3.5 rounded-2xl bg-gray-50/70 border border-gray-100 flex flex-col gap-2.5">
+                            <span className="text-xs font-bold text-gray-700">รูปภาพอื่นๆ ({unassigned.length} รูป)</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {unassigned.map(evi => (
+                                <div 
+                                  key={evi.id} 
+                                  onClick={() => setPreviewPhotoUrl(evi.photoUrl)}
+                                  className="group relative rounded-xl overflow-hidden border border-gray-200 bg-white shadow-2xs cursor-pointer transition-all"
+                                >
+                                  <div className="relative h-40 w-full overflow-hidden bg-gray-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img 
+                                      src={evi.photoUrl} 
+                                      alt={evi.caption} 
+                                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                                    />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                      <div className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full bg-black/60 text-white">
+                                        <ZoomIn className="w-4 h-4" />
+                                      </div>
+                                    </div>
+                                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-bold uppercase backdrop-blur-xs">
+                                      {evi.evidenceType}
+                                    </span>
+                                  </div>
+                                  <div className="p-2.5">
+                                    <p className="text-xs font-semibold text-gray-800 line-clamp-1">{evi.caption}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{formatThaiDateTime(evi.uploadedAt)}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                   ) : (
+                    /* Single Vehicle (e.g. Slide single car) */
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {activeJob.evidences.map(evi => (
                         <div 

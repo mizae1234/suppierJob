@@ -7,9 +7,19 @@ interface MapPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (data: { lat: number; lng: number; address: string; distance: number }) => void;
-  originLat?: number;
-  originLng?: number;
+  /** Reference point (shown as a fixed marker; distance is measured from it) */
+  originLat?: number | null;
+  originLng?: number | null;
   originName?: string;
+  /** 'dest' = pick destination (default), 'origin' = pick pickup point */
+  mode?: 'dest' | 'origin';
+  /** Pre-fill an existing pin when re-opening the picker */
+  initialLat?: number | null;
+  initialLng?: number | null;
+  /** Caption under the reference marker popup (defaults by mode) */
+  referenceCaption?: string;
+  /** Override the noun used in title/buttons, e.g. 'ตำแหน่งสาขา' */
+  pointLabel?: string;
 }
 
 // Haversine formula: calculates distance between two GPS points in kilometers
@@ -35,10 +45,23 @@ export default function MapPickerModal({
   isOpen,
   onClose,
   onConfirm,
-  originLat = 13.7563,
-  originLng = 100.5648,
+  originLat: originLatProp,
+  originLng: originLngProp,
   originName = 'สาขาต้นทาง',
+  mode = 'dest',
+  initialLat,
+  initialLng,
+  referenceCaption,
+  pointLabel,
 }: MapPickerModalProps) {
+  const originLat = originLatProp ?? 13.7563;
+  const originLng = originLngProp ?? 100.5648;
+  const isOriginMode = mode === 'origin';
+  const pinLabel = isOriginMode ? 'A' : 'B';
+  const pinGradient = isOriginMode ? '#f59e0b,#d97706' : '#059669,#0f5238';
+  const refLabel = isOriginMode ? 'B' : 'A';
+  const refCaption = referenceCaption || (isOriginMode ? 'ปลายทาง' : 'สาขาต้นทาง');
+  const pointNoun = pointLabel || (isOriginMode ? 'จุดรับรถ' : 'จุดปลายทาง');
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<unknown>(null);
   const markerRef = useRef<unknown>(null);
@@ -124,11 +147,11 @@ export default function MapPickerModal({
           className: '',
           html: `<div style="
             width:32px;height:32px;border-radius:50%;
-            background:linear-gradient(135deg,#059669,#0f5238);
+            background:linear-gradient(135deg,${pinGradient});
             border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);
             display:flex;align-items:center;justify-content:center;
             color:white;font-weight:bold;font-size:12px;
-          ">B</div>`,
+          ">${pinLabel}</div>`,
           iconSize: [32, 32],
           iconAnchor: [16, 32],
         });
@@ -167,7 +190,7 @@ export default function MapPickerModal({
       setDistance(dist);
       reverseGeocode(lat, lng);
     },
-    [originLat, originLng, reverseGeocode]
+    [originLat, originLng, reverseGeocode, pinGradient, pinLabel]
   );
 
   // Initialize map when modal opens
@@ -228,14 +251,14 @@ export default function MapPickerModal({
           border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);
           display:flex;align-items:center;justify-content:center;
           color:white;font-weight:bold;font-size:10px;
-        ">A</div>`,
+        ">${refLabel}</div>`,
         iconSize: [28, 28],
         iconAnchor: [14, 28],
       });
 
       L.marker([originLat, originLng], { icon: originIcon })
         .addTo(map)
-        .bindPopup(`<b>${originName}</b><br/>สาขาต้นทาง`)
+        .bindPopup(`<b>${originName}</b><br/>${refCaption}`)
         .openPopup();
 
       // Click to place destination
@@ -245,6 +268,12 @@ export default function MapPickerModal({
 
       mapInstanceRef.current = map;
       setMapReady(true);
+
+      // Re-open with an existing pin
+      if (typeof initialLat === 'number' && typeof initialLng === 'number') {
+        map.setView([initialLat, initialLng], 14);
+        handlePlaceMarker(initialLat, initialLng);
+      }
 
       // Force invalidateSize after render
       setTimeout(() => {
@@ -257,7 +286,7 @@ export default function MapPickerModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, originLat, originLng, originName, handlePlaceMarker]);
+  }, [isOpen, originLat, originLng, originName, handlePlaceMarker, refLabel, refCaption, initialLat, initialLng]);
 
   // Cleanup when closing
   useEffect(() => {
@@ -292,7 +321,7 @@ export default function MapPickerModal({
               <MapPin className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-900">เลือกจุดปลายทางบนแผนที่</h3>
+              <h3 className="text-sm font-bold text-gray-900">เลือก{pointNoun}บนแผนที่</h3>
               <p className="text-[10px] text-gray-500">คลิกบนแผนที่ หรือค้นหาสถานที่</p>
             </div>
           </div>
@@ -313,7 +342,7 @@ export default function MapPickerModal({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && searchLocation()}
-              placeholder="ค้นหาสถานที่ เช่น บ้านลูกค้า, อู่ซ่อม..."
+              placeholder={isOriginMode ? 'ค้นหาสถานที่รับรถ เช่น บ้านลูกค้า, ลานจอด...' : 'ค้นหาสถานที่ เช่น บ้านลูกค้า, อู่ซ่อม...'}
               className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238] outline-none"
             />
           </div>
@@ -361,14 +390,18 @@ export default function MapPickerModal({
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right">
-                    <p className="text-[9px] text-gray-400 uppercase font-semibold">ระยะทาง</p>
+                    <p className="text-[9px] text-gray-400 uppercase font-semibold">{isOriginMode ? `ห่างจาก${refCaption}` : 'ระยะทาง'}</p>
                     <p className="text-sm font-bold text-[#0f5238]">{distance.toFixed(1)} กม.</p>
                   </div>
-                  <div className="w-px h-8 bg-gray-200" />
-                  <div className="text-right">
-                    <p className="text-[9px] text-gray-400 uppercase font-semibold">ค่าบริการ</p>
-                    <p className="text-sm font-bold text-[#0f5238]">฿{estimateSlideCost(distance).toLocaleString()}</p>
-                  </div>
+                  {!isOriginMode && (
+                    <>
+                      <div className="w-px h-8 bg-gray-200" />
+                      <div className="text-right">
+                        <p className="text-[9px] text-gray-400 uppercase font-semibold">ค่าบริการ</p>
+                        <p className="text-sm font-bold text-[#0f5238]">฿{estimateSlideCost(distance).toLocaleString()}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -408,14 +441,14 @@ export default function MapPickerModal({
                   className="flex items-center gap-2 px-5 py-2 rounded-lg bg-[#0f5238] text-white text-xs font-bold hover:bg-[#0a3d28] shadow-md transition-all"
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  ยืนยันจุดปลายทาง
+                  ยืนยัน{pointNoun}
                 </button>
               </div>
             </div>
           ) : (
             <div className="text-center px-5 py-3">
               <p className="text-xs text-gray-500">
-                คลิกบนแผนที่ หรือค้นหาสถานที่เพื่อกำหนดจุดปลายทาง
+                คลิกบนแผนที่ หรือค้นหาสถานที่เพื่อกำหนด{pointNoun}
               </p>
             </div>
           )}

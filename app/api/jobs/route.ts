@@ -85,8 +85,8 @@ export async function GET(request: NextRequest) {
           branch: { select: { code: true, name: true } },
           supplier: { select: { code: true, name: true } },
           vehicle: true,
-          originBranch: { select: { code: true, name: true } },
-          destBranch: { select: { code: true, name: true } },
+          originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+          destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
           carWashItems: {
             include: {
               vehicle: { select: { model: true, color: true, licensePlate: true } },
@@ -119,8 +119,20 @@ export async function GET(request: NextRequest) {
       vehicle: job.vehicle,
       originBranchId: job.originBranchId,
       originBranchName: job.originBranch?.name,
+      originBranchAddress: job.originBranch?.address || undefined,
+      originBranchLat: job.originBranch?.latitude ?? undefined,
+      originBranchLng: job.originBranch?.longitude ?? undefined,
       destBranchId: job.destBranchId,
       destBranchName: job.destBranch?.name,
+      destBranchAddress: job.destBranch?.address || undefined,
+      destBranchLat: job.destBranch?.latitude ?? undefined,
+      destBranchLng: job.destBranch?.longitude ?? undefined,
+      customDestAddress: job.customDestAddress || undefined,
+      customDestLat: job.customDestLat ?? undefined,
+      customDestLng: job.customDestLng ?? undefined,
+      customOriginAddress: job.customOriginAddress || undefined,
+      customOriginLat: job.customOriginLat ?? undefined,
+      customOriginLng: job.customOriginLng ?? undefined,
       pickupDateTime: job.pickupDateTime?.toISOString(),
       deliveryDateTime: job.deliveryDateTime?.toISOString(),
       contactPerson: job.contactPerson,
@@ -344,6 +356,9 @@ export async function POST(request: NextRequest) {
         customDestAddress, 
         customDestLat, 
         customDestLng, 
+        customOriginAddress,
+        customOriginLat,
+        customOriginLng,
         pickupDateTime, 
         deliveryDateTime, 
         contactPerson, 
@@ -368,6 +383,13 @@ export async function POST(request: NextRequest) {
       const costPerCar = estimatedCost ? parseFloat(estimatedCost) : 0;
       const totalEstimatedCost = costPerCar * vinsList.length;
 
+      // Optional custom pickup pin (overrides origin branch location for navigation)
+      const customOriginPin = {
+        customOriginAddress: customOriginAddress || null,
+        customOriginLat: customOriginLat ? parseFloat(customOriginLat) : null,
+        customOriginLng: customOriginLng ? parseFloat(customOriginLng) : null,
+      };
+
       const job = await prisma.job.create({
         data: {
           jobNumber,
@@ -382,6 +404,7 @@ export async function POST(request: NextRequest) {
           customDestAddress: customDestAddress || null,
           customDestLat: customDestLat ? parseFloat(customDestLat) : null,
           customDestLng: customDestLng ? parseFloat(customDestLng) : null,
+          ...customOriginPin,
           pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
           deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
           contactPerson,

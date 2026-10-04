@@ -133,6 +133,9 @@ model Job {
   customDestAddress String?      // ที่อยู่ปลายทางกรณีเลือกจุดบนแผนที่
   customDestLat     Float?       // ละติจูดปลายทาง
   customDestLng     Float?       // ลองจิจูดปลายทาง
+  customOriginAddress String?    // ที่อยู่จุดรับรถกรณีปักหมุดเอง (ไม่ใช่ที่อยู่สาขา)
+  customOriginLat     Float?     // ละติจูดจุดรับรถ
+  customOriginLng     Float?     // ลองจิจูดจุดรับรถ
   pickupDateTime   DateTime?
   deliveryDateTime DateTime?
   contactPerson    String?

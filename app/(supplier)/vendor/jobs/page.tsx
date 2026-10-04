@@ -25,9 +25,79 @@ import {
   Send,
   ImagePlus,
   Trash2,
+  Navigation,
+  Flag,
+  Route,
+  ExternalLink,
 } from 'lucide-react';
 
 type TabKey = 'progress' | 'waiting' | 'approved' | 'rejected';
+
+// ─── Google Maps navigation helpers (deep links — no API key needed) ──
+// Prefer exact GPS coordinates; fall back to address / name text search.
+function toMapsQuery(lat?: number, lng?: number, ...texts: (string | undefined)[]): string | null {
+  if (typeof lat === 'number' && typeof lng === 'number') return `${lat},${lng}`;
+  const text = texts.find(t => t && t.trim());
+  return text ? text.trim() : null;
+}
+
+function getSlideLocations(job: Job) {
+  const pickup = toMapsQuery(
+    job.customOriginLat ?? job.originBranchLat,
+    job.customOriginLng ?? job.originBranchLng,
+    job.customOriginAddress,
+    job.originBranchAddress,
+    job.originBranchName,
+  );
+  const dropoff = toMapsQuery(
+    job.customDestLat ?? job.destBranchLat,
+    job.customDestLng ?? job.destBranchLng,
+    job.customDestAddress,
+    job.destBranchAddress,
+    job.destBranchName,
+  );
+  const pickupLabel = job.customOriginAddress?.split(',')[0] || job.originBranchName || job.branchName;
+  const dropoffLabel = job.customDestAddress?.split(',')[0] || job.destBranchName || 'ปลายทาง';
+  return { pickup, dropoff, pickupLabel, dropoffLabel };
+}
+
+function mapsDirUrl(destination: string, origin?: string | null): string {
+  const params = new URLSearchParams({ api: '1', destination, travelmode: 'driving' });
+  if (origin) params.set('origin', origin);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+// ─── Evidence photo compression ──
+// Photos are stored as base64 in the DB, so shrink them on-device before upload.
+// A 4–8 MB phone photo becomes ~200–400 KB while staying clear enough as evidence.
+const MAX_PHOTO_DIMENSION = 1600;
+const PHOTO_JPEG_QUALITY = 0.8;
+const MAX_RAW_FILE_SIZE = 20 * 1024 * 1024;
+
+function compressImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const img = new Image();
+      img.onerror = () => resolve(dataUrl); // Unsupported format (e.g. HEIC on desktop) — keep original
+      img.onload = () => {
+        const scale = Math.min(1, MAX_PHOTO_DIMENSION / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(dataUrl);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', PHOTO_JPEG_QUALITY);
+        resolve(compressed.length < dataUrl.length ? compressed : dataUrl);
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 // ─── Item-level virtual card type for Supplier display ──
 interface SupplierItemCard {
@@ -101,6 +171,7 @@ function SupplierJobsPageContent() {
   const [photoModalTarget, setPhotoModalTarget] = useState<WorkModalTarget | null>(null);
   const [uploadedPhotos, setUploadedPhotos] = useState<{ url: string; file: File }[]>([]);
   const [photoCaption, setPhotoCaption] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presetReasons = rejectingTarget?.type === 'VEHICLE_SLIDE'
@@ -128,12 +199,13 @@ function SupplierJobsPageContent() {
     return list;
   }, [jobs, supplierId, isAll, currentBranchId]);
 
-  // ─── Flatten jobs with items (Car Wash and Vehicle Slide) into item-level cards ──
+  // ─── Flatten CAR_WASH jobs with items into item-level cards ──
   const allItemCards: SupplierItemCard[] = useMemo(() => {
     const cards: SupplierItemCard[] = [];
 
     myJobs.forEach(job => {
-      if (job.carWashItems && job.carWashItems.length > 0) {
+      // ONLY CAR_WASH jobs should be flattened into car wash item cards
+      if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
         const completedCount = job.carWashItems.filter(i => i.status === 'COMPLETED').length;
         
         job.carWashItems.forEach(item => {
@@ -166,8 +238,8 @@ function SupplierJobsPageContent() {
     return cards;
   }, [myJobs]);
 
-  // ─── Keep single Vehicle Slide jobs without items as-is ──
-  const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE' && (!j.carWashItems || j.carWashItems.length === 0)), [myJobs]);
+  // ─── Vehicle Slide jobs (ALL slide jobs, whether single or multi-car) ──
+  const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE'), [myJobs]);
 
   const tabConfig: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
     { key: 'progress', label: 'งานที่ต้องทำ', icon: Clock, color: '#f59e0b' },
@@ -339,28 +411,20 @@ function SupplierJobsPageContent() {
     setRejectReason('');
   };
 
-  // ─── Handle file selection (camera / gallery) ──
+  // ─── Handle file selection (camera / gallery) — no limit on photo count ──
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
     Array.from(files).forEach(file => {
-      if (file.size > 10 * 1024 * 1024) {
-        showToast('ไฟล์ขนาดเกิน 10MB กรุณาเลือกไฟล์ที่เล็กกว่า', 'error');
+      if (file.size > MAX_RAW_FILE_SIZE) {
+        showToast('ไฟล์ขนาดเกิน 20MB กรุณาเลือกไฟล์ที่เล็กกว่า', 'error');
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setUploadedPhotos(prev => {
-          if (prev.length >= 5) {
-            showToast('แนบได้สูงสุด 5 รูป', 'error');
-            return prev;
-          }
-          return [...prev, { url: ev.target?.result as string, file }];
-        });
-      };
-      reader.readAsDataURL(file);
+      compressImage(file)
+        .then(url => setUploadedPhotos(prev => [...prev, { url, file }]))
+        .catch(() => showToast(`อ่านไฟล์ ${file.name} ไม่สำเร็จ`, 'error'));
     });
 
     // Reset input so same file can be re-selected
@@ -385,8 +449,9 @@ function SupplierJobsPageContent() {
     setSubmittingId(currentId);
 
     try {
-      // Add each photo as evidence
+      // Add each photo as evidence (sequential, with progress for large batches)
       for (let i = 0; i < uploadedPhotos.length; i++) {
+        setUploadProgress({ done: i, total: uploadedPhotos.length });
         const defaultCaption = target.type === 'CAR_WASH'
           ? `ล้างรถเสร็จเรียบร้อย — ${target.vin} (${i + 1}/${uploadedPhotos.length})`
           : `ส่งมอบรถสไลด์เรียบร้อย — ${target.vin} (${i + 1}/${uploadedPhotos.length})`;
@@ -398,6 +463,7 @@ function SupplierJobsPageContent() {
           vin: target.vin,
         });
       }
+      setUploadProgress(null);
 
       // Update status depending on whether target has itemId (per-item) or is whole job
       if (target.itemId) {
@@ -422,6 +488,7 @@ function SupplierJobsPageContent() {
       showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
     } finally {
       setSubmittingId(null);
+      setUploadProgress(null);
     }
   };
 
@@ -490,7 +557,7 @@ function SupplierJobsPageContent() {
                     ? 'bg-purple-50 text-purple-700 border border-purple-100'
                     : 'bg-gray-50 text-gray-600 border border-gray-100'
                 }`}>
-                  {card.washType === 'STANDARD' ? 'ล้างปกติ' : card.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : 'ขัดเคลือบ'}
+                  {card.washType === 'STANDARD' ? 'ล้างปกติ' : card.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : card.washType === 'POLISH' ? 'ขัดเคลือบ' : 'ล้างรถ'}
                 </span>
               </div>
               <p className="text-[11px] text-gray-500 mt-0.5 truncate max-w-[200px]">
@@ -627,99 +694,236 @@ function SupplierJobsPageContent() {
     const cost = getJobTotalCost(job);
     const isActiveJob = job.status === 'IN_PROGRESS' || job.status === 'PENDING_SUPPLIER';
     const isSubmitting = submittingId === job.id;
-    const vehicleObj = vehicles.find(v => v.vin === job.vin) || job.vehicle;
+
+    const isPending = isActiveJob;
+    const isCompleted = ['WAITING_APPROVAL', 'APPROVED', 'INVOICED'].includes(job.status);
+    const isRejected = job.status === 'REJECTED';
+    const isCancelled = job.status === 'CANCELLED';
+
+    const singleItem = job.carWashItems && job.carWashItems.length === 1 ? job.carWashItems[0] : null;
+    const vehicleCount = job.carWashItems && job.carWashItems.length > 0 ? job.carWashItems.length : (job.vin ? 1 : 0);
+    const isMultiCar = vehicleCount > 1;
+
+    // Vehicle info for single vehicle
+    const primaryVin = singleItem?.vin || job.vin || '';
+    const primaryVehicleObj = vehicles.find(v => v.vin === primaryVin) || (singleItem as any)?.vehicle || job.vehicle;
+    const primaryModel = primaryVehicleObj?.model || singleItem?.vehicleModel || '';
+    const primaryColor = primaryVehicleObj?.color || singleItem?.vehicleColor || '';
+    const primaryPlate = primaryVehicleObj?.licensePlate || singleItem?.licensePlate || '';
+
+    // Navigation targets (Google Maps deep links)
+    const loc = getSlideLocations(job);
+    const routeText = `${loc.pickupLabel} → ${loc.dropoffLabel}`;
+    const showNav = !isCancelled && !['APPROVED', 'INVOICED'].includes(job.status) && (loc.pickup || loc.dropoff);
 
     return (
-      <div key={job.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-xs transition-all">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600 border border-purple-100">
-              <Truck className="w-4.5 h-4.5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-bold text-gray-900 font-mono">{job.jobNumber}</p>
-              </div>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                รถสไลด์ • <span className="font-semibold text-gray-700">{job.companyCode}</span> • {job.branchName}
-              </p>
-            </div>
+      <div
+        key={job.id}
+        className={`p-4 sm:p-5 rounded-3xl bg-white border transition-all duration-200 shadow-2xs hover:shadow-md overflow-hidden flex flex-col gap-3.5 ${
+          isPending
+            ? 'border-gray-200/90 hover:border-emerald-300'
+            : isCompleted
+            ? 'border-emerald-200/70 bg-[#fafdfb]'
+            : 'border-red-200/70 bg-[#fdfafb]'
+        }`}
+      >
+        {/* ── Top Row: Job Number Badge, Type & Price ── */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60 flex items-center gap-1.5 shrink-0">
+              <Truck className="w-3.5 h-3.5" />
+              <span>{isMultiCar ? `รถสไลด์ (${vehicleCount} คัน)` : 'รถสไลด์'}</span>
+            </span>
+            <span className="font-mono text-xs text-gray-500 font-semibold truncate">
+              #{job.jobNumber}
+            </span>
           </div>
-          <span className="text-sm font-black font-mono" style={{ color: theme.primary }}>
-            {formatCurrency(cost)}
-          </span>
+
+          <div className="text-right shrink-0">
+            <span className="text-base font-black font-mono tracking-tight text-[#0f5238]">
+              {formatCurrency(cost)}
+            </span>
+          </div>
         </div>
 
-        {job.vin && (
-          <div className="mb-3 flex items-center gap-2 flex-wrap">
-            <span className="px-2 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-[11px] text-gray-700 font-mono">
-              🚗 {job.vin}
-            </span>
-            {vehicleObj && (
-              <span className="text-[11px] text-gray-500">
-                {vehicleObj.model} {vehicleObj.color ? `• ${vehicleObj.color}` : ''}
-                {vehicleObj.licensePlate ? ` • ${vehicleObj.licensePlate}` : ''}
-              </span>
+        {/* ── Vehicle Info Box (Hero content for driver) ── */}
+        <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#f8faf9] border border-gray-100">
+          <div className="w-10 h-10 rounded-xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center shrink-0 text-emerald-800">
+            <Car className="w-5 h-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            {isMultiCar ? (
+              <>
+                <p className="text-xs font-bold text-gray-900 truncate">
+                  ขนย้ายรถยนต์ทั้งหมด {vehicleCount} คัน
+                </p>
+                <div className="flex items-center gap-1.5 mt-1 overflow-x-auto scrollbar-none">
+                  {job.carWashItems?.map((it, idx) => (
+                    <span
+                      key={it.id || idx}
+                      className="px-2 py-0.5 bg-white border border-gray-200 rounded-md text-[10px] font-mono font-medium text-gray-700 shrink-0"
+                    >
+                      {it.vin.slice(-6)}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-bold text-gray-900 truncate">
+                    {primaryModel || 'รถยนต์'}
+                  </p>
+                  {primaryPlate && (
+                    <span className="px-1.5 py-0.2 rounded bg-white text-gray-800 font-bold text-[10px] border border-gray-200 shadow-2xs font-mono">
+                      {primaryPlate}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                  {primaryColor ? `${primaryColor} • ` : ''}
+                  <span className="font-mono">VIN: ...{primaryVin ? primaryVin.slice(-6) : '-'}</span>
+                </p>
+              </>
             )}
           </div>
-        )}
+        </div>
 
-        {(job.originBranchName || job.destBranchName || job.customDestAddress) && (
-          <div className="mb-3 text-[11px] text-gray-500 flex items-center gap-1">
-            <span className="text-gray-400">📍</span>
-            <span>{job.originBranchName || job.branchName} → {job.destBranchName || job.customDestAddress || 'ปลายทาง'}</span>
-            {job.distance ? <span className="font-semibold text-gray-700">({job.distance} กม.)</span> : null}
+        {/* ── Route & Navigation Box (Unified Timeline Card) ── */}
+        <div className="p-3.5 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-bold text-gray-700 flex items-center gap-1.5">
+              <Route className="w-3.5 h-3.5 text-gray-400" />
+              <span>เส้นทางขนส่ง</span>
+            </span>
+            {job.distance ? (
+              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] border border-emerald-200/60">
+                ~{job.distance} กม.
+              </span>
+            ) : null}
           </div>
-        )}
 
-        <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+          {/* Timeline: Origin & Destination */}
+          <div className="flex flex-col gap-1.5">
+            {/* Origin (Pickup) */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 ring-4 ring-amber-50" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate" title={loc.pickupLabel}>
+                    <span className="text-[10px] text-gray-400 font-normal mr-1">รับ:</span>
+                    {loc.pickupLabel}
+                  </p>
+                </div>
+              </div>
+              {showNav && loc.pickup && (
+                <a
+                  href={mapsDirUrl(loc.pickup)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`นำทางไปจุดรับรถ: ${loc.pickupLabel}`}
+                  className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[11px] font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+                >
+                  <Navigation className="w-3 h-3 text-amber-600" />
+                  <span>นำทาง</span>
+                </a>
+              )}
+            </div>
+
+            {/* Connecting visual line */}
+            <div className="w-0.5 h-2 bg-gray-200 ml-1 -my-0.5" />
+
+            {/* Destination (Dropoff) */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 ring-4 ring-emerald-50" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate" title={loc.dropoffLabel}>
+                    <span className="text-[10px] text-gray-400 font-normal mr-1">ส่ง:</span>
+                    {loc.dropoffLabel}
+                  </p>
+                </div>
+              </div>
+              {showNav && loc.dropoff && (
+                <a
+                  href={mapsDirUrl(loc.dropoff)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`นำทางไปจุดส่งรถ: ${loc.dropoffLabel}`}
+                  className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-[11px] font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+                >
+                  <Flag className="w-3 h-3 text-emerald-600" />
+                  <span>นำทาง</span>
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Full route link */}
+          {showNav && loc.pickup && loc.dropoff && (
+            <div className="pt-2 border-t border-gray-100 flex justify-end">
+              <a
+                href={mapsDirUrl(loc.dropoff, loc.pickup)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-semibold text-sky-700 hover:text-sky-800 flex items-center gap-1 transition-colors"
+              >
+                <span>ดูเส้นทางเต็มบน Google Maps</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* ── Action Row: Bottom buttons ── */}
+        <div className="flex items-center gap-2 pt-1">
           {isActiveJob && (
             <>
               <button
                 type="button"
                 onClick={() => handleOpenRejectModalForSlide(job)}
-                className="flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs sm:text-sm font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
               >
-                <XCircle className="w-4 h-4 text-red-500" />
-                <span>ปฏิเสธงาน</span>
+                <XCircle className="w-3.5 h-3.5 text-red-500" />
+                <span>ปฏิเสธ</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleOpenPhotoModalForSlide(job)}
                 disabled={isSubmitting}
-                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs sm:text-sm font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
               >
-                <Camera className="w-4 h-4" />
-                <span>ส่งงาน + แนบรูป</span>
+                <Camera className="w-3.5 h-3.5" />
+                <span>ถ่ายรูป + ส่งงาน</span>
               </button>
             </>
           )}
 
-          {job.status === 'CANCELLED' && (
-            <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
+          {isCancelled && (
+            <div className="flex-1 flex flex-col gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
               <div className="flex items-center gap-1.5 text-red-700 font-bold">
                 <XCircle className="w-4 h-4 text-red-500 shrink-0" />
                 <span>ปฏิเสธงานนี้แล้ว</span>
               </div>
               {job.rejectReason && (
-                <span className="text-[11px] text-red-600 truncate max-w-xs">
+                <span className="text-[11px] text-red-600 truncate">
                   เหตุผล: {job.rejectReason}
                 </span>
               )}
             </div>
           )}
 
-          {job.status === 'REJECTED' && (
-            <div className="flex-1 flex items-center justify-between gap-2">
-              <span className="text-xs text-red-700 font-medium truncate">
+          {isRejected && (
+            <div className="flex-1 flex items-center justify-between gap-2 p-2 rounded-xl bg-red-50 border border-red-200 text-xs">
+              <span className="text-red-700 font-medium truncate">
                 ⚠️ สาขาขอให้แก้ไข: {job.rejectReason || 'โปรดตรวจสอบ'}
               </span>
               <button
                 type="button"
                 onClick={() => handleOpenPhotoModalForSlide(job)}
                 disabled={isSubmitting}
-                className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
+                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
               >
                 แก้ไข + ส่งใหม่
               </button>
@@ -727,17 +931,18 @@ function SupplierJobsPageContent() {
           )}
 
           {job.status === 'WAITING_APPROVAL' && (
-            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs sm:text-sm font-bold">
+            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200/60">
               <Clock className="w-4 h-4" />
               <span>ส่งงานแล้ว • รอสาขาตรวจรับ...</span>
             </div>
           )}
 
           {['APPROVED', 'INVOICED'].includes(job.status) && (
-            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold"
-              style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}
+            <div
+              className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold border"
+              style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary, borderColor: theme.borderSoft }}
             >
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
             </div>
           )}
@@ -1045,7 +1250,7 @@ function SupplierJobsPageContent() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-bold text-gray-700">📸 รูปถ่ายหลักฐาน <span className="text-red-500">*</span></p>
-                  <span className="text-[10px] text-gray-400">{uploadedPhotos.length}/5 รูป</span>
+                  <span className="text-[10px] text-gray-400">{uploadedPhotos.length > 0 ? `${uploadedPhotos.length} รูป` : 'ถ่ายได้ไม่จำกัด'}</span>
                 </div>
 
                 {/* Photo Grid */}
@@ -1062,7 +1267,7 @@ function SupplierJobsPageContent() {
                         <button
                           type="button"
                           onClick={() => handleRemovePhoto(idx)}
-                          className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                          className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors cursor-pointer sm:opacity-0 sm:group-hover:opacity-100"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -1084,8 +1289,7 @@ function SupplierJobsPageContent() {
                         fileInputRef.current.click();
                       }
                     }}
-                    disabled={uploadedPhotos.length >= 5}
-                    className="flex-1 flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-100/70 text-emerald-700 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 hover:bg-emerald-100/70 text-emerald-700 transition-all cursor-pointer active:scale-[0.98]"
                   >
                     <Camera className="w-6 h-6" />
                     <span className="text-xs font-bold">ถ่ายรูป</span>
@@ -1100,12 +1304,11 @@ function SupplierJobsPageContent() {
                         fileInputRef.current.click();
                       }
                     }}
-                    disabled={uploadedPhotos.length >= 5}
-                    className="flex-1 flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 hover:bg-gray-100 text-gray-600 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex-1 flex flex-col items-center gap-1.5 p-4 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50/50 hover:bg-gray-100 text-gray-600 transition-all cursor-pointer active:scale-[0.98]"
                   >
                     <ImagePlus className="w-6 h-6" />
                     <span className="text-xs font-bold">เลือกจากอัลบั้ม</span>
-                    <span className="text-[9px] text-gray-400">JPG, PNG (max 10MB)</span>
+                    <span className="text-[9px] text-gray-400">เลือกได้หลายรูปพร้อมกัน</span>
                   </button>
                 </div>
 
@@ -1151,7 +1354,11 @@ function SupplierJobsPageContent() {
                 {submittingId === (photoModalTarget.type === 'CAR_WASH' ? photoModalTarget.itemId : photoModalTarget.jobId) ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>กำลังส่งงาน...</span>
+                    <span>
+                      {uploadProgress
+                        ? `กำลังอัปโหลดรูป ${uploadProgress.done + 1}/${uploadProgress.total}...`
+                        : 'กำลังส่งงาน...'}
+                    </span>
                   </>
                 ) : (
                   <>

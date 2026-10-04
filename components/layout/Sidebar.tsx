@@ -80,6 +80,13 @@ export const Sidebar: React.FC = () => {
       badge: null,
     },
     {
+      label: 'จัดการสาขา',
+      href: '/branches',
+      icon: Building2,
+      badge: null,
+      roleVisibility: ['MASTER', 'ADMIN'],
+    },
+    {
       label: 'จัดการ Supplier',
       href: '/suppliers',
       icon: Store,

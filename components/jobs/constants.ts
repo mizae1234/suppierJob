@@ -21,14 +21,6 @@ export const KANBAN_COLUMNS: Array<{
   dotColor: string;
 }> = [
   {
-    id: 'PENDING_SUPPLIER',
-    title: 'รอ Supplier รับงาน',
-    badgeBg: 'bg-blue-100',
-    badgeText: 'text-blue-800',
-    borderColor: 'border-t-blue-500',
-    dotColor: 'bg-blue-500',
-  },
-  {
     id: 'IN_PROGRESS',
     title: 'กำลังปฏิบัติงาน',
     badgeBg: 'bg-amber-100',

@@ -4,7 +4,7 @@ import React from 'react';
 import { Job, UserRole } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, getJobScheduleDate, getScheduleBadge } from '@/lib/job-utils';
 import { Sparkles, Truck } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
 
@@ -33,7 +33,9 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
     <div className="overflow-x-auto pb-6">
       <div className="flex gap-4 min-w-[1500px]">
         {KANBAN_COLUMNS.map(col => {
-          const colJobs = jobs.filter(j => j.status === col.id);
+          const colJobs = jobs.filter(j =>
+            j.status === col.id || (col.id === 'IN_PROGRESS' && j.status === 'PENDING_SUPPLIER')
+          );
           const colTotal = colJobs.reduce((sum, j) => sum + getJobTotalCost(j), 0);
 
           return (
@@ -62,7 +64,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
               </div>
 
               {/* Cards */}
-              <div className="flex flex-col gap-3 overflow-y-auto max-h-[calc(100vh-320px)] pr-1">
+              <div className="flex flex-col gap-3 overflow-y-auto overflow-x-hidden max-h-[calc(100vh-320px)] pr-1">
                 {colJobs.length === 0 ? (
                   <div className="py-12 text-center text-xs text-gray-400 rounded-2xl border border-dashed border-gray-200 bg-white/60">
                     ไม่มีงานในสถานะนี้
@@ -74,33 +76,46 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                       onClick={() => onViewDetail(job)}
                       className="p-4 rounded-2xl bg-white border border-gray-200/80 shadow-xs hover:shadow-md transition-all flex flex-col gap-2.5 cursor-pointer group"
                     >
-                      {/* Card Top: Type & Company */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
+                      {/* Card Top: Company & Type | Due badge */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0" style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}>
                             {job.companyCode}
                           </span>
-                          <span className="text-[11px] font-semibold text-gray-700 flex items-center gap-1">
+                          <span className="text-[11px] font-semibold text-gray-700 flex items-center gap-1 whitespace-nowrap">
                             {job.jobType === 'CAR_WASH' ? (
                               <>
-                                <Sparkles className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
+                                <Sparkles className="w-3.5 h-3.5 shrink-0" style={{ color: theme.iconColor }} />
                                 <span>Car Wash</span>
                               </>
                             ) : (
                               <>
-                                <Truck className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
+                                <Truck className="w-3.5 h-3.5 shrink-0" style={{ color: theme.iconColor }} />
                                 <span>Slide</span>
                               </>
                             )}
                           </span>
                         </div>
-                        <span className="text-[10px] text-gray-400 font-mono">
-                          {formatThaiDate(job.createdAt)}
-                        </span>
+                        {(() => {
+                          const badge = getScheduleBadge(job);
+                          return (
+                            <span className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold whitespace-nowrap shrink-0 ${badge.className}`}>
+                              {badge.label}
+                            </span>
+                          );
+                        })()}
                       </div>
 
-                      {/* Job Number */}
-                      <div className="font-bold text-xs text-gray-900">{job.jobNumber}</div>
+                      {/* Job Number | Schedule date */}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="font-bold text-xs text-gray-900 truncate">{job.jobNumber}</div>
+                        <span
+                          className="text-[10px] text-gray-400 whitespace-nowrap shrink-0"
+                          title={`วันนัดทำงาน • สั่งงานเมื่อ ${formatThaiDate(job.createdAt)}`}
+                        >
+                          {formatThaiDate(getJobScheduleDate(job))}
+                        </span>
+                      </div>
 
                       {/* Vehicle Details */}
                       <div className="p-2 rounded-xl bg-[#fbfdfc] border border-gray-100 text-xs">

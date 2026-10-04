@@ -53,6 +53,10 @@ interface CreateVehicleSlideParams {
   customDestAddress?: string;
   customDestLat?: number;
   customDestLng?: number;
+  // Custom pickup point (map pin) — optional
+  customOriginAddress?: string;
+  customOriginLat?: number;
+  customOriginLng?: number;
 }
 
 interface CreateInvoiceParams {
@@ -261,6 +265,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           customDestAddress: params.customDestAddress,
           customDestLat: params.customDestLat,
           customDestLng: params.customDestLng,
+          customOriginAddress: params.customOriginAddress,
+          customOriginLat: params.customOriginLat,
+          customOriginLng: params.customOriginLng,
           pickupDateTime: params.pickupDateTime,
           deliveryDateTime: params.deliveryDateTime,
           contactPerson: params.contactPerson,

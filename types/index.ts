@@ -31,12 +31,25 @@ export interface Company {
 export interface Branch {
   id: string;
   companyId: string;
+  companyCode?: string;
+  companyName?: string;
   code: string;
   name: string;
-  address?: string;
-  phone?: string;
-  latitude?: number;
-  longitude?: number;
+  address?: string | null;
+  phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  activeJobsCount?: number;
+  vehiclesCount?: number;
+  usersCount?: number;
+  totalJobsCount?: number;
+  _count?: {
+    vehicles?: number;
+    users?: number;
+    jobs?: number;
+    originJobs?: number;
+    destJobs?: number;
+  };
 }
 
 export interface Supplier {
@@ -109,11 +122,21 @@ export interface Job {
   vehicle?: Vehicle;
   originBranchId?: string;
   originBranchName?: string;
+  originBranchAddress?: string;
+  originBranchLat?: number;
+  originBranchLng?: number;
   destBranchId?: string;
   destBranchName?: string;
+  destBranchAddress?: string;
+  destBranchLat?: number;
+  destBranchLng?: number;
   customDestAddress?: string;
   customDestLat?: number;
   customDestLng?: number;
+  // จุดรับรถแบบปักหมุดเอง (ใช้แทนที่อยู่สาขาต้นทาง)
+  customOriginAddress?: string;
+  customOriginLat?: number;
+  customOriginLng?: number;
   pickupDateTime?: string;
   deliveryDateTime?: string;
   contactPerson?: string;

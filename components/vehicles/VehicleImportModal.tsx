@@ -108,7 +108,7 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
         'เลขทะเบียน (License Plate)': '',
         'เลขไมล์ (Mileage)': 0,
         'รหัสบริษัท (Company)': 'GI',
-        'สาขา (Branch)': 'GI Hub แหลมฉบัง ชลบุรี',
+        'สาขา (Branch)': 'GI-กาญจนาภิเษก',
       }
     ];
 
