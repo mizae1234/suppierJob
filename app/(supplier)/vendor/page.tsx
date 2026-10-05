@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, countSupplierTabs } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import {
   ClipboardList,
@@ -49,19 +49,13 @@ export default function SupplierDashboardPage() {
   }, [jobs, supplierId, isAll, currentBranchId]);
 
   const stats = useMemo(() => {
-    const inProgress = myJobs.filter(j => j.status === 'IN_PROGRESS' || j.status === 'PENDING_SUPPLIER');
-    const waiting = myJobs.filter(j => j.status === 'WAITING_APPROVAL');
     const approved = myJobs.filter(j => j.status === 'APPROVED');
-    const rejected = myJobs.filter(j => j.status === 'REJECTED');
-    const cancelled = myJobs.filter(j => j.status === 'CANCELLED');
     const invoiced = myJobs.filter(j => j.status === 'INVOICED');
 
     return {
-      inProgress,
-      waiting,
+      // Per-car counts (car wash) / per-job (slide) — identical to /vendor/jobs tabs
+      tabs: countSupplierTabs(myJobs),
       approved,
-      rejected,
-      cancelled,
       invoiced,
       approvedAmount: approved.reduce((sum, j) => sum + getJobTotalCost(j), 0),
       totalAmount: myJobs.reduce((sum, j) => sum + getJobTotalCost(j), 0),
@@ -77,7 +71,7 @@ export default function SupplierDashboardPage() {
     {
       label: 'งานที่ต้องทำ',
       sublabel: 'กำลังดำเนินการ',
-      count: stats.inProgress.length,
+      count: stats.tabs.progress,
       icon: Clock,
       color: '#d97706',
       iconBg: '#fffbeb',
@@ -86,7 +80,7 @@ export default function SupplierDashboardPage() {
     {
       label: 'รอตรวจรับ',
       sublabel: 'รอสาขาตรวจสอบ',
-      count: stats.waiting.length,
+      count: stats.tabs.waiting,
       icon: AlertCircle,
       color: '#2563eb',
       iconBg: '#eff6ff',
@@ -95,7 +89,7 @@ export default function SupplierDashboardPage() {
     {
       label: 'ผ่านแล้ว',
       sublabel: stats.approvedAmount > 0 ? formatCurrency(stats.approvedAmount) : 'พร้อมวางบิล',
-      count: stats.approved.length,
+      count: stats.tabs.approved,
       icon: CheckCircle2,
       color: theme.primary,
       iconBg: theme.badgeBg,
@@ -104,7 +98,7 @@ export default function SupplierDashboardPage() {
     {
       label: 'ตีกลับ',
       sublabel: 'สาขาให้แก้ไข',
-      count: stats.rejected.length,
+      count: stats.tabs.returned,
       icon: RotateCcw,
       color: '#ea580c',
       iconBg: '#fff7ed',
@@ -113,7 +107,7 @@ export default function SupplierDashboardPage() {
     {
       label: 'ปฏิเสธ',
       sublabel: 'ปฏิเสธรับงาน',
-      count: stats.cancelled.length,
+      count: stats.tabs.declined,
       icon: XCircle,
       color: '#ef4444',
       iconBg: '#fef2f2',
@@ -195,7 +189,7 @@ export default function SupplierDashboardPage() {
                   <span className="text-2xl font-bold text-gray-900 font-mono tracking-tight leading-none">
                     {card.count}
                   </span>
-                  <span className="text-[10px] text-gray-400 font-medium">งาน</span>
+                  <span className="text-[10px] text-gray-400 font-medium">รายการ</span>
                 </div>
                 <p className="text-xs font-semibold text-gray-800 mt-1 leading-tight">
                   {card.label}
@@ -352,9 +346,9 @@ export default function SupplierDashboardPage() {
             <div className="space-y-2">
               {[
                 { label: 'งานทั้งหมด', value: myJobs.length, color: '#374151' },
-                { label: 'กำลังดำเนินการ', value: stats.inProgress.length, color: '#d97706' },
-                { label: 'ผ่านการตรวจรับ', value: stats.approved.length + stats.invoiced.length, color: theme.primary },
-                { label: 'ถูกตีกลับ/ยกเลิก', value: stats.rejected.length + stats.cancelled.length, color: '#ef4444' },
+                { label: 'กำลังดำเนินการ', value: stats.tabs.progress, color: '#d97706' },
+                { label: 'ผ่านการตรวจรับ', value: stats.tabs.approved, color: theme.primary },
+                { label: 'ถูกตีกลับ/ปฏิเสธ', value: stats.tabs.returned + stats.tabs.declined, color: '#ef4444' },
               ].map(item => (
                 <div key={item.label} className="flex items-center justify-between">
                   <span className="text-[11px] text-gray-500">{item.label}</span>

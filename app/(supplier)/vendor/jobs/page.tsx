@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
-import { getJobTotalCost, getVehicleLabel } from '@/lib/job-utils';
+import { getJobTotalCost, getVehicleLabel, classifySupplierItem, classifySupplierSlide } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import { Job, JobStatus, CarWashItemStatus } from '@/types';
 import {
@@ -257,55 +257,11 @@ function SupplierJobsPageContent() {
   ];
 
   // ─── Tab Filtering Logic ──
-  // For item cards: filter based on item-level status + job status
-  // For slide jobs: filter based on job status (unchanged)
+  // Shared with the supplier dashboard (lib/job-utils) so counts always match.
+  // Car wash = per car (item status + job status), slide = per job.
   const getTabItems = (tabKey: TabKey) => {
-    let items: SupplierItemCard[] = [];
-    let slides: Job[] = [];
-
-    switch (tabKey) {
-      case 'progress':
-        // Items that are PENDING and belong to active jobs
-        items = allItemCards.filter(c =>
-          c.itemStatus === 'PENDING' &&
-          ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(c.jobStatus)
-        );
-        slides = slideJobs.filter(j => ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(j.status));
-        break;
-      case 'waiting':
-        // Items that are COMPLETED (submitted by supplier) — waiting branch approval
-        items = allItemCards.filter(c =>
-          c.itemStatus === 'COMPLETED' &&
-          ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(c.jobStatus)
-        );
-        slides = slideJobs.filter(j => j.status === 'WAITING_APPROVAL');
-        break;
-      case 'approved':
-        // Cars approved individually, or submitted cars in an approved/invoiced job
-        items = allItemCards.filter(c =>
-          c.itemStatus === 'APPROVED' ||
-          (c.itemStatus === 'COMPLETED' && ['APPROVED', 'INVOICED'].includes(c.jobStatus))
-        );
-        slides = slideJobs.filter(j => ['APPROVED', 'INVOICED'].includes(j.status));
-        break;
-      case 'returned':
-        // ตีกลับ: สาขาตรวจรับไม่ผ่าน → Supplier ต้องแก้ไขแล้วส่งใหม่
-        items = allItemCards.filter(c =>
-          c.itemStatus === 'REJECTED' ||
-          (c.jobStatus === 'REJECTED' && c.itemStatus !== 'CANCELLED')
-        );
-        slides = slideJobs.filter(j => j.status === 'REJECTED');
-        break;
-      case 'declined':
-        // ปฏิเสธ: Supplier ปฏิเสธรับงานเอง (รายคัน หรือทั้งใบงาน)
-        items = allItemCards.filter(c =>
-          c.itemStatus === 'CANCELLED' ||
-          (c.jobStatus === 'CANCELLED' && c.itemStatus !== 'REJECTED')
-        );
-        slides = slideJobs.filter(j => j.status === 'CANCELLED');
-        break;
-    }
-
+    const items = allItemCards.filter(c => classifySupplierItem(c.itemStatus, c.jobStatus) === tabKey);
+    const slides = slideJobs.filter(j => classifySupplierSlide(j.status) === tabKey);
     return { items, slides };
   };
 
