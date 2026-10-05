@@ -347,8 +347,10 @@ export default function SupplierDashboardPage() {
               {[
                 { label: 'งานทั้งหมด', value: myJobs.length, color: '#374151' },
                 { label: 'กำลังดำเนินการ', value: stats.tabs.progress, color: '#d97706' },
+                { label: 'รอตรวจรับ', value: stats.tabs.waiting, color: '#2563eb' },
                 { label: 'ผ่านการตรวจรับ', value: stats.tabs.approved, color: theme.primary },
-                { label: 'ถูกตีกลับ/ปฏิเสธ', value: stats.tabs.returned + stats.tabs.declined, color: '#ef4444' },
+                { label: 'ตีกลับ (สาขาให้แก้ไข)', value: stats.tabs.returned, color: '#ea580c' },
+                { label: 'ปฏิเสธ (ปฏิเสธรับงาน)', value: stats.tabs.declined, color: '#ef4444' },
               ].map(item => (
                 <div key={item.label} className="flex items-center justify-between">
                   <span className="text-[11px] text-gray-500">{item.label}</span>
