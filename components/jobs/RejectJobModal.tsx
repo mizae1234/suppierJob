@@ -6,12 +6,14 @@ import { AlertCircle, X } from 'lucide-react';
 
 interface RejectJobModalProps {
   job: Job;
+  vin?: string; // when set, rejecting a single car instead of the whole job
   onClose: () => void;
   onSubmit: (reason: string) => void;
 }
 
 export const RejectJobModal: React.FC<RejectJobModalProps> = ({
   job,
+  vin,
   onClose,
   onSubmit,
 }) => {
@@ -31,7 +33,7 @@ export const RejectJobModal: React.FC<RejectJobModalProps> = ({
               <AlertCircle className="w-4 h-4" />
             </div>
             <h3 className="text-base font-bold text-gray-900">
-              ไม่อนุมัติ / ขอให้แก้ไขงาน (Reject)
+              {vin ? 'ตีกลับรถคันนี้ให้แก้ไข' : 'ไม่อนุมัติ / ขอให้แก้ไขงาน (Reject)'}
             </h3>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
@@ -42,6 +44,7 @@ export const RejectJobModal: React.FC<RejectJobModalProps> = ({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <p className="text-xs text-gray-600">
             Job No.: <span className="font-bold text-gray-900">{job.jobNumber}</span>
+            {vin && <> • VIN: <span className="font-bold font-mono text-gray-900">{vin}</span></>}
           </p>
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">

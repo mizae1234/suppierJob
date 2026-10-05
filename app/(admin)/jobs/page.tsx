@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
-import { Job, JobStatus, JobType } from '@/types';
+import { Job, JobStatus, JobType, CarWashItem } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import {
   getJobTotalCost,
@@ -65,6 +65,7 @@ function JobsContent() {
     currentRole, 
     currentSupplierId, 
     updateJobStatus, 
+    updateCarWashItemStatus,
     addJobEvidence,
     suppliers,
     branches,
@@ -153,6 +154,7 @@ function JobsContent() {
   const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
   const [showCompleteModal, setShowCompleteModal] = useState<Job | null>(null);
   const [showRejectModal, setShowRejectModal] = useState<Job | null>(null);
+  const [rejectItemTarget, setRejectItemTarget] = useState<{ job: Job; item: CarWashItem } | null>(null);
 
   // Active job synchronized with filteredJobs
   const activeJob = useMemo(() => {
@@ -296,6 +298,18 @@ function JobsContent() {
     setShowRejectModal(null);
   };
 
+  // Branch action: Approve a single car (job auto-closes when all cars approved)
+  const handleApproveItem = async (job: Job, item: CarWashItem) => {
+    await updateCarWashItemStatus(job.id, item.id, 'APPROVED');
+  };
+
+  // Branch action: Send a single car back to supplier
+  const handleRejectItemSubmit = async (reason: string) => {
+    if (!rejectItemTarget) return;
+    await updateCarWashItemStatus(rejectItemTarget.job.id, rejectItemTarget.item.id, 'REJECTED', reason);
+    setRejectItemTarget(null);
+  };
+
   return (
     <div className="flex flex-col gap-6 pb-12">
       {/* Page Header */}
@@ -390,6 +404,8 @@ function JobsContent() {
           onCompleteJob={setShowCompleteModal}
           onApproveJob={(id) => handleApprove(id)}
           onRejectJob={setShowRejectModal}
+          onApproveItem={handleApproveItem}
+          onRejectItem={(job, item) => setRejectItemTarget({ job, item })}
         />
       )}
 
@@ -409,6 +425,16 @@ function JobsContent() {
           job={showRejectModal}
           onClose={() => setShowRejectModal(null)}
           onSubmit={handleRejectSubmit}
+        />
+      )}
+
+      {/* Per-car Reject Modal */}
+      {rejectItemTarget && (
+        <RejectJobModal
+          job={rejectItemTarget.job}
+          vin={rejectItemTarget.item.vin}
+          onClose={() => setRejectItemTarget(null)}
+          onSubmit={handleRejectItemSubmit}
         />
       )}
 

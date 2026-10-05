@@ -2,18 +2,19 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 
-// Environment variables
-const S3_ENDPOINT = process.env.S3_ENDPOINT || 'https://sgp1.digitaloceanspaces.com';
-const S3_BUCKET = process.env.S3_BUCKET || 'space-itake-dev';
+// Environment variables (names match the .NET side; legacy names kept as fallback)
+const S3_ENDPOINT = process.env.S3_SERVICE_URL || process.env.S3_ENDPOINT || 'https://sgp1.digitaloceanspaces.com';
+const S3_BUCKET = process.env.S3_BUCKET_IMAGES || process.env.S3_BUCKET || '';
 const S3_FORCE_PATH_STYLE = process.env.S3_FORCE_PATH_STYLE === 'true';
 const S3_REGION = process.env.S3_REGION || 'us-east-1';
 const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
-const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY || '';
+const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_KEY || process.env.S3_SECRET_ACCESS_KEY || '';
+const S3_PUBLIC_BASE_URL = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 const S3_DISABLE_ACL = process.env.S3_DISABLE_ACL === 'true';
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './public/uploads';
 
 // Initialize S3Client if credentials exist
-export const s3Client = S3_ACCESS_KEY && S3_SECRET_ACCESS_KEY
+export const s3Client = S3_ACCESS_KEY && S3_SECRET_ACCESS_KEY && S3_BUCKET
   ? new S3Client({
       endpoint: S3_ENDPOINT,
       region: S3_REGION,
@@ -77,6 +78,9 @@ export function buildS3EvidenceKey(params: {
  * Get the public URL for an S3 key
  */
 export function getS3PublicUrl(key: string): string {
+  if (S3_PUBLIC_BASE_URL) {
+    return `${S3_PUBLIC_BASE_URL}/${key}`;
+  }
   const cleanEndpoint = S3_ENDPOINT.replace(/\/+$/, '');
   if (S3_FORCE_PATH_STYLE) {
     return `${cleanEndpoint}/${S3_BUCKET}/${key}`;
