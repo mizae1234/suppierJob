@@ -72,15 +72,37 @@ export async function PATCH(
         );
       }
     } else if (user.role === 'BRANCH') {
-      // Branch can approve (APPROVED) or reject (REJECTED) items
-      if (user.companyId && job.companyId !== user.companyId) {
+      // Branch can approve (APPROVED) or reject (REJECTED) items for jobs related to their branch
+      const isRelatedBranch = 
+        job.branchId === user.branchId || 
+        job.originBranchId === user.branchId || 
+        job.destBranchId === user.branchId;
+
+      if (user.branchId && !isRelatedBranch) {
+        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์จัดการงานของสาขาอื่น' }, { status: 403 });
+      }
+
+      const isDestinationOnly = 
+        job.destBranchId === user.branchId && 
+        job.originBranchId !== user.branchId && 
+        job.branchId !== user.branchId;
+
+      if (isDestinationOnly && status === 'CANCELLED') {
         return NextResponse.json(
-          { error: 'คุณไม่มีสิทธิ์แก้ไขงานของบริษัทอื่น' },
+          { error: 'สาขาปลายทางไม่สามารถยกเลิกรายการได้' },
           { status: 403 }
         );
       }
     }
     // ADMIN and MASTER can do anything
+
+    // Prevent double approve
+    if (status === 'APPROVED' && item.status === 'APPROVED') {
+      return NextResponse.json(
+        { error: 'รถคันนี้ได้รับการอนุมัติเรียบร้อยแล้ว' },
+        { status: 400 }
+      );
+    }
 
     // Only cars the supplier has submitted can be approved
     if (status === 'APPROVED' && item.status !== 'COMPLETED') {
@@ -121,13 +143,17 @@ export async function PATCH(
           .filter((i: any) => i.status === 'APPROVED')
           .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
 
+        const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
+        const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
+        const autoApprovedBy = userBranchLabel ? `${userBranchLabel} (${userName})` : userName;
+
         await tx.job.update({
           where: { id: jobId },
           data: {
             status: 'APPROVED',
             actualCost,
             approvedAt: new Date(),
-            approvedBy: user.displayName || user.username,
+            approvedBy: autoApprovedBy,
             completedAt: job.completedAt || new Date(),
             updatedAt: new Date(),
           },

@@ -43,10 +43,7 @@ export async function PATCH(
         );
       }
     } else if (user.role === 'BRANCH') {
-      if (user.companyId && job.companyId !== user.companyId) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขงานของบริษัทอื่น' }, { status: 403 });
-      }
-      // Branch user can approve/reject jobs related to their branch
+      // Branch user can approve/reject jobs related to their branch (requester, origin, or destination)
       const isRelatedBranch = 
         job.branchId === user.branchId || 
         job.originBranchId === user.branchId || 
@@ -55,10 +52,47 @@ export async function PATCH(
       if (user.branchId && !isRelatedBranch) {
         return NextResponse.json({ error: 'คุณไม่มีสิทธิ์จัดการงานของสาขาอื่น' }, { status: 403 });
       }
+
+      // Check destination-only branch permissions:
+      // Destination branch CANNOT cancel a job (only origin branch or Admin can cancel)
+      const isDestinationOnly = 
+        job.destBranchId === user.branchId && 
+        job.originBranchId !== user.branchId && 
+        job.branchId !== user.branchId;
+
+      if (isDestinationOnly && status === 'CANCELLED') {
+        return NextResponse.json(
+          { error: 'สาขาปลายทางไม่สามารถยกเลิกงานได้ (ดำเนินการได้เฉพาะสาขาต้นทางหรือผู้ดูแลระบบ)' },
+          { status: 403 }
+        );
+      }
     } else if (user.role === 'ADMIN') {
       if (user.companyId && job.companyId !== user.companyId) {
         return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขงานของบริษัทอื่น' }, { status: 403 });
       }
+    }
+
+    // ─── Status Transition & Concurrency Guard ────────
+    if (status === 'APPROVED') {
+      if (job.status === 'APPROVED') {
+        return NextResponse.json(
+          { error: `งานนี้ได้รับการอนุมัติเรียบร้อยแล้ว${job.approvedBy ? ` โดย ${job.approvedBy}` : ''}` },
+          { status: 400 }
+        );
+      }
+      if (job.status === 'CANCELLED') {
+        return NextResponse.json(
+          { error: 'งานนี้ถูกยกเลิกแล้ว ไม่สามารถอนุมัติได้' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (status === 'CANCELLED' && job.status === 'CANCELLED') {
+      return NextResponse.json(
+        { error: 'งานนี้ถูกยกเลิกไปแล้ว' },
+        { status: 400 }
+      );
     }
 
     // ─── Atomic Update with Transaction ──────────────
@@ -83,8 +117,12 @@ export async function PATCH(
           });
         }
       } else if (status === 'APPROVED') {
+        const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
+        const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
+        const defaultApprovedBy = userBranchLabel ? `${userBranchLabel} (${userName})` : userName;
+
         updateData.approvedAt = new Date();
-        updateData.approvedBy = approvedBy || user.displayName || 'Branch Manager';
+        updateData.approvedBy = approvedBy || defaultApprovedBy;
         if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
           const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
           const validItems = completedItems.length > 0 

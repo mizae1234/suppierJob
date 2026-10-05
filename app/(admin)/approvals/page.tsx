@@ -26,7 +26,7 @@ import {
   Camera,
   Ban,
 } from 'lucide-react';
-import type { CarWashItemStatus } from '@/types';
+import type { Job, CarWashItemStatus } from '@/types';
 
 // ─── Per-car status presentation ──
 const ITEM_STATUS_UI: Record<CarWashItemStatus, { label: string; pill: string; card: string; icon: React.ElementType }> = {
@@ -49,18 +49,22 @@ function ApprovalsContent() {
 
   const { 
     jobs, 
+    filteredJobs,
     updateJobStatus,
     updateCarWashItemStatus, 
-    currentRole 
+    currentRole,
+    activeBranch,
+    currentBranchId
   } = useApp();
   const { showToast } = useToast();
 
-  const waitingJobs = jobs.filter(j => j.status === 'WAITING_APPROVAL');
-  const recentApprovedJobs = jobs.filter(j => j.status === 'APPROVED');
-  const rejectedJobs = jobs.filter(j => j.status === 'REJECTED');
+  const displayList = filteredJobs || jobs;
+  const waitingJobs = displayList.filter(j => j.status === 'WAITING_APPROVAL');
+  const recentApprovedJobs = displayList.filter(j => j.status === 'APPROVED');
+  const rejectedJobs = displayList.filter(j => j.status === 'REJECTED');
 
   // Also include jobs that are IN_PROGRESS but have some items COMPLETED (partial submissions)
-  const partiallyCompletedJobs = jobs.filter(j => 
+  const partiallyCompletedJobs = displayList.filter(j => 
     j.status === 'IN_PROGRESS' && 
     j.carWashItems &&
     j.carWashItems.some(i => i.status === 'COMPLETED' || i.status === 'APPROVED')
@@ -76,9 +80,44 @@ function ApprovalsContent() {
 
   // Item-level action states
   const [approvingItemId, setApprovingItemId] = useState<string | null>(null);
+  const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
 
-  const handleApprove = async (jobId: string) => {
-    await updateJobStatus(jobId, 'APPROVED', { approvedBy: 'สาขาผู้ตรวจรับ' });
+  // Confirmation modal for proxy approval (origin branch approves on behalf of dest branch)
+  const [confirmProxyJob, setConfirmProxyJob] = useState<Job | null>(null);
+
+  const handleApprove = async (job: Job, proxyApproval = false) => {
+    setApprovingJobId(job.id);
+    try {
+      const isSlide = job.jobType === 'VEHICLE_SLIDE';
+      const myBranchId = activeBranch?.id || currentBranchId;
+      const isDest = Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
+      const isOrigin = Boolean(isSlide && ((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
+
+      let approvedByLabel = '';
+      if (isDest) {
+        approvedByLabel = `ตรวจรับรถโดย ${job.destBranchName || activeBranch?.name || 'สาขาปลายทาง'}`;
+      } else if (isOrigin && job.destBranchId) {
+        approvedByLabel = `อนุมัติแทนปลายทางโดย ${job.originBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
+      } else if (activeBranch?.name) {
+        approvedByLabel = `สาขา ${activeBranch.name}`;
+      }
+
+      const res = await updateJobStatus(job.id, 'APPROVED', { approvedBy: approvedByLabel || undefined });
+      if (res && !res.success) {
+        showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
+      } else {
+        showToast(
+          proxyApproval 
+            ? `✅ อนุมัติแทนสาขาปลายทางเรียบร้อย (${job.jobNumber})` 
+            : isDest 
+            ? `🎉 ยืนยันรับรถเข้าสาขาเรียบร้อย (${job.jobNumber})` 
+            : `🎉 อนุมัติใบงาน ${job.jobNumber} สำเร็จ`, 
+          'success'
+        );
+      }
+    } finally {
+      setApprovingJobId(null);
+    }
   };
 
   // Handle per-item approve — job auto-closes when every car is approved/declined
@@ -323,6 +362,41 @@ function ApprovalsContent() {
                               <AlertCircle className="w-3 h-3" /> ส่งกลับแก้ไข
                             </span>
                           )}
+
+                          {/* Direction Badge for Vehicle Slide */}
+                          {job.jobType === 'VEHICLE_SLIDE' && (() => {
+                            const myBranchId = activeBranch?.id || currentBranchId;
+                            const isDest = Boolean(job.destBranchId && job.destBranchId === myBranchId);
+                            const isOrigin = Boolean((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId));
+
+                            if (isDest) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10px] shadow-2xs">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                                  📥 รับเข้า (สาขาปลายทาง)
+                                </span>
+                              );
+                            }
+                            if (isOrigin && job.destBranchId) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-[10px] shadow-2xs">
+                                  📤 ส่งออก (สาขาต้นทาง)
+                                </span>
+                              );
+                            }
+                            if (job.destBranchId) {
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
+                                  🚚 ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200 font-bold text-[10px]">
+                                📍 ส่งตามพิกัด/แผนที่
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1.5 text-[11px] text-gray-500">
                           <span className="inline-flex items-center gap-1 min-w-0">
@@ -380,27 +454,59 @@ function ApprovalsContent() {
                         </div>
                       )}
 
-                      {job.status === 'WAITING_APPROVAL' && (
-                        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 lg:shrink-0 lg:ml-auto">
-                          <button
-                            onClick={() => {
-                              setRejectingJobId(job.id);
-                              setRejectingItemId(null);
-                            }}
-                            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-red-50 active:scale-[0.98] text-red-600 text-xs font-bold border border-red-200 transition-all cursor-pointer"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                            <span>ตีกลับทั้งใบ</span>
-                          </button>
-                          <button
-                            onClick={() => handleApprove(job.id)}
-                            className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
-                          >
-                            <CheckCheck className="w-4 h-4 shrink-0" />
-                            <span>{approvedItemCount > 0 ? 'อนุมัติที่เหลือทั้งหมด' : 'อนุมัติทั้งใบ'}</span>
-                          </button>
-                        </div>
-                      )}
+                      {job.status === 'WAITING_APPROVAL' && (() => {
+                        const isSlide = job.jobType === 'VEHICLE_SLIDE';
+                        const myBranchId = activeBranch?.id || currentBranchId;
+                        const isDest = Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
+                        const isOrigin = Boolean(isSlide && ((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
+
+                        return (
+                          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 lg:shrink-0 lg:ml-auto">
+                            <button
+                              onClick={() => {
+                                setRejectingJobId(job.id);
+                                setRejectingItemId(null);
+                              }}
+                              disabled={approvingJobId === job.id}
+                              className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-red-50 active:scale-[0.98] text-red-600 text-xs font-bold border border-red-200 transition-all cursor-pointer disabled:opacity-50"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                              <span>ตีกลับทั้งใบ</span>
+                            </button>
+
+                            {isDest ? (
+                              <button
+                                onClick={() => handleApprove(job, false)}
+                                disabled={approvingJobId === job.id}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                                title="สาขาปลายทางยืนยันรับรถเข้าสาขา"
+                              >
+                                <CheckCheck className="w-4 h-4 shrink-0" />
+                                <span>{approvingJobId === job.id ? 'กำลังบันทึก...' : '✅ ยืนยันรับรถเข้าสาขา'}</span>
+                              </button>
+                            ) : isOrigin && job.destBranchId ? (
+                              <button
+                                onClick={() => setConfirmProxyJob(job)}
+                                disabled={approvingJobId === job.id}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 active:scale-[0.98] text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                                title="อนุมัติแทนสาขาปลายทาง"
+                              >
+                                <CheckCheck className="w-4 h-4 shrink-0" />
+                                <span>{approvingJobId === job.id ? 'กำลังบันทึก...' : 'อนุมัติแทนปลายทาง'}</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleApprove(job, false)}
+                                disabled={approvingJobId === job.id}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.98] text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                <CheckCheck className="w-4 h-4 shrink-0" />
+                                <span>{approvingJobId === job.id ? 'กำลังบันทึก...' : approvedItemCount > 0 ? 'อนุมัติที่เหลือทั้งหมด' : 'อนุมัติทั้งใบ'}</span>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : null}
 
@@ -792,6 +898,75 @@ function ApprovalsContent() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Proxy Approval (Origin Branch approves on behalf of Destination) */}
+      {confirmProxyJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-xl border border-gray-100 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-sky-600 shrink-0" />
+                <span>ยืนยันอนุมัติแทนสาขาปลายทาง</span>
+              </h3>
+              <button
+                onClick={() => setConfirmProxyJob(null)}
+                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2 text-xs text-gray-600">
+              <p>
+                งานรถสไลด์นี้มีปลายทางที่ <b className="text-gray-900">{confirmProxyJob.destBranchName || 'สาขาปลายทาง'}</b>
+              </p>
+              <div className="p-3 rounded-xl bg-sky-50 border border-sky-100 text-sky-900 flex flex-col gap-1.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 font-sans">เลขที่ใบงาน:</span>
+                  <span className="font-bold">{confirmProxyJob.jobNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 font-sans">รถ:</span>
+                  <span className="font-bold font-sans">{confirmProxyJob.vehicle?.model || confirmProxyJob.vin || '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 font-sans">สาขาต้นทาง:</span>
+                  <span className="font-bold font-sans">{confirmProxyJob.originBranchName || confirmProxyJob.branchName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 font-sans">สาขาปลายทาง:</span>
+                  <span className="font-bold font-sans text-emerald-700">{confirmProxyJob.destBranchName}</span>
+                </div>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+                ⚠️ คุณกำลังดำเนินการอนุมัติและตรวจรับรถแทนสาขาปลายทาง ระบบจะบันทึกสาขาต้นทางและชื่อของคุณลงในประวัติการตรวจรับ
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setConfirmProxyJob(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const targetJob = confirmProxyJob;
+                  setConfirmProxyJob(null);
+                  await handleApprove(targetJob, true);
+                }}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-xs cursor-pointer active:scale-95 transition-all"
+              >
+                ยืนยันอนุมัติแทนปลายทาง
+              </button>
+            </div>
           </div>
         </div>
       )}

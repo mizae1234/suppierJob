@@ -349,3 +349,22 @@ export function getScheduleBadge(job: Job, now: Date = new Date()): ScheduleBadg
   }
   return { label: `อีก ${diffDays} วัน`, className: 'bg-sky-50 text-sky-700 border-sky-200' };
 }
+
+/**
+ * SlideDirection indicates whether a branch is receiving or sending the vehicle in a slide job.
+ * - 'INBOUND': The given branch is the destination branch (รับเข้า)
+ * - 'OUTBOUND': The given branch is the origin branch (ส่งออก)
+ * - null: Not a vehicle slide job, destination is external/map pin, or the branch is neither
+ */
+export type SlideDirection = 'INBOUND' | 'OUTBOUND' | null;
+
+export function getSlideDirection(job: Job, branchId?: string | null): SlideDirection {
+  if (job.jobType !== 'VEHICLE_SLIDE' || !branchId) return null;
+  if (job.destBranchId && job.destBranchId === branchId) {
+    return 'INBOUND';
+  }
+  if (job.originBranchId === branchId || job.branchId === branchId) {
+    return 'OUTBOUND';
+  }
+  return null;
+}

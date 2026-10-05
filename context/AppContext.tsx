@@ -99,7 +99,7 @@ interface AppContextType {
   // Actions
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
-  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<void>;
+  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; error?: string }>;
   updateCarWashItemStatus: (jobId: string, itemId: string, status: CarWashItemStatus, remarks?: string) => Promise<CarWashItemProgress | null>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
@@ -194,6 +194,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ─── Filtered data ──────────────────────────────
   const filteredJobs = jobs.filter(job => {
+    if (currentRole === 'BRANCH') {
+      // Branch user sees all jobs involving their branch (requester, origin, or destination)
+      // regardless of company code (e.g. EV7 transfers car to GI-อยุธยา)
+      return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;
+    }
     if (currentCompany !== 'ALL' && job.companyCode !== currentCompany) return false;
     if (currentRole === 'MASTER') {
       // If MASTER has selected a specific branch, filter by it
@@ -203,9 +208,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return true;
     }
     if (currentRole === 'ADMIN') return true;
-    if (currentRole === 'BRANCH') {
-      return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;
-    }
     if (currentRole === 'SUPPLIER') return job.supplierId === currentSupplierId;
     return true;
   });
@@ -217,7 +219,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   });
 
-  const waitingApprovalCount = jobs.filter(j => j.status === 'WAITING_APPROVAL').length;
+  const waitingApprovalCount = filteredJobs.filter(j => j.status === 'WAITING_APPROVAL').length;
 
   // ─── Action: Create Car Wash Job (via API) ──────
   const createCarWashJob = async (params: CreateCarWashParams): Promise<Job | null> => {
@@ -303,9 +305,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     jobId: string, 
     status: JobStatus, 
     options?: { rejectReason?: string; approvedBy?: string }
-  ) => {
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
-      await fetch(`/api/jobs/${jobId}/status`, {
+      const res = await fetch(`/api/jobs/${jobId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -314,9 +316,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           approvedBy: options?.approvedBy,
         }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'ไม่สามารถอัปเดตสถานะงานได้' };
+      }
       await fetchData();
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.error('Update job status failed:', e);
+      return { success: false, error: e?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ' };
     }
   };
 

@@ -4,7 +4,8 @@ import React, { useMemo } from 'react';
 import { Job, UserRole, CarWashItem, JobEvidence, JobStatus } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel } from '@/lib/job-utils';
+import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
+import { useApp } from '@/context/AppContext';
 import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2 } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
 
@@ -113,6 +114,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
   onApproveItem,
   onRejectItem,
 }) => {
+  const { activeBranch, currentBranchId } = useApp();
   const vehicleCards = useMemo(() => toVehicleCards(jobs), [jobs]);
   const isReviewer = currentRole !== 'SUPPLIER';
 
@@ -159,6 +161,11 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
 
     // Single-vehicle job without items → whole-job review
     if (!item && job.status === 'WAITING_APPROVAL') {
+      const myBranchId = activeBranch?.id || currentBranchId;
+      const isSlide = job.jobType === 'VEHICLE_SLIDE';
+      const isDest = Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
+      const isOrigin = Boolean(isSlide && job.destBranchId && (job.originBranchId === myBranchId || job.branchId === myBranchId));
+
       return (
         <>
           <button
@@ -170,10 +177,14 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
           </button>
           <button
             onClick={() => onApproveJob(job.id)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: theme.primary }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity ${
+              isDest ? 'bg-emerald-700' : isOrigin ? 'bg-sky-700' : ''
+            }`}
+            style={!isDest && !isOrigin ? { backgroundColor: theme.primary } : undefined}
+            title={isDest ? 'ยืนยันรับรถเข้าสาขา' : isOrigin ? 'อนุมัติแทนสาขาปลายทาง' : 'อนุมัติงาน'}
           >
-            <Check className="w-3.5 h-3.5" /> อนุมัติ
+            <Check className="w-3.5 h-3.5" />
+            <span>{isDest ? 'ยืนยันรับรถ' : isOrigin ? 'อนุมัติแทน' : 'อนุมัติ'}</span>
           </button>
         </>
       );
@@ -274,6 +285,28 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                                 {isCarWash ? <Sparkles className="w-2.5 h-2.5" /> : <Truck className="w-2.5 h-2.5" />}
                                 {isCarWash ? (WASH_TYPE_LABEL[item?.washType || ''] || 'Car Wash') : 'รถสไลด์'}
                               </span>
+
+                              {/* Direction chip for slide jobs */}
+                              {!isCarWash && (() => {
+                                const myBranchId = activeBranch?.id || currentBranchId;
+                                const dir = getSlideDirection(job, myBranchId);
+                                if (dir === 'INBOUND') {
+                                  return (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                      📥 รับเข้า
+                                    </span>
+                                  );
+                                }
+                                if (dir === 'OUTBOUND') {
+                                  return (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
+                                      📤 ส่งออก
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
+
                               {item?.status === 'COMPLETED' && card.column === 'WAITING_APPROVAL' && (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-700">
                                   <Eye className="w-2.5 h-2.5" /> ส่งงานแล้ว

@@ -4,7 +4,8 @@ import React from 'react';
 import { Job, UserRole } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel } from '@/lib/job-utils';
+import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
+import { useApp } from '@/context/AppContext';
 import { Sparkles, Truck } from 'lucide-react';
 import { STATUS_MAP } from './constants';
 
@@ -29,6 +30,7 @@ export const JobTable: React.FC<JobTableProps> = ({
   onApproveJob,
   onRejectJob,
 }) => {
+  const { activeBranch, currentBranchId } = useApp();
   return (
     <div className="bg-white rounded-2xl border shadow-xs overflow-hidden" style={{ borderColor: theme.borderSoft }}>
       <div className="overflow-x-auto">
@@ -114,11 +116,32 @@ export const JobTable: React.FC<JobTableProps> = ({
                         </div>
                       ) : (
                         <div>
-                          <span className="font-mono font-semibold text-gray-900">
-                            {job.vin}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-semibold text-gray-900">
+                              {job.vin}
+                            </span>
+                            {(() => {
+                              const myBranchId = activeBranch?.id || currentBranchId;
+                              const dir = getSlideDirection(job, myBranchId);
+                              if (dir === 'INBOUND') {
+                                return (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    📥 รับเข้า
+                                  </span>
+                                );
+                              }
+                              if (dir === 'OUTBOUND') {
+                                return (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
+                                    📤 ส่งออก
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                           <div className="text-[11px] text-gray-500">
-                            ไปยัง: {job.destBranchName}
+                            ไปยัง: {job.destBranchName || job.customDestAddress || 'ปลายทางตามพิกัด'}
                           </div>
                         </div>
                       )}

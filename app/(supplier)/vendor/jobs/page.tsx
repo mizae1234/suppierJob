@@ -565,21 +565,30 @@ function SupplierJobsPageContent() {
               <span className="truncate">{card.branchName}</span>
             )}
           </div>
-          {/* Mini progress bar */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${card.totalItemsInJob > 0 ? (card.completedItemsInJob / card.totalItemsInJob) * 100 : 0}%`,
-                  backgroundColor: theme.primary,
-                }}
-              />
-            </div>
-            <span className="text-[10px] font-bold text-gray-500">
-              {card.completedItemsInJob}/{card.totalItemsInJob}
-            </span>
-          </div>
+          {/* Job breakdown — status of every car in this job (only non-zero shown) */}
+          {card.totalItemsInJob > 1 && (() => {
+            const counts: Record<string, number> = {};
+            (card.job.carWashItems || []).forEach(it => {
+              const tab = classifySupplierItem(it.status, card.jobStatus);
+              if (tab) counts[tab] = (counts[tab] || 0) + 1;
+            });
+            const chips = [
+              { key: 'approved', label: 'ตรวจแล้ว', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+              { key: 'waiting', label: 'รอตรวจ', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+              { key: 'progress', label: 'รอทำ', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+              { key: 'returned', label: 'ตีกลับ', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+              { key: 'declined', label: 'ปฏิเสธ', cls: 'bg-red-50 text-red-700 border-red-200' },
+            ].filter(c => counts[c.key]);
+            return (
+              <div className="flex items-center gap-1 shrink-0" title={`ใบงานนี้มีทั้งหมด ${card.totalItemsInJob} คัน`}>
+                {chips.map(c => (
+                  <span key={c.key} className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold whitespace-nowrap ${c.cls}`}>
+                    {c.label} {counts[c.key]}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Action Row */}

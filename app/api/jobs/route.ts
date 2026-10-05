@@ -30,16 +30,14 @@ export async function GET(request: NextRequest) {
       // Supplier must only see their own jobs
       where.supplierId = user.supplierId || 'none';
     } else if (user.role === 'BRANCH') {
-      // Branch user can only see jobs involving their branch
+      // Branch user can see all jobs involving their branch (as requester, origin, or destination)
+      // Note: do NOT constrain by companyId so cross-company slide jobs (e.g. EV7 -> GI) are visible
       if (user.branchId) {
         where.OR = [
           { branchId: user.branchId },
           { originBranchId: user.branchId },
           { destBranchId: user.branchId },
         ];
-      }
-      if (user.companyId) {
-        where.companyId = user.companyId;
       }
     } else if (user.role === 'ADMIN') {
       // Admin is constrained to their assigned company if present
@@ -54,7 +52,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Additional query filters (if allowed)
-    if (branchId && user.role !== 'BRANCH') where.branchId = branchId;
+    if (branchId && user.role !== 'BRANCH') {
+      where.OR = [
+        { branchId },
+        { originBranchId: branchId },
+        { destBranchId: branchId },
+      ];
+    }
     if (supplierId && user.role !== 'SUPPLIER') where.supplierId = supplierId;
     if (status) where.status = status;
     if (jobType) where.jobType = jobType;

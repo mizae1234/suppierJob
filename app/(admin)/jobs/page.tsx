@@ -61,9 +61,12 @@ function JobsContent() {
   const initialJobId = searchParams.get('jobId') || '';
 
   const { 
+    jobs,
     filteredJobs, 
     currentRole, 
     currentSupplierId, 
+    activeBranch,
+    currentBranchId,
     updateJobStatus, 
     updateCarWashItemStatus,
     addJobEvidence,
@@ -279,8 +282,30 @@ function JobsContent() {
   };
 
   // Branch action: Approve
-  const handleApprove = async (jobId: string) => {
-    await updateJobStatus(jobId, 'APPROVED', { approvedBy: 'สาขาผู้ตรวจรับ' });
+  const handleApprove = async (jobId: string, customApprovedBy?: string) => {
+    const targetJob = jobs.find(j => j.id === jobId) || selectedJob;
+    const isSlide = targetJob?.jobType === 'VEHICLE_SLIDE';
+    const myBranchId = activeBranch?.id || currentBranchId;
+    const isDest = Boolean(isSlide && targetJob?.destBranchId && targetJob.destBranchId === myBranchId);
+    const isOrigin = Boolean(isSlide && targetJob?.destBranchId && (targetJob.originBranchId === myBranchId || targetJob.branchId === myBranchId));
+
+    let approvedByLabel = customApprovedBy;
+    if (!approvedByLabel) {
+      if (isDest) {
+        approvedByLabel = `ตรวจรับรถโดย ${targetJob?.destBranchName || activeBranch?.name || 'สาขาปลายทาง'}`;
+      } else if (isOrigin) {
+        approvedByLabel = `อนุมัติแทนปลายทางโดย ${targetJob?.originBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
+      } else if (activeBranch?.name) {
+        approvedByLabel = `สาขา ${activeBranch.name}`;
+      }
+    }
+
+    const res = await updateJobStatus(jobId, 'APPROVED', { approvedBy: approvedByLabel || undefined });
+    if (res && !res.success) {
+      alert(res.error || 'อนุมัติไม่สำเร็จ');
+      return;
+    }
+
     if (selectedJob?.id === jobId) {
       setSelectedJob(prev => prev ? { ...prev, status: 'APPROVED', approvedAt: new Date().toISOString() } : null);
     }
@@ -484,6 +509,37 @@ function JobsContent() {
                   } ${STATUS_MAP[activeJob.status]?.text || 'text-gray-700'}`}>
                     {STATUS_MAP[activeJob.status]?.label || activeJob.status}
                   </span>
+
+                  {/* Direction Badge for Vehicle Slide */}
+                  {activeJob.jobType === 'VEHICLE_SLIDE' && (() => {
+                    const myBranchId = activeBranch?.id || currentBranchId;
+                    const isDest = Boolean(activeJob.destBranchId && activeJob.destBranchId === myBranchId);
+                    const isOrigin = Boolean((activeJob.originBranchId && activeJob.originBranchId === myBranchId) || (activeJob.branchId && activeJob.branchId === myBranchId));
+
+                    if (isDest) {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                          📥 รับเข้า (สาขาปลายทาง)
+                        </span>
+                      );
+                    }
+                    if (isOrigin && activeJob.destBranchId) {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-xs">
+                          📤 ส่งออก (สาขาต้นทาง)
+                        </span>
+                      );
+                    }
+                    if (activeJob.destBranchId) {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs">
+                          🚚 ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 {/* Right controls: Prev/Next & Close */}
@@ -1764,28 +1820,61 @@ function JobsContent() {
                     </button>
                   )}
 
-                  {(currentRole === 'BRANCH' || currentRole === 'ADMIN') && activeJob.status === 'WAITING_APPROVAL' && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(activeJob.id)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs transition-colors"
-                        style={{ backgroundColor: theme.primary }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primaryHover; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary; }}
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>อนุมัติงาน</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowRejectModal(activeJob)}
-                        className="px-3 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        ขอแก้ไข
-                      </button>
-                    </>
-                  )}
+                  {(currentRole === 'BRANCH' || currentRole === 'ADMIN') && activeJob.status === 'WAITING_APPROVAL' && (() => {
+                    const isSlide = activeJob.jobType === 'VEHICLE_SLIDE';
+                    const myBranchId = activeBranch?.id || currentBranchId;
+                    const isDest = Boolean(isSlide && activeJob.destBranchId && activeJob.destBranchId === myBranchId);
+                    const isOrigin = Boolean(isSlide && activeJob.destBranchId && (activeJob.originBranchId === myBranchId || activeJob.branchId === myBranchId));
+
+                    return (
+                      <>
+                        {isDest ? (
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(activeJob.id)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 shadow-xs transition-colors"
+                            title="ยืนยันตรวจรับรถเข้าสาขา"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>ยืนยันรับรถเข้าสาขา</span>
+                          </button>
+                        ) : isOrigin ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`คุณกำลังจะอนุมัติแทนสาขาปลายทาง (${activeJob.destBranchName || 'ปลายทาง'}) ยืนยันหรือไม่?`)) {
+                                handleApprove(activeJob.id);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-sky-700 hover:bg-sky-800 shadow-xs transition-colors"
+                            title="อนุมัติแทนสาขาปลายทาง"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>อนุมัติแทนปลายทาง</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(activeJob.id)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-xs transition-colors"
+                            style={{ backgroundColor: theme.primary }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primaryHover; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = theme.primary; }}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>อนุมัติงาน</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowRejectModal(activeJob)}
+                          className="px-3 py-2 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition-colors"
+                        >
+                          ขอแก้ไข
+                        </button>
+                      </>
+                    );
+                  })()}
 
                   <button
                     type="button"
