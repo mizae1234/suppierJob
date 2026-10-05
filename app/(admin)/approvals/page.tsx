@@ -335,7 +335,7 @@ function ApprovalsContent() {
                           </span>
                           <span className="inline-flex items-center gap-1">
                             <Car className="w-3 h-3 text-gray-400 shrink-0" />
-                            <span>{isCarWash ? `${totalItemCount} คัน` : 'รถสไลด์ 1 คัน'}</span>
+                            <span>{totalItemCount > 0 ? `${isCarWash ? '' : 'รถสไลด์ '}${totalItemCount} คัน` : 'รถสไลด์ 1 คัน'}</span>
                           </span>
                         </div>
                       </div>
@@ -350,9 +350,9 @@ function ApprovalsContent() {
                   </div>
 
                   {/* ── Review progress + whole-job actions ── */}
-                  {(isCarWash && totalItemCount > 0) || job.status === 'WAITING_APPROVAL' ? (
+                  {totalItemCount > 0 || job.status === 'WAITING_APPROVAL' ? (
                     <div className="flex flex-col lg:flex-row lg:items-center gap-3 p-3 rounded-2xl bg-gray-50/80 border border-gray-100">
-                      {isCarWash && totalItemCount > 0 && (
+                      {totalItemCount > 0 && (
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between text-[11px] mb-1.5">
                             <span className="font-bold text-gray-700">ความคืบหน้าการตรวจรับ</span>
@@ -498,18 +498,35 @@ function ApprovalsContent() {
                                 </p>
                                 <p className="font-mono text-[10px] text-gray-400 truncate" title={item.vin}>{item.vin}</p>
                               </div>
-                              <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-[10px] font-bold shrink-0">
-                                {WASH_TYPE_LABEL[item.washType] || item.washType}
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
+                                isCarWash ? 'bg-gray-100 text-gray-600' : 'bg-sky-50 text-sky-700 border border-sky-100'
+                              }`}>
+                                {isCarWash ? (WASH_TYPE_LABEL[item.washType] || item.washType) : 'รถสไลด์'}
                               </span>
                             </div>
                             <p className="text-xs font-semibold text-gray-800 truncate">
                               {item.vehicleModel}
                               {item.vehicleColor && <span className="font-normal text-gray-500"> · {item.vehicleColor}</span>}
                             </p>
-                            <p className="flex items-center gap-1 text-[11px] text-gray-500">
-                              <Calendar className="w-3 h-3 text-gray-400" />
-                              วันที่ล้าง {formatThaiDate(item.actualWashDate)}
-                            </p>
+                            {isCarWash ? (
+                              <p className="flex items-center gap-1 text-[11px] text-gray-500">
+                                <Calendar className="w-3 h-3 text-gray-400" />
+                                วันที่ล้าง {formatThaiDate(item.actualWashDate)}
+                              </p>
+                            ) : (
+                              <>
+                                <p className="flex items-center gap-1 text-[11px] text-gray-500">
+                                  <Calendar className="w-3 h-3 text-gray-400" />
+                                  วันที่รับรถ {job.pickupDateTime ? formatThaiDateTime(job.pickupDateTime) : formatThaiDate(item.actualWashDate)}
+                                </p>
+                                <p className="flex items-center gap-1 text-[11px] text-gray-500 min-w-0">
+                                  <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
+                                  <span className="truncate">
+                                    {job.originBranchName || job.branchName} → {job.destBranchName || job.customDestAddress || 'ปลายทาง'}
+                                  </span>
+                                </p>
+                              </>
+                            )}
 
                             {item.remarks && (
                               <div className={`mt-1 px-2.5 py-1.5 rounded-lg text-[11px] leading-snug ${
