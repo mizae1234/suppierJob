@@ -46,7 +46,7 @@ export const KANBAN_COLUMNS: Array<{
   },
   {
     id: 'REJECTED',
-    title: 'ขอให้แก้ไข (Reject)',
+    title: 'ตีกลับ (รอ Supplier แก้ไข)',
     badgeBg: 'bg-red-100',
     badgeText: 'text-red-800 font-bold',
     borderColor: 'border-t-red-500',
