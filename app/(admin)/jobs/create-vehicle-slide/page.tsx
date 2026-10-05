@@ -118,9 +118,9 @@ export default function CreateVehicleSlidePage() {
   const [deliveryDateTime, setDeliveryDateTime] = useState<string>(
     new Date(Date.now() + 3600 * 1000 * 6).toISOString().slice(0, 16)
   );
-  const [contactPerson, setContactPerson] = useState<string>('ผู้จัดการสาขาปลายทาง');
-  const [contactPhone, setContactPhone] = useState<string>('081-234-5678');
-  const [transferReason, setTransferReason] = useState<string>('ย้ายสต็อกรถรองรับการส่งมอบลูกค้า');
+  const [contactPerson, setContactPerson] = useState<string>('');
+  const [contactPhone, setContactPhone] = useState<string>('');
+  const [transferReason, setTransferReason] = useState<string>('');
   const [requestedBy, setRequestedBy] = useState<string>(autoName);
   const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
   const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
@@ -923,6 +923,7 @@ export default function CreateVehicleSlidePage() {
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
                   required
+                  placeholder="เช่น คุณสมชาย (ผู้จัดการสาขา)"
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
                 />
               </div>
@@ -937,6 +938,7 @@ export default function CreateVehicleSlidePage() {
                   value={contactPhone}
                   onChange={(e) => setContactPhone(e.target.value)}
                   required
+                  placeholder="เช่น 08x-xxx-xxxx"
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
                 />
               </div>
