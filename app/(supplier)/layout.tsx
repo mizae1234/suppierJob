@@ -82,22 +82,34 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
 
       {/* Top Header — matches Header standard */}
       <header
-        className="fixed top-0 left-0 lg:left-72 right-0 h-16 sm:h-20 bg-white/95 backdrop-blur-md border-b z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden transition-colors duration-300"
+        className="fixed top-0 left-0 lg:left-72 right-0 h-16 sm:h-20 bg-white/95 backdrop-blur-md border-b z-40 px-2.5 sm:px-4 lg:px-8 flex items-center justify-between gap-1.5 sm:gap-4 select-none print:hidden transition-colors duration-300"
         style={{ borderColor: theme.borderSoft }}
       >
         {/* Left Side: Search Bar on Desktop OR Brand Logo on Mobile */}
-        <div className="flex items-center gap-3 flex-1 max-w-md">
+        <div className="flex items-center gap-3 flex-1 min-w-0 max-w-md">
           {/* Mobile Only: Brand + Supplier Name */}
-          <div className="flex lg:hidden items-center gap-2.5 min-w-0">
+          <div className="flex lg:hidden items-center gap-2 sm:gap-2.5 min-w-0 flex-1 w-full">
             <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md shrink-0"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white shadow-md shrink-0"
               style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
             >
-              <Store className="w-4.5 h-4.5" />
+              <Store className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-gray-900 truncate leading-tight">{supplierName}</p>
-              <p className="text-[10px] font-semibold" style={{ color: theme.textPrimary }}>
+            <div 
+              className="min-w-0 flex-1"
+              style={{ maxWidth: 'calc(100vw - 180px)' }}
+            >
+              <p 
+                className="text-xs font-bold text-gray-900 leading-tight block w-full"
+                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                title={supplierName}
+              >
+                {supplierName}
+              </p>
+              <p 
+                className="text-[10px] font-semibold block w-full" 
+                style={{ color: theme.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
                 Supplier Portal
               </p>
             </div>
@@ -116,25 +128,25 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
         </div>
 
         {/* Right Side: Master Switcher + Notifications + User Profile */}
-        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
 
 
           {/* Pending Jobs Bell Icon */}
           <Link
             href="/vendor/jobs?tab=progress"
-            className="relative p-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+            className="relative p-1.5 sm:p-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors shrink-0"
             title="งานที่ต้องทำ"
           >
-            <Bell className="w-5 h-5" />
+            <Bell className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
             {activeJobsCount > 0 && (
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white animate-pulse" />
+              <span className="absolute top-1 right-1 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-red-500 ring-2 ring-white animate-pulse" />
             )}
           </Link>
 
           {/* User Profile Avatar + Logout (Matches Admin layout header exactly) */}
-          <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+          <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 border-l border-gray-200 shrink-0">
             <div
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-xs font-semibold text-xs transition-colors duration-300 shrink-0"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white shadow-xs font-semibold text-xs transition-colors duration-300 shrink-0"
               style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
             >
               {user?.displayName?.charAt(0)?.toUpperCase() || 'S'}
@@ -149,10 +161,10 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
             </div>
             <button
               onClick={logout}
-              className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
               title="ออกจากระบบ"
             >
-              <LogOut className="w-4.5 h-4.5" />
+              <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </button>
           </div>
         </div>

@@ -145,20 +145,33 @@ export const Header: React.FC = () => {
 
   return (
     <header
-      className="fixed top-0 left-0 lg:left-72 right-0 h-20 bg-white/95 backdrop-blur-md border-b z-40 px-4 lg:px-8 flex items-center justify-between gap-4 select-none print:hidden transition-colors duration-300"
+      className="fixed top-0 left-0 lg:left-72 right-0 h-16 sm:h-20 bg-white/95 backdrop-blur-md border-b z-40 px-3 sm:px-4 lg:px-8 flex items-center justify-between gap-2 sm:gap-4 select-none print:hidden transition-colors duration-300"
       style={{ borderColor: theme.borderSoft }}
     >
       {/* Mobile Brand (visible only on mobile/tablet when sidebar is hidden) */}
-      <div className="flex lg:hidden items-center gap-2.5">
+      <div className="flex lg:hidden items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-xs font-bold shrink-0"
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white shadow-xs font-bold shrink-0"
           style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
         >
-          <Building className="w-4.5 h-4.5 text-white" />
+          <Building className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-white" />
         </div>
-        <div className="flex flex-col">
-          <span className="font-bold text-sm text-gray-900 leading-tight">VendorOps</span>
-          <span className="text-[10px] text-gray-400 font-semibold">{currentCompany === 'ALL' ? 'EV7 & GI' : currentCompany}</span>
+        <div 
+          className="flex flex-col min-w-0 flex-1"
+          style={{ maxWidth: 'calc(100vw - 180px)' }}
+        >
+          <span 
+            className="font-bold text-sm text-gray-900 leading-tight block w-full"
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            VendorOps
+          </span>
+          <span 
+            className="text-[10px] text-gray-400 font-semibold block w-full"
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {currentCompany === 'ALL' ? 'EV7 & GI' : currentCompany}
+          </span>
         </div>
       </div>
 
@@ -166,7 +179,7 @@ export const Header: React.FC = () => {
       <div className="hidden lg:block flex-1" />
 
       {/* Control Center & Role Context Switcher */}
-      <div className="flex items-center gap-3 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Role Selector Pill */}
         {currentRole === 'MASTER' && (
         <div
@@ -329,9 +342,9 @@ export const Header: React.FC = () => {
         </button>
 
         {/* User Profile Avatar + Logout */}
-        <div className="flex items-center gap-2 pl-2 border-l border-gray-200">
+        <div className="flex items-center gap-1.5 sm:gap-2 pl-1.5 sm:pl-2 border-l border-gray-200">
           <div
-            className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-xs font-semibold text-xs transition-colors duration-300"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-white shadow-xs font-semibold text-xs transition-colors duration-300 shrink-0"
             style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
           >
             {user?.displayName?.charAt(0)?.toUpperCase() || (currentRole === 'MASTER' ? 'M' : currentRole === 'ADMIN' ? 'AD' : currentRole === 'BRANCH' ? 'BR' : 'SP')}
@@ -346,10 +359,10 @@ export const Header: React.FC = () => {
           </div>
           <button
             onClick={logout}
-            className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+            className="p-1.5 sm:p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
             title="ออกจากระบบ"
           >
-            <LogOut className="w-4.5 h-4.5" />
+            <LogOut className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
           </button>
         </div>
       </div>
