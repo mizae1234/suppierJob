@@ -74,6 +74,8 @@ export default function MapPickerModal({
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; name: string; detail: string }[]>([]);
+  const [searchMessage, setSearchMessage] = useState('');
   const [mapReady, setMapReady] = useState(false);
 
   // Inject Leaflet CSS into document head
@@ -95,8 +97,7 @@ export default function MapPickerModal({
     setIsLoadingAddress(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th`,
-        { headers: { 'User-Agent': 'SupplierJobApp/1.0' } }
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=th`
       );
       const data = await res.json();
       setAddress(data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
@@ -106,26 +107,55 @@ export default function MapPickerModal({
     setIsLoadingAddress(false);
   }, []);
 
-  // Search location
+  // Jump the map to a point and drop the pin there
+  const goTo = (lat: number, lng: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mapInstanceRef.current as any).setView([lat, lng], 16);
+    handlePlaceMarker(lat, lng);
+    setSearchResults([]);
+    setSearchMessage('');
+  };
+
+  // Search location — supports "lat, lng", Google Maps links, or a place name
   const searchLocation = async () => {
-    if (!searchQuery.trim() || !mapInstanceRef.current || !leafletRef.current) return;
+    const q = searchQuery.trim();
+    if (!q || !mapInstanceRef.current || !leafletRef.current) return;
+    setSearchResults([]);
+    setSearchMessage('');
+
+    // 1) Coordinates or Google Maps URL (…@13.75,100.56… / ?q=13.75,100.56 / !3d13.75!4d100.56)
+    const coordMatch =
+      q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+      q.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/) ||
+      q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/) ||
+      q.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+    if (coordMatch) {
+      goTo(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
+      return;
+    }
+
+    // 2) Place-name search via OpenStreetMap
     setIsSearching(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=1&countrycodes=th&accept-language=th`,
-        { headers: { 'User-Agent': 'SupplierJobApp/1.0' } }
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=th&accept-language=th`
       );
-      const results = await res.json();
-      if (results.length > 0) {
-        const { lat, lon } = results[0];
-        const latNum = parseFloat(lat);
-        const lngNum = parseFloat(lon);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mapInstanceRef.current as any).setView([latNum, lngNum], 15);
-        handlePlaceMarker(latNum, lngNum);
+      const results: { lat: string; lon: string; name?: string; display_name: string }[] = await res.json();
+      if (results.length === 1) {
+        goTo(parseFloat(results[0].lat), parseFloat(results[0].lon));
+      } else if (results.length > 1) {
+        setSearchResults(results.map(r => ({
+          lat: parseFloat(r.lat),
+          lng: parseFloat(r.lon),
+          name: r.name || r.display_name.split(',')[0],
+          detail: r.display_name,
+        })));
+      } else {
+        setSearchMessage('ไม่พบสถานที่นี้ใน OpenStreetMap — ลองค้นด้วยชื่อถนน/เขต หรือวางพิกัด / ลิงก์ Google Maps แทน');
       }
     } catch (e) {
       console.error('Search error:', e);
+      setSearchMessage('ค้นหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
     }
     setIsSearching(false);
   };
@@ -302,6 +332,8 @@ export default function MapPickerModal({
       setAddress('');
       setDistance(0);
       setSearchQuery('');
+      setSearchResults([]);
+      setSearchMessage('');
       setMapReady(false);
     }
   }, [isOpen]);
@@ -334,17 +366,45 @@ export default function MapPickerModal({
         </div>
 
         {/* Search Bar — compact */}
-        <div className="px-5 py-2 border-b border-gray-50 flex gap-2 flex-shrink-0">
+        <div className="px-5 py-2 border-b border-gray-50 flex gap-2 flex-shrink-0 relative z-[1001]">
           <div className="relative flex-1">
             <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchMessage(''); }}
               onKeyDown={(e) => e.key === 'Enter' && searchLocation()}
-              placeholder={isOriginMode ? 'ค้นหาสถานที่รับรถ เช่น บ้านลูกค้า, ลานจอด...' : 'ค้นหาสถานที่ เช่น บ้านลูกค้า, อู่ซ่อม...'}
+              placeholder={isOriginMode ? 'ค้นหาสถานที่ / วางพิกัด 13.75, 100.56 / ลิงก์ Google Maps' : 'ค้นหาสถานที่ / วางพิกัด / ลิงก์ Google Maps'}
               className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238] outline-none"
             />
+
+            {/* Multiple results — let the user pick */}
+            {searchResults.length > 0 && (
+              <ul className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+                {searchResults.map((r, i) => (
+                  <li key={i}>
+                    <button
+                      type="button"
+                      onClick={() => goTo(r.lat, r.lng)}
+                      className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-start gap-2 cursor-pointer"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-[#0f5238] mt-0.5 shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold text-gray-800 truncate">{r.name}</span>
+                        <span className="block text-[10px] text-gray-500 truncate">{r.detail}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Not found / error */}
+            {searchMessage && (
+              <p className="absolute left-0 right-0 top-full mt-1 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 shadow-sm">
+                {searchMessage}
+              </p>
+            )}
           </div>
           <button
             onClick={searchLocation}
