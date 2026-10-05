@@ -75,6 +75,54 @@ async function searchOsm(q: string): Promise<PlaceResult[]> {
   }));
 }
 
+async function searchGemini(q: string, apiKey: string, lat?: number, lng?: number): Promise<PlaceResult[]> {
+  const prompt = `You are a Thai geocoding and location search AI.
+User search query: "${q}"
+${Number.isFinite(lat) && Number.isFinite(lng) ? `Near coordinates: ${lat}, ${lng}` : 'In Thailand'}
+
+Identify up to 3 relevant matching locations in Thailand.
+Respond in JSON only with this schema:
+{
+  "places": [
+    {
+      "name": "Place name in Thai",
+      "detail": "Subdistrict, District, Province, Thailand",
+      "lat": 13.xxxx,
+      "lng": 100.xxxx
+    }
+  ]
+}`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json' },
+      }),
+      cache: 'no-store',
+    }
+  );
+
+  if (!res.ok) throw new Error(`Gemini API ${res.status}: ${await res.text()}`);
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) return [];
+
+  const parsed = JSON.parse(text);
+  return (parsed.places || [])
+    .filter((p: { lat?: number; lng?: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+    .map((p: { lat: number; lng: number; name: string; detail: string }) => ({
+      lat: Number(p.lat),
+      lng: Number(p.lng),
+      name: p.name || q,
+      detail: p.detail || '',
+    }));
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if (auth.response) return auth.response;
@@ -87,16 +135,33 @@ export async function GET(request: NextRequest) {
   const lat = searchParams.get('lat') ? Number(searchParams.get('lat')) : undefined;
   const lng = searchParams.get('lng') ? Number(searchParams.get('lng')) : undefined;
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
 
+  // 1. Google Places (if configured)
   if (apiKey) {
     try {
       const results = await searchGoogle(q, apiKey, lat, lng);
-      return NextResponse.json({ provider: 'google', results });
+      if (results.length > 0) {
+        return NextResponse.json({ provider: 'google', results });
+      }
     } catch (error) {
-      console.error('Google Places search failed, falling back to OSM:', error);
+      console.error('Google Places search failed, falling back:', error);
     }
   }
 
+  // 2. Gemini AI Search (if configured)
+  if (geminiKey) {
+    try {
+      const results = await searchGemini(q, geminiKey, lat, lng);
+      if (results.length > 0) {
+        return NextResponse.json({ provider: 'gemini', results });
+      }
+    } catch (error) {
+      console.error('Gemini place search failed, falling back:', error);
+    }
+  }
+
+  // 3. OpenStreetMap Nominatim (Free default)
   try {
     const results = await searchOsm(q);
     return NextResponse.json({ provider: 'osm', results });

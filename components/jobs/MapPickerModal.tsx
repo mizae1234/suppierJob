@@ -71,6 +71,10 @@ export default function MapPickerModal({
   const [selectedPos, setSelectedPos] = useState<{ lat: number; lng: number } | null>(null);
   const [address, setAddress] = useState('');
   const [distance, setDistance] = useState(0);
+  const [duration, setDuration] = useState<number | null>(null);
+  const [isRouting, setIsRouting] = useState(false);
+  const [routeType, setRouteType] = useState<'road' | 'straight'>('straight');
+  const routeAbortRef = useRef<AbortController | null>(null);
   const [isLoadingAddress, setIsLoadingAddress] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -200,27 +204,78 @@ export default function MapPickerModal({
         markerRef.current = marker;
       }
 
-      // Draw line from origin to destination
+      // 1. Initial responsive feedback: draw straight line & approximate distance immediately
+      const straightDist = haversineDistance(originLat, originLng, lat, lng);
+      const approxRoadDist = Math.round(straightDist * 1.25 * 10) / 10;
+      setSelectedPos({ lat, lng });
+      setDistance(approxRoadDist);
+      setRouteType('straight');
+      reverseGeocode(lat, lng);
+
       if (lineRef.current) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (lineRef.current as any).setLatLngs([
           [originLat, originLng],
           [lat, lng],
         ]);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (lineRef.current as any).setStyle({
+          color: '#0f5238',
+          weight: 3,
+          dashArray: '6, 6',
+          opacity: 0.6,
+        });
       } else {
         lineRef.current = L.polyline(
           [
             [originLat, originLng],
             [lat, lng],
           ],
-          { color: '#0f5238', weight: 3, dashArray: '8, 6', opacity: 0.7 }
+          { color: '#0f5238', weight: 3, dashArray: '6, 6', opacity: 0.6 }
         ).addTo(map);
       }
 
-      const dist = haversineDistance(originLat, originLng, lat, lng);
-      setSelectedPos({ lat, lng });
-      setDistance(dist);
-      reverseGeocode(lat, lng);
+      // 2. Fetch real driving road route from OSRM / backend API
+      if (routeAbortRef.current) {
+        routeAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      routeAbortRef.current = controller;
+      setIsRouting(true);
+
+      fetch(
+        `/api/routes/driving?originLat=${originLat}&originLng=${originLng}&destLat=${lat}&destLng=${lng}`,
+        { signal: controller.signal }
+      )
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.coordinates && data.coordinates.length > 1) {
+            setDistance(data.distanceKm);
+            if (data.durationMin) setDuration(data.durationMin);
+            const isRoad = data.provider === 'osrm';
+            setRouteType(isRoad ? 'road' : 'straight');
+
+            if (lineRef.current) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (lineRef.current as any).setLatLngs(data.coordinates);
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (lineRef.current as any).setStyle({
+                color: '#0f5238',
+                weight: isRoad ? 4 : 3,
+                dashArray: isRoad ? null : '6, 6',
+                opacity: isRoad ? 0.85 : 0.6,
+              });
+            }
+          }
+        })
+        .catch((err) => {
+          if (err.name !== 'AbortError') {
+            console.warn('Real driving route fetch error:', err);
+          }
+        })
+        .finally(() => {
+          setIsRouting(false);
+        });
     },
     [originLat, originLng, reverseGeocode, pinGradient, pinLabel]
   );
@@ -452,8 +507,28 @@ export default function MapPickerModal({
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right">
-                    <p className="text-[9px] text-gray-400 uppercase font-semibold">{isOriginMode ? `ห่างจาก${refCaption}` : 'ระยะทาง'}</p>
-                    <p className="text-sm font-bold text-[#0f5238]">{distance.toFixed(1)} กม.</p>
+                    <div className="flex items-center justify-end gap-1 mb-0.5">
+                      <p className="text-[9px] text-gray-400 uppercase font-semibold">
+                        {isOriginMode ? `ห่างจาก${refCaption}` : 'ระยะทาง'}
+                      </p>
+                      {isRouting ? (
+                        <span className="text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded-full animate-pulse font-medium">
+                          คำนวณทาง...
+                        </span>
+                      ) : routeType === 'road' ? (
+                        <span className="text-[9px] text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded-full font-bold">
+                          🛣️ ถนนจริง
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-sm font-bold text-[#0f5238]">
+                      {distance.toFixed(1)} กม.
+                      {duration ? (
+                        <span className="text-[11px] font-medium text-gray-500 ml-1">
+                          (~{duration} น.)
+                        </span>
+                      ) : null}
+                    </p>
                   </div>
                   {!isOriginMode && (
                     <>
@@ -471,6 +546,7 @@ export default function MapPickerModal({
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => {
+                    if (routeAbortRef.current) routeAbortRef.current.abort();
                     if (markerRef.current && mapInstanceRef.current) {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       (markerRef.current as any).remove();
@@ -483,6 +559,8 @@ export default function MapPickerModal({
                       setSelectedPos(null);
                       setAddress('');
                       setDistance(0);
+                      setDuration(null);
+                      setRouteType('straight');
                     }
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-[11px] font-semibold text-gray-600 hover:bg-gray-100 transition-colors"

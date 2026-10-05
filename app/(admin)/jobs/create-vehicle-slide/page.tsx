@@ -187,16 +187,31 @@ export default function CreateVehicleSlidePage() {
     return null;
   }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name]);
 
-  // Auto-calculate distance and cost whenever pickup or drop-off point changes
+  // Auto-calculate real road distance and cost whenever pickup or drop-off point changes
   useEffect(() => {
     if (!originPoint || !destPoint) return;
     const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
-    // Branch-to-branch uses a 1.25x road routing factor; custom map pins keep straight-line (same as map preview)
-    const factor = destMode === 'branch' && originMode === 'branch' ? 1.25 : 1;
-    const roadDist = Math.round(straight * factor * 10) / 10;
-    setDistance(roadDist);
-    setEstimatedCost(calculateSlideCost(roadDist));
-  }, [originPoint?.lat, originPoint?.lng, destPoint?.lat, destPoint?.lng, destMode, originMode]);
+    const initialRoadDist = Math.round(straight * 1.25 * 10) / 10;
+    setDistance(initialRoadDist);
+    setEstimatedCost(calculateSlideCost(initialRoadDist));
+
+    let cancelled = false;
+    fetch(`/api/routes/driving?originLat=${originPoint.lat}&originLng=${originPoint.lng}&destLat=${destPoint.lat}&destLng=${destPoint.lng}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && data.success && data.distanceKm) {
+          setDistance(data.distanceKm);
+          setEstimatedCost(calculateSlideCost(data.distanceKm));
+        }
+      })
+      .catch(err => {
+        console.warn('Real driving distance fetch error:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [originPoint?.lat, originPoint?.lng, destPoint?.lat, destPoint?.lng]);
 
   const originLabel = originMode === 'custom' && customOrigin
     ? customOrigin.address.split(',').slice(0, 2).join(',')
