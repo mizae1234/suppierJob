@@ -6,7 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, getVehicleLabel } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import { Job, JobStatus, CarWashItemStatus } from '@/types';
 import {
@@ -486,9 +486,9 @@ function SupplierJobsPageContent() {
         const progress = await updateCarWashItemStatus(target.jobId, target.itemId, 'COMPLETED');
 
         if (progress?.allCompleted) {
-          showToast(`🎉 ส่งงานรถคัน ${target.vin.slice(-6)} เสร็จ — ใบงาน ${target.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
+          showToast(`🎉 ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เสร็จ — ใบงาน ${target.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
         } else if (progress) {
-          showToast(`✅ ส่งงานรถคัน ${target.vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
+          showToast(`✅ ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
         }
       } else {
         // Single vehicle slide without items: update job status to WAITING_APPROVAL
@@ -517,7 +517,7 @@ function SupplierJobsPageContent() {
 
       if (rejectingTarget.itemId) {
         await updateCarWashItemStatus(rejectingTarget.jobId, rejectingTarget.itemId, 'CANCELLED', reason);
-        showToast(`ปฏิเสธรถคัน ${rejectingTarget.vin.slice(-6)} เรียบร้อยแล้ว`, 'info');
+        showToast(`ปฏิเสธรถคัน ${getVehicleLabel(rejectingTarget.vin, rejectingTarget.licensePlate)} เรียบร้อยแล้ว`, 'info');
       } else {
         await updateJobStatus(rejectingTarget.jobId, 'CANCELLED', { rejectReason: reason });
         showToast(`ปฏิเสธงานรถสไลด์ ${rejectingTarget.jobNumber} เรียบร้อยแล้ว`, 'info');
@@ -567,7 +567,7 @@ function SupplierJobsPageContent() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="text-sm font-bold text-gray-900 font-mono">{card.vin.slice(-6)}</p>
+                <p className="text-sm font-bold text-gray-900">{getVehicleLabel(card.vin, card.licensePlate)}</p>
                 <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
                   card.washType === 'DEEP_CLEAN'
                     ? 'bg-blue-50 text-blue-700 border border-blue-100'
@@ -580,7 +580,7 @@ function SupplierJobsPageContent() {
               </div>
               <p className="text-[11px] text-gray-500 mt-0.5 truncate max-w-[200px]">
                 {card.vehicleModel || 'รถยนต์'} {card.vehicleColor ? `• ${card.vehicleColor}` : ''}
-                {card.licensePlate && ` • ${card.licensePlate}`}
+                <span className="font-mono"> • VIN ...{card.vin.slice(-6)}</span>
               </p>
             </div>
           </div>
@@ -779,9 +779,9 @@ function SupplierJobsPageContent() {
                   {job.carWashItems?.map((it, idx) => (
                     <span
                       key={it.id || idx}
-                      className="px-2 py-0.5 bg-white border border-gray-200 rounded-md text-[10px] font-mono font-medium text-gray-700 shrink-0"
+                      className="px-2 py-0.5 bg-white border border-gray-200 rounded-md text-[10px] font-medium text-gray-700 shrink-0"
                     >
-                      {it.vin.slice(-6)}
+                      {getVehicleLabel(it.vin, it.licensePlate)}
                     </span>
                   ))}
                 </div>

@@ -4,8 +4,8 @@ import React, { useMemo } from 'react';
 import { Job, UserRole, CarWashItem, JobEvidence, JobStatus } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost, getJobScheduleDate, getScheduleBadge } from '@/lib/job-utils';
-import { Sparkles, Truck, Camera, Check, RotateCcw, Eye, MapPin, Building2 } from 'lucide-react';
+import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel } from '@/lib/job-utils';
+import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2 } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
 
 interface JobKanbanBoardProps {
@@ -27,6 +27,7 @@ interface VehicleCard {
   job: Job;
   item?: CarWashItem;
   vin: string;
+  licensePlate?: string;
   model?: string;
   color?: string;
   price: number;
@@ -67,6 +68,7 @@ function toVehicleCards(jobs: Job[]): VehicleCard[] {
         key: job.id,
         job,
         vin: job.vin || '-',
+        licensePlate: job.vehicle?.licensePlate,
         model: job.vehicle?.model,
         color: job.vehicle?.color,
         price: getJobTotalCost(job),
@@ -85,6 +87,7 @@ function toVehicleCards(jobs: Job[]): VehicleCard[] {
         job,
         item,
         vin: item.vin,
+        licensePlate: item.licensePlate,
         model: item.vehicleModel,
         color: item.vehicleColor,
         price: item.unitPrice,
@@ -231,32 +234,29 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                       <div
                         key={card.key}
                         onClick={() => onViewDetail(job)}
-                        className={`rounded-2xl bg-white border shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer group overflow-hidden ${
+                        className={`shrink-0 rounded-2xl bg-white border shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer group overflow-hidden ${
                           isItemRejected ? 'border-red-200' : isItemApproved ? 'border-emerald-200' : 'border-gray-200/80'
                         }`}
                       >
                         {/* Top: photo strip or vehicle header */}
                         <div className="flex gap-3 p-3 pb-2">
-                          <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shrink-0 flex items-center justify-center relative">
-                            {hero ? (
-                              <>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={hero.photoUrl} alt="evidence" className="w-full h-full object-cover" />
-                                {card.photos.length > 1 && (
-                                  <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/60 text-white text-[9px] font-bold">
-                                    {card.photos.length}
-                                  </span>
-                                )}
-                              </>
-                            ) : (
-                              <Camera className="w-5 h-5 text-gray-300" />
-                            )}
-                          </div>
+                          {/* Evidence thumbnail — only once the supplier has uploaded photos */}
+                          {hero && (
+                            <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shrink-0 relative">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={hero.photoUrl} alt="evidence" className="w-full h-full object-cover" />
+                              {card.photos.length > 1 && (
+                                <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/60 text-white text-[9px] font-bold">
+                                  {card.photos.length}
+                                </span>
+                              )}
+                            </div>
+                          )}
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <p className="font-mono text-sm font-black text-gray-900 leading-tight">{card.vin.slice(-6)}</p>
+                                <p className="text-sm font-black text-gray-900 leading-tight truncate" title={card.licensePlate || card.vin}>{getVehicleLabel(card.vin, card.licensePlate)}</p>
                                 <p className="font-mono text-[9px] text-gray-400 truncate" title={card.vin}>{card.vin}</p>
                               </div>
                               <span className="font-mono text-xs font-black shrink-0" style={{ color: theme.textPrimary }}>

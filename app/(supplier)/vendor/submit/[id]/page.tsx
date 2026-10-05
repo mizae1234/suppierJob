@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
+import { getVehicleLabel } from '@/lib/job-utils';
 import {
   ArrowLeft,
   Camera,
@@ -74,7 +75,7 @@ export default function SupplierSubmitPage() {
         showToast(`🎉 ส่งงานครบทุกคันแล้ว! ใบงาน ${job.jobNumber} รอสาขาตรวจรับ`, 'success');
         setSubmitted(true);
       } else if (progress) {
-        showToast(`✅ ส่งงานรถคัน ${vin.slice(-6)} เสร็จ (${progress.completed}/${progress.total})`, 'success');
+        showToast(`✅ ส่งงานรถคัน ${getVehicleLabel(vin, job.carWashItems?.find(i => i.id === itemId)?.licensePlate)} เสร็จ (${progress.completed}/${progress.total})`, 'success');
       }
     } catch (e) {
       showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');

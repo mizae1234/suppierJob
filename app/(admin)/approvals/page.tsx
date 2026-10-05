@@ -4,7 +4,7 @@ import React, { useState, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, getVehicleLabel } from '@/lib/job-utils';
 import { useToast } from '@/components/ui/Toast';
 import { 
   CheckCircle2, 
@@ -82,7 +82,7 @@ function ApprovalsContent() {
   };
 
   // Handle per-item approve — job auto-closes when every car is approved/declined
-  const handleApproveItem = async (jobId: string, itemId: string, vin: string) => {
+  const handleApproveItem = async (jobId: string, itemId: string, carLabel: string) => {
     setApprovingItemId(itemId);
     try {
       const progress = await updateCarWashItemStatus(jobId, itemId, 'APPROVED');
@@ -91,7 +91,7 @@ function ApprovalsContent() {
       } else if (progress.allApproved) {
         showToast(`🎉 อนุมัติครบทุกคันแล้ว — ปิดใบงานอัตโนมัติ`, 'success');
       } else {
-        showToast(`✅ อนุมัติรถคัน ${vin.slice(-6)} (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success');
+        showToast(`✅ อนุมัติรถคัน ${carLabel} (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success');
       }
     } finally {
       setApprovingItemId(null);
@@ -493,8 +493,8 @@ function ApprovalsContent() {
                           <div className="p-3 flex flex-col gap-1.5 flex-1">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <p className={`font-mono text-base font-black leading-tight ${isItemCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
-                                  {item.vin.slice(-6)}
+                                <p className={`text-base font-black leading-tight truncate ${isItemCancelled ? 'text-gray-400' : 'text-gray-900'}`} title={item.licensePlate || item.vin}>
+                                  {getVehicleLabel(item.vin, item.licensePlate)}
                                 </p>
                                 <p className="font-mono text-[10px] text-gray-400 truncate" title={item.vin}>{item.vin}</p>
                               </div>
@@ -559,7 +559,7 @@ function ApprovalsContent() {
                                 <span>ตีกลับ</span>
                               </button>
                               <button
-                                onClick={() => handleApproveItem(job.id, item.id, item.vin)}
+                                onClick={() => handleApproveItem(job.id, item.id, getVehicleLabel(item.vin, item.licensePlate))}
                                 disabled={isApprovingThis}
                                 className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-[0.98] disabled:opacity-60"
                               >

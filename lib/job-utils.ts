@@ -1,6 +1,16 @@
 import { Job, JobStatus, JobType } from '@/types';
 
 /**
+ * Short label for identifying a car in the UI.
+ * Prefer the license plate; fall back to the last 6 digits of the VIN.
+ */
+export function getVehicleLabel(vin?: string | null, licensePlate?: string | null): string {
+  const plate = licensePlate?.trim();
+  if (plate && plate !== '-') return plate;
+  return vin ? vin.slice(-6) : '-';
+}
+
+/**
  * Shared Job Status Meta Dictionary
  * Used by both Desktop Admin Dashboard and Mobile Portal
  */
