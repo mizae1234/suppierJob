@@ -273,28 +273,6 @@ export const Header: React.FC = () => {
           </div>
         )}
 
-        {/* Branch Selector Dropdown (When Role is BRANCH) */}
-        {currentRole === 'BRANCH' && (
-          <div className="relative">
-            <select
-              value={currentBranchId}
-              onChange={(e) => setCurrentBranchId(e.target.value)}
-              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full border appearance-none cursor-pointer focus:outline-none transition-colors duration-300"
-              style={{
-                backgroundColor: theme.bgFooter,
-                color: theme.textPrimary,
-                borderColor: `${theme.primary}33`,
-              }}
-            >
-              {availableBranches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300" style={{ color: theme.iconColor }} />
-          </div>
-        )}
 
         {/* Supplier Selector Dropdown (When Role is SUPPLIER) */}
         {currentRole === 'SUPPLIER' && (
