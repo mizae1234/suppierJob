@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Branch, Company } from '@/types';
@@ -12,7 +11,6 @@ import {
   MapPin,
   Map,
   Plus,
-  ExternalLink,
   Search,
   LayoutGrid,
   Table as TableIcon,
@@ -34,7 +32,6 @@ import {
 const MapPickerModal = dynamic(() => import('@/components/jobs/MapPickerModal'), { ssr: false });
 
 export default function BranchManagementPage() {
-  const router = useRouter();
   const theme = useTheme();
   const {
     branches: contextBranches,
@@ -42,8 +39,6 @@ export default function BranchManagementPage() {
     vehicles,
     jobs,
     currentRole,
-    setCurrentRole,
-    setCurrentBranchId,
     refreshData,
   } = useApp();
 
@@ -146,12 +141,7 @@ export default function BranchManagementPage() {
     return code.slice(0, 2).toUpperCase() || name.slice(0, 2).toUpperCase();
   };
 
-  // Switch to branch view
-  const handleViewAsBranch = (branch: Branch) => {
-    setCurrentBranchId(branch.id);
-    setCurrentRole('BRANCH');
-    router.push('/jobs');
-  };
+
 
   return (
     <div className="flex flex-col gap-6 pb-16">
@@ -527,19 +517,9 @@ export default function BranchManagementPage() {
                 <div className="px-6 py-4 bg-gray-50/60 border-t border-gray-100 flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => handleViewAsBranch(branch)}
-                    title="เข้าสู่ระบบในมุมมองสาขานี้"
-                    className="flex-1 h-9 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs whitespace-nowrap cursor-pointer hover:shadow-xs"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                    <span>มุมมองสาขา</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => setMapPickerBranch(branch)}
                     title="แก้ไขหรือปักหมุด GPS ของสาขานี้"
-                    className={`h-9 px-2.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs whitespace-nowrap cursor-pointer ${
+                    className={`flex-1 h-9 px-3 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs whitespace-nowrap cursor-pointer ${
                       hasGps
                         ? 'bg-white hover:bg-emerald-50 text-gray-700 border-gray-200 hover:border-emerald-300'
                         : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-600'
@@ -553,7 +533,7 @@ export default function BranchManagementPage() {
                     type="button"
                     onClick={() => setSelectedBranch(branch)}
                     title="ดูรายละเอียดสาขาและแก้ไขข้อมูล"
-                    className="h-9 px-2.5 rounded-xl bg-white hover:bg-emerald-50 text-[#0f5238] border border-gray-200 hover:border-emerald-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs whitespace-nowrap cursor-pointer"
+                    className="flex-1 h-9 px-3 rounded-xl bg-white hover:bg-emerald-50 text-[#0f5238] border border-gray-200 hover:border-emerald-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs whitespace-nowrap cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                     <span>รายละเอียด</span>
@@ -683,15 +663,6 @@ export default function BranchManagementPage() {
                       {/* Actions */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleViewAsBranch(branch)}
-                            className="px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-[11px] flex items-center gap-1 transition-colors"
-                            title="สลับมุมมองไปเป็นสาขานี้"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                            <span>มุมมอง</span>
-                          </button>
                           <button
                             type="button"
                             onClick={() => setMapPickerBranch(branch)}
