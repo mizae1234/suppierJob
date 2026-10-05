@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,19 +23,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image name
+        run: |
+          echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
+
     steps:
       - name: Deploy
         run: |
-            curl -X POST ${{ secrets.WEBHOOK_URL }} \
-              -H "X-Secret-Token: ${{ secrets.WEBHOOK_SECRET }}"
+          curl -X POST "${{ secrets.WEBHOOK_URL }}" \
+            -H "X-Secret-Token: ${{ secrets.WEBHOOK_SECRET }}"
+ 
