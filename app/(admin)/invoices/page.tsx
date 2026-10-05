@@ -17,7 +17,6 @@ import {
   Check, 
   Calendar,
   CreditCard,
-  Download,
   Car,
   Sparkles,
   Truck
@@ -505,40 +504,6 @@ export default function InvoiceManagementPage() {
         const activeVehicleItems = vehicleItems.filter(v => v.status !== 'CANCELLED');
         const vehicleTotalCost = activeVehicleItems.reduce((s, v) => s + v.unitPrice, 0);
 
-        const handleExportVehicleCSV = () => {
-          const sanitize = (val: string | number | null | undefined): string => {
-            if (val === null || val === undefined) return '""';
-            let str = String(val);
-            if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
-            return `"${str.replace(/"/g, '""')}"`;
-          };
-          const headers = ['ลำดับ', 'VIN', 'ทะเบียนรถ', 'รุ่นรถ', 'สี', 'ใบสั่งงาน', 'ประเภทบริการ', 'วันที่', 'สาขา', 'ราคา (บาท)', 'สถานะ', 'เลข Invoice'];
-          const rows = vehicleItems.map((v, i) => [
-            sanitize(i + 1),
-            sanitize(v.vin),
-            sanitize(v.licensePlate),
-            sanitize(v.model),
-            sanitize(v.color),
-            sanitize(v.jobNumber),
-            sanitize(v.serviceType),
-            sanitize(v.serviceDate),
-            sanitize(v.branchName),
-            sanitize(v.unitPrice),
-            sanitize(v.status),
-            sanitize(selectedInvoice.invoiceNumber),
-          ]);
-          const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
-          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.setAttribute('download', `ใบรายคัน_${selectedInvoice.invoiceNumber}_${new Date().toISOString().slice(0, 10)}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-        };
-
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-3xl max-w-4xl w-full p-6 max-h-[95vh] overflow-y-auto shadow-2xl flex flex-col gap-4">
@@ -550,15 +515,6 @@ export default function InvoiceManagementPage() {
                 </h3>
               </div>
               <div className="flex items-center gap-2">
-                {vehicleItems.length > 0 && (
-                  <button
-                    onClick={handleExportVehicleCSV}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Export ใบรายคัน</span>
-                  </button>
-                )}
                 <button
                   onClick={() => window.print()}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-700 text-white text-xs font-bold hover:bg-emerald-800"
@@ -706,17 +662,17 @@ export default function InvoiceManagementPage() {
                           <tr key={`${v.vin}-${v.jobNumber}-${idx}`} className={isCancelled ? 'bg-red-50/30' : 'hover:bg-gray-50/50'}>
                             <td className="py-2 px-2 text-gray-500">{idx + 1}</td>
                             <td className="py-2 px-2">
-                              <span className={`font-mono font-bold text-[11px] ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                              <span className={`font-mono font-bold text-[11px] ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                                 {v.vin.length > 12 ? `...${v.vin.slice(-8)}` : v.vin}
                               </span>
                             </td>
                             <td className="py-2 px-2">
-                              <span className={`text-[11px] ${isCancelled ? 'line-through text-gray-400' : 'text-gray-700 font-medium'}`}>
+                              <span className={`text-[11px] ${isCancelled ? 'text-gray-400' : 'text-gray-700 font-medium'}`}>
                                 {v.licensePlate || '-'}
                               </span>
                             </td>
                             <td className="py-2 px-2">
-                              <span className={isCancelled ? 'text-gray-400 line-through' : 'text-gray-700'}>
+                              <span className={isCancelled ? 'text-gray-400' : 'text-gray-700'}>
                                 {v.model}
                               </span>
                               {v.color !== '-' && (
@@ -740,7 +696,7 @@ export default function InvoiceManagementPage() {
                               </span>
                             </td>
                             <td className="py-2 px-2 text-right">
-                              <span className={`font-mono font-bold ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                              <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                                 ฿{v.unitPrice.toLocaleString()}
                               </span>
                               {isCancelled && (
