@@ -242,10 +242,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await fetchData(); // Refresh all data
         return data.job;
       }
+      throw new Error(data.error || 'ไม่สามารถสร้างใบงานได้');
     } catch (e) {
       console.error('Create car wash job failed:', e);
+      // Refresh so the form sees which cars just became busy
+      fetchData();
+      throw e;
     }
-    return null;
   };
 
   // ─── Action: Create Vehicle Slide Job (via API) ─
@@ -287,10 +290,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await fetchData();
         return data.job;
       }
+      throw new Error(data.error || 'ไม่สามารถสร้างใบงานได้');
     } catch (e) {
       console.error('Create vehicle slide job failed:', e);
+      fetchData();
+      throw e;
     }
-    return null;
   };
 
   // ─── Action: Update Job Status (via API) ────────

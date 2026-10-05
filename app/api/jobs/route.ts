@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { getActiveJobsByVin } from '@/lib/active-jobs';
+import { getVehicleLabel } from '@/lib/job-utils';
 
 // GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
@@ -290,6 +292,38 @@ export async function POST(request: NextRequest) {
     const uniqueSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
     const prefix = jobType === 'CAR_WASH' ? 'CW' : 'VS';
     const jobNumber = `${prefix}-${company.code}-${dateStr}-${uniqueSuffix}`;
+
+    // ─── Guard: a car can't be ordered again until its current job is finished ───
+    const requestedVins: string[] = jobType === 'CAR_WASH'
+      ? (Array.isArray(body.items) ? body.items.map((it: { vin: string }) => it.vin) : [])
+      : (Array.isArray(body.vins) && body.vins.length > 0 ? body.vins : (body.vin ? [body.vin] : []));
+
+    const dupVins = requestedVins.filter((v, i) => requestedVins.indexOf(v) !== i);
+    if (dupVins.length > 0) {
+      return NextResponse.json(
+        { error: `เลือกรถซ้ำในใบงานเดียวกัน: ${[...new Set(dupVins)].join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    const busy = await getActiveJobsByVin(requestedVins);
+    if (busy.size > 0) {
+      const plates = await prisma.vehicle.findMany({
+        where: { vin: { in: [...busy.keys()] } },
+        select: { vin: true, licensePlate: true },
+      });
+      const plateOf = new Map(plates.map(p => [p.vin, p.licensePlate]));
+      const lines = [...busy.entries()].map(([v, j]) =>
+        `${getVehicleLabel(v, plateOf.get(v))} (ใบงาน ${j.jobNumber})`
+      );
+      return NextResponse.json(
+        {
+          error: `รถต่อไปนี้มีงานที่ยังไม่เสร็จสิ้น สั่งงานซ้ำไม่ได้: ${lines.join(', ')}`,
+          busyVins: [...busy.keys()],
+        },
+        { status: 409 }
+      );
+    }
 
     if (jobType === 'CAR_WASH') {
       // ─── Car Wash ─────────────────────

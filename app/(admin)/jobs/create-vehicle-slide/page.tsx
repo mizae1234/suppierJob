@@ -96,9 +96,9 @@ export default function CreateVehicleSlidePage() {
     }
   }, [availableBranches, selectedOriginBranchId, currentRole]);
 
-  // Vehicles at selected origin branch
+  // Vehicles at selected origin branch (busy cars are listed but locked — see activeJob)
   const branchStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.currentBranchId === selectedOriginBranchId && v.status === 'AVAILABLE');
+    return vehicles.filter(v => v.currentBranchId === selectedOriginBranchId && v.status !== 'MAINTENANCE');
   }, [vehicles, selectedOriginBranchId]);
 
   // Auto-fill requester from logged-in user
@@ -210,8 +210,11 @@ export default function CreateVehicleSlidePage() {
     });
   });
 
+  // Cars with unfinished work can't be picked (select-all skips them)
+  const selectableVehicles = filteredVehicles.filter(v => !v.activeJob);
+
   // Select all filtered vehicles state and handlers
-  const isAllFilteredSelected = filteredVehicles.length > 0 && filteredVehicles.every(v => selectedVins.includes(v.vin));
+  const isAllFilteredSelected = selectableVehicles.length > 0 && selectableVehicles.every(v => selectedVins.includes(v.vin));
   const someFilteredSelected = filteredVehicles.some(v => selectedVins.includes(v.vin));
 
   const handleToggleSelectAllFiltered = () => {
@@ -219,12 +222,19 @@ export default function CreateVehicleSlidePage() {
       const filteredVinSet = new Set(filteredVehicles.map(v => v.vin));
       setSelectedVins(prev => prev.filter(vin => !filteredVinSet.has(vin)));
     } else {
-      const newVins = new Set([...selectedVins, ...filteredVehicles.map(v => v.vin)]);
+      const newVins = new Set([...selectedVins, ...selectableVehicles.map(v => v.vin)]);
       setSelectedVins(Array.from(newVins));
     }
   };
 
   const handleToggleVehicle = (vin: string) => {
+    if (!selectedVins.includes(vin)) {
+      const busyJob = vehicles.find(v => v.vin === vin)?.activeJob;
+      if (busyJob) {
+        showToast(`รถคันนี้มีงานค้างอยู่ (ใบงาน ${busyJob.jobNumber}) — สั่งงานซ้ำได้เมื่องานเดิมเสร็จสิ้น`, 'warning');
+        return;
+      }
+    }
     setSelectedVins(prev =>
       prev.includes(vin) ? prev.filter(v => v !== vin) : [...prev, vin]
     );
@@ -330,7 +340,8 @@ export default function CreateVehicleSlidePage() {
       if (newJob) setCreatedJob(newJob);
     } catch (err) {
       console.error(err);
-      showToast('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
+      setShowConfirmModal(false);
+      showToast(err instanceof Error && err.message ? err.message : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -464,7 +475,7 @@ export default function CreateVehicleSlidePage() {
                   <span className="font-semibold text-xs text-gray-800 group-hover:text-emerald-900">
                     {isAllFilteredSelected
                       ? 'ยกเลิกการเลือกทั้งหมด'
-                      : `เลือกทั้งหมด (${filteredVehicles.length} คัน)`}
+                      : `เลือกทั้งหมด (${selectableVehicles.length} คัน)`}
                   </span>
                 </button>
 
@@ -484,25 +495,34 @@ export default function CreateVehicleSlidePage() {
               ) : (
                 filteredVehicles.map(v => {
                   const isSelected = selectedVins.includes(v.vin);
+                  const busyJob = v.activeJob;
                   return (
                     <div
                       key={v.vin}
                       onClick={() => handleToggleVehicle(v.vin)}
-                      className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between gap-2 ${
+                      title={busyJob ? `มีงานค้าง: ${busyJob.jobNumber}` : undefined}
+                      className={`p-2.5 rounded-xl border text-xs transition-all flex items-center justify-between gap-2 ${
                         isSelected
-                          ? 'border-[#0f5238] bg-[#f4f9f5] font-semibold'
-                          : 'border-gray-200 hover:bg-gray-50'
+                          ? 'border-[#0f5238] bg-[#f4f9f5] font-semibold cursor-pointer'
+                          : busyJob
+                          ? 'border-gray-100 bg-gray-50/80 opacity-60 cursor-not-allowed'
+                          : 'border-gray-200 hover:bg-gray-50 cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center gap-2 overflow-hidden">
                         <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-[#0f5238] border-[#0f5238] text-white' : 'border-gray-300'
+                          isSelected ? 'bg-[#0f5238] border-[#0f5238] text-white' : busyJob ? 'border-gray-200 bg-gray-100' : 'border-gray-300'
                         }`}>
                           {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
                         <div className="min-w-0">
                           <p className="font-mono font-bold text-gray-900 truncate">{v.vin}</p>
                           <p className="text-[11px] text-gray-500 truncate">{v.model} • {v.color}</p>
+                          {busyJob && (
+                            <p className="mt-0.5 text-[10px] font-semibold text-amber-700">
+                              ⚠ มีงาน{busyJob.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}ค้าง · <span className="font-mono">{busyJob.jobNumber}</span>
+                            </p>
+                          )}
                         </div>
                       </div>
                       {v.licensePlate && (

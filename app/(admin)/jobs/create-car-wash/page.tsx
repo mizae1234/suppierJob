@@ -121,6 +121,9 @@ export default function CreateCarWashPage() {
     const exists = selectedItems.some(it => it.vin === vehicle.vin);
     if (exists) {
       setSelectedItems(prev => prev.filter(it => it.vin !== vehicle.vin));
+    } else if (vehicle.activeJob) {
+      showToast(`รถคันนี้มีงานค้างอยู่ (ใบงาน ${vehicle.activeJob.jobNumber}) — สั่งงานซ้ำได้เมื่องานเดิมเสร็จสิ้น`, 'warning');
+      return;
     } else {
       setSelectedItems(prev => [
         ...prev,
@@ -161,8 +164,11 @@ export default function CreateCarWashPage() {
     });
   });
 
+  // Cars with unfinished work can't be picked (select-all skips them)
+  const selectableVehicles = filteredVehicles.filter(v => !v.activeJob);
+
   // Select all filtered vehicles state and handlers
-  const isAllFilteredSelected = filteredVehicles.length > 0 && filteredVehicles.every(v => selectedItems.some(it => it.vin === v.vin));
+  const isAllFilteredSelected = selectableVehicles.length > 0 && selectableVehicles.every(v => selectedItems.some(it => it.vin === v.vin));
   const someFilteredSelected = filteredVehicles.some(v => selectedItems.some(it => it.vin === v.vin));
 
   const handleToggleSelectAllFiltered = () => {
@@ -173,7 +179,7 @@ export default function CreateCarWashPage() {
     } else {
       // Add all missing filtered vehicles to selected items
       const existingVins = new Set(selectedItems.map(it => it.vin));
-      const toAdd: SelectedWashItem[] = filteredVehicles
+      const toAdd: SelectedWashItem[] = selectableVehicles
         .filter(v => !existingVins.has(v.vin))
         .map(v => ({
           vin: v.vin,
@@ -236,7 +242,8 @@ export default function CreateCarWashPage() {
       if (newJob) setCreatedJob(newJob);
     } catch (err) {
       console.error(err);
-      showToast('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
+      setShowConfirmModal(false);
+      showToast(err instanceof Error && err.message ? err.message : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -410,7 +417,7 @@ export default function CreateCarWashPage() {
                   <span className="font-semibold text-xs text-gray-800 group-hover:text-emerald-900">
                     {isAllFilteredSelected
                       ? 'ยกเลิกการเลือกทั้งหมด'
-                      : `เลือกทั้งหมด (${filteredVehicles.length} คัน)`}
+                      : `เลือกทั้งหมด (${selectableVehicles.length} คัน)`}
                   </span>
                 </button>
 
@@ -431,25 +438,35 @@ export default function CreateCarWashPage() {
               ) : (
                 filteredVehicles.map(v => {
                   const isSelected = selectedItems.some(it => it.vin === v.vin);
+                  const busyJob = v.activeJob;
                   return (
                     <div
                       key={v.vin}
                       onClick={() => handleToggleVehicle(v)}
-                      className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between gap-2 ${
+                      title={busyJob ? `มีงานค้าง: ${busyJob.jobNumber}` : undefined}
+                      className={`p-2.5 rounded-xl border text-xs transition-all flex items-center justify-between gap-2 ${
                         isSelected
-                          ? 'border-[#0f5238] bg-[#f4f9f5] font-semibold'
-                          : 'border-gray-200 hover:bg-gray-50'
+                          ? 'border-[#0f5238] bg-[#f4f9f5] font-semibold cursor-pointer'
+                          : busyJob
+                          ? 'border-gray-100 bg-gray-50/80 opacity-60 cursor-not-allowed'
+                          : 'border-gray-200 hover:bg-gray-50 cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                          isSelected ? 'bg-[#0f5238] border-[#0f5238] text-white' : 'border-gray-300'
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'bg-[#0f5238] border-[#0f5238] text-white' : busyJob ? 'border-gray-200 bg-gray-100' : 'border-gray-300'
                         }`}>
                           {isSelected && <Check className="w-3 h-3" />}
                         </div>
                         <div className="min-w-0">
                           <p className="font-mono font-bold text-gray-900 truncate">{v.vin}</p>
                           <p className="text-[11px] text-gray-500 truncate">{v.model} • {v.color}</p>
+                          {busyJob && (
+                            <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
+                              <AlertCircle className="w-3 h-3" />
+                              มีงาน{busyJob.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}ค้าง · <span className="font-mono">{busyJob.jobNumber}</span>
+                            </p>
+                          )}
                         </div>
                       </div>
                       {v.licensePlate && (

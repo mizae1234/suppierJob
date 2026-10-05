@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
+import { getActiveJobsByVin } from '@/lib/active-jobs';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
@@ -51,6 +52,9 @@ export async function GET(request: NextRequest) {
       take: limit,
     });
 
+    // Cars that still have unfinished work → can't be ordered again
+    const activeJobs = await getActiveJobsByVin(vehicles.map(v => v.vin));
+
     // Format for frontend compatibility
     const formatted = vehicles.map(v => ({
       vin: v.vin,
@@ -65,6 +69,7 @@ export async function GET(request: NextRequest) {
       licensePlate: v.licensePlate,
       mileage: v.mileage,
       status: v.status || 'AVAILABLE',
+      activeJob: activeJobs.get(v.vin) || null,
     }));
 
     return NextResponse.json({ vehicles: formatted });

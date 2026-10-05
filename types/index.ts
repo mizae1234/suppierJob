@@ -79,6 +79,8 @@ export interface Vehicle {
   licensePlate?: string;
   mileage?: number;
   status: 'AVAILABLE' | 'IN_TRANSIT' | 'IN_WASH' | 'MAINTENANCE';
+  /** Unfinished job currently holding this car (null = free to order) */
+  activeJob?: { jobId: string; jobNumber: string; jobType: string } | null;
 }
 
 export interface CarWashItem {
