@@ -134,24 +134,26 @@ export default function MapPickerModal({
       return;
     }
 
-    // 2) Place-name search via OpenStreetMap
+    // 2) Place-name search (server picks Google Places if configured, otherwise OSM)
     setIsSearching(true);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=th&accept-language=th`
+        `/api/places/search?q=${encodeURIComponent(q)}&lat=${originLat}&lng=${originLng}`
       );
-      const results: { lat: string; lon: string; name?: string; display_name: string }[] = await res.json();
-      if (results.length === 1) {
-        goTo(parseFloat(results[0].lat), parseFloat(results[0].lon));
+      const data: { provider?: string; results?: { lat: number; lng: number; name: string; detail: string }[]; error?: string } = await res.json();
+      const results = data.results || [];
+      if (!res.ok) {
+        setSearchMessage(data.error || 'ค้นหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      } else if (results.length === 1) {
+        goTo(results[0].lat, results[0].lng);
       } else if (results.length > 1) {
-        setSearchResults(results.map(r => ({
-          lat: parseFloat(r.lat),
-          lng: parseFloat(r.lon),
-          name: r.name || r.display_name.split(',')[0],
-          detail: r.display_name,
-        })));
+        setSearchResults(results);
       } else {
-        setSearchMessage('ไม่พบสถานที่นี้ใน OpenStreetMap — ลองค้นด้วยชื่อถนน/เขต หรือวางพิกัด / ลิงก์ Google Maps แทน');
+        setSearchMessage(
+          data.provider === 'google'
+            ? 'ไม่พบสถานที่นี้ — ลองพิมพ์ชื่อให้สั้นลง หรือวางพิกัด / ลิงก์ Google Maps'
+            : 'ไม่พบสถานที่นี้ใน OpenStreetMap — ลองค้นด้วยชื่อถนน/เขต หรือวางพิกัด / ลิงก์ Google Maps แทน'
+        );
       }
     } catch (e) {
       console.error('Search error:', e);
