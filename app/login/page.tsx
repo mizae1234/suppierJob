@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { LogIn, Eye, EyeOff, Truck, Sparkles, ArrowRight, ArrowLeft, Check, Building2, User, Wrench, Shield } from 'lucide-react';
+import { LogIn, Eye, EyeOff, Truck, Sparkles, ArrowRight, ArrowLeft, Check, Building2, User, Wrench } from 'lucide-react';
 
 interface CheckedUser {
   displayName: string;
@@ -250,152 +250,107 @@ export default function LoginPage() {
                     <label className="block text-xs font-semibold text-gray-700">
                       เลือกองค์กรของคุณ
                     </label>
-                    {isMaster && (
-                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80 animate-[fadeIn_0.2s_ease-out]">
-                        สิทธิ์ Master ไม่ต้องเลือกบริษัท
-                      </span>
-                    )}
                   </div>
 
-                  {isMaster ? (
-                    <div className="w-full h-11 px-3.5 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50/40 text-sm flex items-center gap-2.5 transition-all shadow-sm">
-                      <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#0f5238] to-[#1a6b4a] flex items-center justify-center text-white shadow-sm flex-shrink-0">
-                        <Shield className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0 flex items-center gap-2">
-                        <span className="text-[#0f5238] font-bold text-xs truncate">ผู้ดูแลระบบสูงสุด (Master)</span>
-                        <span className="text-gray-400 text-xs hidden sm:inline">•</span>
-                        <span className="text-emerald-700 text-xs truncate">เข้าถึงทุกบริษัท</span>
-                      </div>
-                      <span className="text-[10px] bg-emerald-600 text-white font-semibold px-2 py-0.5 rounded-full flex-shrink-0">
-                        อัตโนมัติ
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setDropdownOpen(!dropdownOpen)}
-                        className={`w-full h-11 px-3 rounded-xl border text-left text-sm flex items-center gap-2.5 transition-all cursor-pointer ${
-                          company
-                            ? 'border-gray-300 bg-white'
-                            : 'border-gray-200 bg-gray-50 text-gray-400'
-                        } ${dropdownOpen ? 'ring-2 ring-[#0f5238] border-transparent' : 'hover:border-gray-300'}`}
-                      >
-                        {company ? (
-                          (() => {
-                            const isEV7 = company === 'EV7';
-                            const isGI = company === 'GI';
-                            const sup = suppliers.find(s => s.code === company);
-                            return (
-                              <>
-                                <div className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${
-                                  isEV7 ? 'bg-gradient-to-br from-emerald-600 to-emerald-800'
-                                  : isGI ? 'bg-gradient-to-br from-blue-600 to-blue-800'
-                                  : 'bg-gradient-to-br from-amber-500 to-orange-600'
-                                }`}>
-                                  {isEV7 ? 'EV7' : isGI ? 'GI' : <Wrench className="w-3 h-3" />}
-                                </div>
-                                <span className="text-gray-900 font-medium truncate">
-                                  {isEV7 ? 'EV7 — อีวี เซเว่น' : isGI ? 'GI — โกลด์ อินทิเกรท (Gold Integrate)' : sup?.name || company}
-                                </span>
-                              </>
-                            );
-                          })()
-                        ) : (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setDropdownOpen(!dropdownOpen)}
+                      className={`w-full h-11 px-3 rounded-xl border text-left text-sm flex items-center gap-2.5 transition-all cursor-pointer ${
+                        company
+                          ? 'border-gray-300 bg-white'
+                          : 'border-gray-200 bg-gray-50 text-gray-400'
+                      } ${dropdownOpen ? 'ring-2 ring-[#0f5238] border-transparent' : 'hover:border-gray-300'}`}
+                    >
+                      {company ? (
+                        (() => {
+                          const isEV7 = company === 'EV7';
+                          const isGI = company === 'GI';
+                          const sup = suppliers.find(s => s.code === company);
+                          return (
+                            <>
+                              <div className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${
+                                isEV7 ? 'bg-gradient-to-br from-emerald-600 to-emerald-800'
+                                : isGI ? 'bg-gradient-to-br from-blue-600 to-blue-800'
+                                : 'bg-gradient-to-br from-amber-500 to-orange-600'
+                              }`}>
+                                {isEV7 ? 'EV7' : isGI ? 'GI' : <Wrench className="w-3 h-3" />}
+                              </div>
+                              <span className="text-gray-900 font-medium truncate">
+                                {isEV7 ? 'EV7 — อีวี เซเว่น' : isGI ? 'GI — โกลด์ อินทิเกรท (Gold Integrate)' : sup?.name || company}
+                              </span>
+                            </>
+                          );
+                        })()
+                      ) : (
+                        <>
+                          <Building2 className="w-4 h-4 text-gray-400" />
+                          <span>— กรุณาเลือก —</span>
+                        </>
+                      )}
+                      <svg className={`w-4 h-4 ml-auto text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {dropdownOpen && (
+                      <div className="absolute z-50 mt-1.5 w-full bg-white rounded-xl border border-gray-200 shadow-2xl max-h-72 sm:max-h-80 overflow-y-auto overscroll-contain animate-[fadeIn_0.15s_ease-out]">
+                        {/* Companies Group */}
+                        <div className="px-3 py-2 border-b border-gray-100">
+                          <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">บริษัท</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setCompany('EV7'); setDropdownOpen(false); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'EV7' ? 'bg-emerald-50' : ''}`}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">EV7</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">EV7</p>
+                            <p className="text-[10px] text-gray-500">อีวี เซเว่น</p>
+                          </div>
+                          {company === 'EV7' && <Check className="w-4 h-4 text-emerald-600" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setCompany('GI'); setDropdownOpen(false); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'GI' ? 'bg-blue-50' : ''}`}
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">GI</p>
+                            <p className="text-[10px] text-gray-500">โกลด์ อินทิเกรท (Gold Integrate)</p>
+                          </div>
+                          {company === 'GI' && <Check className="w-4 h-4 text-blue-600" />}
+                        </button>
+
+                        {/* Suppliers Group */}
+                        {suppliers.length > 0 && (
                           <>
-                            <Building2 className="w-4 h-4 text-gray-400" />
-                            <span>— กรุณาเลือก —</span>
+                            <div className="px-3 py-2 border-t border-b border-gray-100">
+                              <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Supplier / คู่ค้า</p>
+                            </div>
+                            {suppliers.map(sup => (
+                              <button
+                                key={sup.code}
+                                type="button"
+                                onClick={() => { setCompany(sup.code); setDropdownOpen(false); }}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === sup.code ? 'bg-amber-50' : ''}`}
+                              >
+                                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white flex-shrink-0">
+                                  <Wrench className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">{sup.name}</p>
+                                  <p className="text-[10px] text-gray-500">{sup.code}</p>
+                                </div>
+                                {company === sup.code && <Check className="w-4 h-4 text-amber-600" />}
+                              </button>
+                            ))}
                           </>
                         )}
-                        <svg className={`w-4 h-4 ml-auto text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </button>
-
-                      {/* Dropdown Menu */}
-                      {dropdownOpen && (
-                        <div className="absolute z-50 mt-1.5 w-full bg-white rounded-xl border border-gray-200 shadow-2xl max-h-72 sm:max-h-80 overflow-y-auto overscroll-contain animate-[fadeIn_0.15s_ease-out]">
-                          {/* Master Option */}
-                          <div className="p-1 border-b border-gray-100 bg-emerald-50/40">
-                            <button
-                              type="button"
-                              onClick={() => { 
-                                setUsername('master');
-                                setCompany('MASTER'); 
-                                setDropdownOpen(false); 
-                              }}
-                              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left hover:bg-emerald-100/50 transition-colors cursor-pointer"
-                            >
-                              <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#0f5238] to-[#1a6b4a] flex items-center justify-center text-white shadow-sm flex-shrink-0">
-                                <Shield className="w-3.5 h-3.5" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-bold text-[#0f5238]">ผู้ดูแลระบบสูงสุด (Master)</p>
-                                <p className="text-[10px] text-emerald-600">เข้าถึงทุกบริษัทโดยตรง</p>
-                              </div>
-                              <span className="text-[10px] font-semibold text-emerald-700 bg-white border border-emerald-200 px-2 py-0.5 rounded-full">
-                                เลือก
-                              </span>
-                            </button>
-                          </div>
-
-                          {/* Companies Group */}
-                          <div className="px-3 py-2 border-b border-gray-100">
-                            <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">บริษัท</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => { setCompany('EV7'); setDropdownOpen(false); }}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'EV7' ? 'bg-emerald-50' : ''}`}
-                          >
-                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">EV7</div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900">EV7</p>
-                              <p className="text-[10px] text-gray-500">อีวี เซเว่น</p>
-                            </div>
-                            {company === 'EV7' && <Check className="w-4 h-4 text-emerald-600" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { setCompany('GI'); setDropdownOpen(false); }}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'GI' ? 'bg-blue-50' : ''}`}
-                          >
-                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900">GI</p>
-                              <p className="text-[10px] text-gray-500">โกลด์ อินทิเกรท (Gold Integrate)</p>
-                            </div>
-                            {company === 'GI' && <Check className="w-4 h-4 text-blue-600" />}
-                          </button>
-
-                          {/* Suppliers Group */}
-                          {suppliers.length > 0 && (
-                            <>
-                              <div className="px-3 py-2 border-t border-b border-gray-100">
-                                <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Supplier / คู่ค้า</p>
-                              </div>
-                              {suppliers.map(sup => (
-                                <button
-                                  key={sup.code}
-                                  type="button"
-                                  onClick={() => { setCompany(sup.code); setDropdownOpen(false); }}
-                                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === sup.code ? 'bg-amber-50' : ''}`}
-                                >
-                                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white flex-shrink-0">
-                                    <Wrench className="w-3.5 h-3.5" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">{sup.name}</p>
-                                    <p className="text-[10px] text-gray-500">{sup.code}</p>
-                                  </div>
-                                  {company === sup.code && <Check className="w-4 h-4 text-amber-600" />}
-                                </button>
-                              ))}
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Username */}
@@ -419,7 +374,7 @@ export default function LoginPage() {
                         }
                       }}
                       onKeyDown={(e) => e.key === 'Enter' && handleNext()}
-                      placeholder="เช่น master, admin-ev7, branch-rm9"
+                      placeholder="เช่น admin-ev7, branch-rm9"
                       className="w-full h-11 pl-10 pr-4 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0f5238] focus:border-transparent focus:bg-white transition-all"
                       autoComplete="username"
                       autoFocus
@@ -468,15 +423,13 @@ export default function LoginPage() {
                     {username.charAt(0).toUpperCase()}
                   </div>
                   <span className="font-medium text-gray-700">{username}</span>
-                  <span className="text-gray-400">@</span>
-                  {isMaster || checkedUser?.role === 'MASTER' ? (
-                    <span className="text-xs font-bold text-[#0f5238] bg-emerald-100/70 px-2.5 py-0.5 rounded-md">
-                      Master (ทุกระบบ)
-                    </span>
-                  ) : (
-                    <span className={`text-xs font-bold ${company === 'EV7' ? 'text-emerald-700' : 'text-blue-700'}`}>
-                      {company}
-                    </span>
+                  {company && (
+                    <>
+                      <span className="text-gray-400">@</span>
+                      <span className={`text-xs font-bold ${company === 'EV7' ? 'text-emerald-700' : 'text-blue-700'}`}>
+                        {company}
+                      </span>
+                    </>
                   )}
                 </div>
                 <button
