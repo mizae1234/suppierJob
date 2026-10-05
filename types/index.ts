@@ -91,8 +91,22 @@ export interface CarWashItem {
   actualWashDate: string; // YYYY-MM-DD
   washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH';
   unitPrice: number;
-  status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+  status: CarWashItemStatus;
   remarks?: string;
+}
+
+// PENDING = รอ Supplier | COMPLETED = Supplier ส่งงานแล้ว (รอตรวจรับ)
+// APPROVED = สาขาอนุมัติคันนี้แล้ว | REJECTED = สาขาตีกลับ | CANCELLED = Supplier ปฏิเสธ
+export type CarWashItemStatus = 'PENDING' | 'COMPLETED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+export interface CarWashItemProgress {
+  completed: number;   // submitted or approved
+  approved: number;
+  cancelled: number;
+  total: number;
+  allResolved: boolean;
+  allApproved: boolean;
+  allCompleted: boolean;
 }
 
 export interface JobEvidence {

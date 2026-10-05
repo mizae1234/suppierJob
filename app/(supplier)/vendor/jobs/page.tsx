@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
-import { Job, JobStatus } from '@/types';
+import { Job, JobStatus, CarWashItemStatus } from '@/types';
 import {
   ClipboardList,
   Clock,
@@ -29,9 +29,12 @@ import {
   Flag,
   Route,
   ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
 
-type TabKey = 'progress' | 'waiting' | 'approved' | 'rejected';
+// returned = สาขาตรวจรับไม่ผ่าน ตีกลับให้แก้ไข | declined = Supplier ปฏิเสธรับงานเอง
+type TabKey = 'progress' | 'waiting' | 'approved' | 'returned' | 'declined';
+const VALID_TABS: TabKey[] = ['progress', 'waiting', 'approved', 'returned', 'declined'];
 
 // ─── Google Maps navigation helpers (deep links — no API key needed) ──
 // Prefer exact GPS coordinates; fall back to address / name text search.
@@ -109,7 +112,7 @@ interface SupplierItemCard {
   licensePlate?: string;
   washType: string;
   unitPrice: number;
-  itemStatus: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED';
+  itemStatus: CarWashItemStatus;
   itemRemarks?: string;
   actualWashDate: string;
   // Parent job reference
@@ -156,7 +159,11 @@ function SupplierJobsPageContent() {
   const supplierId = activeSupplier?.id || user?.supplierId;
 
   const rawTab = searchParams.get('tab');
-  const initialTab: TabKey = rawTab === 'new' ? 'progress' : (rawTab as TabKey) || 'progress';
+  const initialTab: TabKey =
+    rawTab === 'new' ? 'progress'
+    : rawTab === 'rejected' ? 'returned' // backward-compatible link
+    : VALID_TABS.includes(rawTab as TabKey) ? (rawTab as TabKey)
+    : 'progress';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
   // Rejection modal state
@@ -206,7 +213,7 @@ function SupplierJobsPageContent() {
     myJobs.forEach(job => {
       // ONLY CAR_WASH jobs should be flattened into car wash item cards
       if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
-        const completedCount = job.carWashItems.filter(i => i.status === 'COMPLETED').length;
+        const completedCount = job.carWashItems.filter(i => i.status === 'COMPLETED' || i.status === 'APPROVED').length;
         
         job.carWashItems.forEach(item => {
           cards.push({
@@ -217,7 +224,7 @@ function SupplierJobsPageContent() {
             licensePlate: item.licensePlate,
             washType: item.washType,
             unitPrice: item.unitPrice,
-            itemStatus: item.status as 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED',
+            itemStatus: item.status,
             itemRemarks: item.remarks,
             actualWashDate: item.actualWashDate,
             jobId: job.id,
@@ -245,7 +252,8 @@ function SupplierJobsPageContent() {
     { key: 'progress', label: 'งานที่ต้องทำ', icon: Clock, color: '#f59e0b' },
     { key: 'waiting', label: 'รอตรวจรับ', icon: AlertCircle, color: '#ef4444' },
     { key: 'approved', label: 'ผ่านแล้ว', icon: CheckCircle2, color: theme.primary },
-    { key: 'rejected', label: 'ปฏิเสธ/ตีกลับ', icon: XCircle, color: '#dc2626' },
+    { key: 'returned', label: 'ตีกลับ', icon: RotateCcw, color: '#ea580c' },
+    { key: 'declined', label: 'ปฏิเสธ', icon: XCircle, color: '#dc2626' },
   ];
 
   // ─── Tab Filtering Logic ──
@@ -273,20 +281,28 @@ function SupplierJobsPageContent() {
         slides = slideJobs.filter(j => j.status === 'WAITING_APPROVAL');
         break;
       case 'approved':
-        // Items that are COMPLETED and parent job is APPROVED/INVOICED
+        // Cars approved individually, or submitted cars in an approved/invoiced job
         items = allItemCards.filter(c =>
-          c.itemStatus === 'COMPLETED' &&
-          ['APPROVED', 'INVOICED'].includes(c.jobStatus)
+          c.itemStatus === 'APPROVED' ||
+          (c.itemStatus === 'COMPLETED' && ['APPROVED', 'INVOICED'].includes(c.jobStatus))
         );
         slides = slideJobs.filter(j => ['APPROVED', 'INVOICED'].includes(j.status));
         break;
-      case 'rejected':
-        // Items that are REJECTED, or belong to CANCELLED/REJECTED jobs
+      case 'returned':
+        // ตีกลับ: สาขาตรวจรับไม่ผ่าน → Supplier ต้องแก้ไขแล้วส่งใหม่
         items = allItemCards.filter(c =>
           c.itemStatus === 'REJECTED' ||
-          ['CANCELLED', 'REJECTED'].includes(c.jobStatus)
+          (c.jobStatus === 'REJECTED' && c.itemStatus !== 'CANCELLED')
         );
-        slides = slideJobs.filter(j => ['CANCELLED', 'REJECTED'].includes(j.status));
+        slides = slideJobs.filter(j => j.status === 'REJECTED');
+        break;
+      case 'declined':
+        // ปฏิเสธ: Supplier ปฏิเสธรับงานเอง (รายคัน หรือทั้งใบงาน)
+        items = allItemCards.filter(c =>
+          c.itemStatus === 'CANCELLED' ||
+          (c.jobStatus === 'CANCELLED' && c.itemStatus !== 'REJECTED')
+        );
+        slides = slideJobs.filter(j => j.status === 'CANCELLED');
         break;
     }
 
@@ -521,7 +537,9 @@ function SupplierJobsPageContent() {
   const renderItemCard = (card: SupplierItemCard) => {
     const isSubmitting = submittingId === card.itemId;
     const isPending = card.itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(card.jobStatus);
-    const isCompleted = card.itemStatus === 'COMPLETED';
+    const isCompleted = card.itemStatus === 'COMPLETED' || card.itemStatus === 'APPROVED';
+    const isApproved = card.itemStatus === 'APPROVED' ||
+      (card.itemStatus === 'COMPLETED' && ['APPROVED', 'INVOICED'].includes(card.jobStatus));
     const isRejected = card.itemStatus === 'REJECTED';
 
     return (
@@ -636,15 +654,15 @@ function SupplierJobsPageContent() {
           )}
 
           {/* COMPLETED items waiting approval */}
-          {isCompleted && ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(card.jobStatus) && (
+          {card.itemStatus === 'COMPLETED' && ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(card.jobStatus) && (
             <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold">
               <Clock className="w-4 h-4" />
               <span>ส่งงานคันนี้แล้ว • รอตรวจรับ</span>
             </div>
           )}
 
-          {/* APPROVED items */}
-          {isCompleted && ['APPROVED', 'INVOICED'].includes(card.jobStatus) && (
+          {/* APPROVED items (approved per-car, or whole job approved) */}
+          {isApproved && (
             <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold"
               style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}
             >
@@ -671,15 +689,15 @@ function SupplierJobsPageContent() {
           )}
 
           {/* CANCELLED jobs */}
-          {['CANCELLED'].includes(card.jobStatus) && !isRejected && (
+          {(card.itemStatus === 'CANCELLED' || card.jobStatus === 'CANCELLED') && !isRejected && (
             <div className="flex-1 flex flex-col gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
               <div className="flex items-center gap-1.5 text-red-700 font-bold">
                 <XCircle className="w-4 h-4 text-red-500 shrink-0" />
                 <span>ปฏิเสธงานนี้แล้ว</span>
               </div>
-              {card.job.rejectReason && (
+              {(card.itemRemarks || card.job.rejectReason) && (
                 <span className="text-[11px] text-red-600 truncate">
-                  เหตุผล: {card.job.rejectReason}
+                  เหตุผล: {card.itemRemarks || card.job.rejectReason}
                 </span>
               )}
             </div>

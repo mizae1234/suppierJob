@@ -71,7 +71,7 @@ export async function PATCH(
       if (status === 'WAITING_APPROVAL') {
         updateData.completedAt = new Date();
         if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
-          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED');
+          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
           const validItems = completedItems.length > 0 
             ? completedItems 
             : job.carWashItems.filter(c => c.status !== 'CANCELLED');
@@ -86,7 +86,7 @@ export async function PATCH(
         updateData.approvedAt = new Date();
         updateData.approvedBy = approvedBy || user.displayName || 'Branch Manager';
         if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
-          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED');
+          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
           const validItems = completedItems.length > 0 
             ? completedItems 
             : job.carWashItems.filter(c => c.status !== 'CANCELLED');
@@ -112,11 +112,16 @@ export async function PATCH(
           }
           if (job.carWashItems && job.carWashItems.length > 0) {
             await tx.carWashItem.updateMany({
-              where: { jobId: job.id },
-              data: { status: 'COMPLETED' },
+              where: { jobId: job.id, status: { not: 'CANCELLED' } },
+              data: { status: 'APPROVED' },
             });
           }
         } else if (job.jobType === 'CAR_WASH' && job.carWashItems.length > 0) {
+          // อนุมัติทั้งใบ = อนุมัติทุกคันที่ Supplier ส่งงานแล้ว
+          await tx.carWashItem.updateMany({
+            where: { jobId: job.id, status: 'COMPLETED' },
+            data: { status: 'APPROVED' },
+          });
           const vins = job.carWashItems.map(c => c.vin);
           await tx.vehicle.updateMany({
             where: { vin: { in: vins } },

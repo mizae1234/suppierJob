@@ -17,9 +17,9 @@ export async function PATCH(
     const { id: jobId, itemId } = await params;
     const { status, remarks } = await request.json();
 
-    if (!status || !['PENDING', 'COMPLETED', 'REJECTED', 'CANCELLED'].includes(status)) {
+    if (!status || !['PENDING', 'COMPLETED', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(status)) {
       return NextResponse.json(
-        { error: 'กรุณาระบุสถานะที่ถูกต้อง (PENDING, COMPLETED, REJECTED, CANCELLED)' },
+        { error: 'กรุณาระบุสถานะที่ถูกต้อง (PENDING, COMPLETED, APPROVED, REJECTED, CANCELLED)' },
         { status: 400 }
       );
     }
@@ -65,8 +65,14 @@ export async function PATCH(
           { status: 403 }
         );
       }
+      if (item.status === 'APPROVED') {
+        return NextResponse.json(
+          { error: 'รถคันนี้ผ่านการตรวจรับแล้ว ไม่สามารถแก้ไขได้' },
+          { status: 400 }
+        );
+      }
     } else if (user.role === 'BRANCH') {
-      // Branch can approve (COMPLETED) or reject (REJECTED) items
+      // Branch can approve (APPROVED) or reject (REJECTED) items
       if (user.companyId && job.companyId !== user.companyId) {
         return NextResponse.json(
           { error: 'คุณไม่มีสิทธิ์แก้ไขงานของบริษัทอื่น' },
@@ -75,6 +81,14 @@ export async function PATCH(
       }
     }
     // ADMIN and MASTER can do anything
+
+    // Only cars the supplier has submitted can be approved
+    if (status === 'APPROVED' && item.status !== 'COMPLETED') {
+      return NextResponse.json(
+        { error: 'อนุมัติได้เฉพาะรถที่ Supplier ส่งงานแล้วเท่านั้น' },
+        { status: 400 }
+      );
+    }
 
     // ─── Atomic Update with Transaction ──────────────
     const result = await prisma.$transaction(async (tx: any) => {
@@ -93,12 +107,53 @@ export async function PATCH(
       });
 
       const completedCount = allItems.filter((i: any) => i.status === 'COMPLETED').length;
+      const approvedCount = allItems.filter((i: any) => i.status === 'APPROVED').length;
       const cancelledCount = allItems.filter((i: any) => i.status === 'CANCELLED').length;
       const totalCount = allItems.length;
-      const allResolved = (completedCount + cancelledCount) === totalCount;
+      // "Done" from the supplier's side = submitted (COMPLETED) or already approved
+      const doneCount = completedCount + approvedCount;
+      const allResolved = (doneCount + cancelledCount) === totalCount;
+      const allApproved = approvedCount > 0 && (approvedCount + cancelledCount) === totalCount;
 
-      // 3. Auto-transition parent Job status when all items have a final status
-      if (allResolved && job.status === 'IN_PROGRESS') {
+      // 3a. Every car approved (or declined) → auto-approve the whole job
+      if (allApproved && ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED'].includes(job.status)) {
+        const actualCost = allItems
+          .filter((i: any) => i.status === 'APPROVED')
+          .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
+
+        await tx.job.update({
+          where: { id: jobId },
+          data: {
+            status: 'APPROVED',
+            actualCost,
+            approvedAt: new Date(),
+            approvedBy: user.displayName || user.username,
+            completedAt: job.completedAt || new Date(),
+            updatedAt: new Date(),
+          },
+        });
+
+        await tx.vehicle.updateMany({
+          where: { vin: { in: allItems.map((i: any) => i.vin) } },
+          data: {
+            status: 'AVAILABLE',
+            ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
+          },
+        });
+
+        await tx.jobActivity.create({
+          data: {
+            jobId,
+            action: 'JOB_APPROVED',
+            actor: 'ระบบอัตโนมัติ',
+            actorRole: 'SYSTEM',
+            description: `อนุมัติครบทุกคัน (${approvedCount} คัน${cancelledCount ? `, ปฏิเสธ ${cancelledCount} คัน` : ''}) — ค่าบริการสุทธิ ฿${actualCost.toLocaleString()} — ปิดใบงานอัตโนมัติ`,
+            metadata: JSON.stringify({ approved: approvedCount, cancelled: cancelledCount, total: totalCount, actualCost }),
+          },
+        });
+      }
+      // 3b. Auto-transition parent Job status when all items have a final status
+      else if (allResolved && job.status === 'IN_PROGRESS') {
         if (cancelledCount === totalCount) {
           // All items cancelled → cancel the entire job
           await tx.job.update({
@@ -124,7 +179,7 @@ export async function PATCH(
         } else {
           // Mix of completed + cancelled → move to WAITING_APPROVAL for admin review
           const actualCost = allItems
-            .filter((i: any) => i.status === 'COMPLETED')
+            .filter((i: any) => i.status === 'COMPLETED' || i.status === 'APPROVED')
             .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
 
           await tx.job.update({
@@ -143,8 +198,8 @@ export async function PATCH(
               action: 'JOB_WAITING_APPROVAL',
               actor: 'ระบบอัตโนมัติ',
               actorRole: 'SYSTEM',
-              description: `ทุกรายการมีสถานะแล้ว (เสร็จ ${completedCount} คัน, ปฏิเสธ ${cancelledCount} คัน) — ค่าบริการสุทธิ ฿${actualCost.toLocaleString()} — รอสาขาตรวจรับ`,
-              metadata: JSON.stringify({ completed: completedCount, cancelled: cancelledCount, total: totalCount, actualCost }),
+              description: `ทุกรายการมีสถานะแล้ว (เสร็จ ${doneCount} คัน, ปฏิเสธ ${cancelledCount} คัน) — ค่าบริการสุทธิ ฿${actualCost.toLocaleString()} — รอสาขาตรวจรับ`,
+              metadata: JSON.stringify({ completed: doneCount, cancelled: cancelledCount, total: totalCount, actualCost }),
             },
           });
         }
@@ -166,13 +221,15 @@ export async function PATCH(
       // 4. Log activity for the item status change
       const actionMap: Record<string, string> = {
         COMPLETED: 'ITEM_COMPLETED',
+        APPROVED: 'ITEM_APPROVED',
         REJECTED: 'ITEM_REJECTED',
         CANCELLED: 'ITEM_CANCELLED',
         PENDING: 'ITEM_RESET',
       };
 
       const descMap: Record<string, string> = {
-        COMPLETED: `Supplier ส่งงานรถคัน ${item.vin} เรียบร้อย (${completedCount}/${totalCount})`,
+        COMPLETED: `Supplier ส่งงานรถคัน ${item.vin} เรียบร้อย (${doneCount}/${totalCount})`,
+        APPROVED: `สาขาอนุมัติรถคัน ${item.vin} (อนุมัติแล้ว ${approvedCount}/${totalCount - cancelledCount})`,
         REJECTED: `สาขาตีกลับรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
         CANCELLED: `Supplier ปฏิเสธรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''} (ปฏิเสธ ${cancelledCount}/${totalCount})`,
         PENDING: `รีเซ็ตสถานะรถคัน ${item.vin} กลับเป็นรอดำเนินการ`,
@@ -197,13 +254,14 @@ export async function PATCH(
 
       return {
         item: updatedItem,
-        progress: { completed: completedCount, cancelled: cancelledCount, total: totalCount, allResolved },
+        progress: { completed: doneCount, approved: approvedCount, cancelled: cancelledCount, total: totalCount, allResolved, allApproved },
       };
     });
 
     // Audit Log: UPDATE_ITEM_STATUS
     const statusLabel: Record<string, string> = {
       COMPLETED: 'ส่งงาน',
+      APPROVED: 'อนุมัติ',
       CANCELLED: 'ปฏิเสธ',
       REJECTED: 'ตีกลับ',
       PENDING: 'รีเซ็ต',

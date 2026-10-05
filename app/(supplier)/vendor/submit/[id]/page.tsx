@@ -50,7 +50,7 @@ export default function SupplierSubmitPage() {
 
   const isCarWash = job.jobType === 'CAR_WASH';
   const pendingItems = job.carWashItems?.filter(i => i.status === 'PENDING') || [];
-  const completedItemsList = job.carWashItems?.filter(i => i.status === 'COMPLETED') || [];
+  const completedItemsList = job.carWashItems?.filter(i => i.status === 'COMPLETED' || i.status === 'APPROVED') || [];
   const allItemsCompleted = isCarWash && pendingItems.length === 0 && (job.carWashItems?.length || 0) > 0;
 
   // Handle per-item submit
@@ -198,7 +198,7 @@ export default function SupplierSubmitPage() {
           <div className="flex flex-col gap-2.5">
             <p className="text-xs font-semibold text-gray-700">รถที่ต้องล้าง:</p>
             {job.carWashItems.map((item) => {
-              const isItemCompleted = item.status === 'COMPLETED' || completedItems.has(item.id);
+              const isItemCompleted = item.status === 'COMPLETED' || item.status === 'APPROVED' || completedItems.has(item.id);
               const isItemSubmitting = submittingItemId === item.id;
 
               return (

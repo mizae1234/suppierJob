@@ -12,7 +12,9 @@ import {
   Invoice, 
   JobStatus, 
   JobEvidence,
-  CarWashItem 
+  CarWashItem,
+  CarWashItemStatus,
+  CarWashItemProgress,
 } from '@/types';
 import { useAuth } from '@/context/AuthContext';
 
@@ -98,7 +100,7 @@ interface AppContextType {
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
   updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<void>;
-  updateCarWashItemStatus: (jobId: string, itemId: string, status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED', remarks?: string) => Promise<{ completed: number; total: number; allCompleted: boolean } | null>;
+  updateCarWashItemStatus: (jobId: string, itemId: string, status: CarWashItemStatus, remarks?: string) => Promise<CarWashItemProgress | null>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
@@ -317,9 +319,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateCarWashItemStatus = async (
     jobId: string,
     itemId: string,
-    status: 'PENDING' | 'COMPLETED' | 'REJECTED' | 'CANCELLED',
+    status: CarWashItemStatus,
     remarks?: string
-  ): Promise<{ completed: number; total: number; allCompleted: boolean } | null> => {
+  ): Promise<CarWashItemProgress | null> => {
     try {
       const res = await fetch(`/api/jobs/${jobId}/items/${itemId}/status`, {
         method: 'PATCH',
@@ -329,7 +331,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = await res.json();
       if (data.success) {
         await fetchData();
-        return data.progress;
+        return { ...data.progress, allCompleted: !!data.progress?.allResolved };
       }
     } catch (e) {
       console.error('Update car wash item status failed:', e);

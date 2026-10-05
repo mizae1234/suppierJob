@@ -693,7 +693,7 @@ function JobsContent() {
                       </h4>
                       <div className="flex items-center gap-2 text-[10px]">
                         {(() => {
-                          const completed = activeJob.carWashItems.filter(i => i.status === 'COMPLETED').length;
+                          const completed = activeJob.carWashItems.filter(i => i.status === 'COMPLETED' || i.status === 'APPROVED').length;
                           const cancelled = activeJob.carWashItems.filter(i => i.status === 'CANCELLED' || i.status === 'REJECTED').length;
                           return (
                             <>
@@ -708,7 +708,7 @@ function JobsContent() {
 
                     {/* Progress Bar */}
                     {(() => {
-                      const completed = activeJob.carWashItems.filter(i => i.status === 'COMPLETED').length;
+                      const completed = activeJob.carWashItems.filter(i => i.status === 'COMPLETED' || i.status === 'APPROVED').length;
                       const cancelled = activeJob.carWashItems.filter(i => i.status === 'CANCELLED' || i.status === 'REJECTED').length;
                       const total = activeJob.carWashItems.length;
                       if (completed === 0 && cancelled === 0) return null;
@@ -1535,10 +1535,10 @@ function JobsContent() {
                           <tbody>
                             {slideItems.map((item, idx) => {
                               const isItemCancelled = item.status === 'CANCELLED';
-                              const isItemDone = item.status === 'COMPLETED';
+                              const isItemDone = item.status === 'COMPLETED' || item.status === 'APPROVED';
                               const statusLabel = isItemCancelled 
                                 ? 'ปฏิเสธ' 
-                                : isJobApproved 
+                                : (isJobApproved || item.status === 'APPROVED')
                                   ? 'ตรวจรับแล้ว' 
                                   : isItemDone 
                                     ? 'ส่งแล้ว' 

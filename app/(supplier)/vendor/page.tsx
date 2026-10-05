@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   XCircle,
+  RotateCcw,
   ArrowRight,
   Sparkles,
   Truck,
@@ -101,13 +102,22 @@ export default function SupplierDashboardPage() {
       href: '/vendor/jobs?tab=approved',
     },
     {
-      label: 'ปฏิเสธ/ตีกลับ',
-      sublabel: 'ยกเลิกหรือขอแก้ไข',
-      count: stats.rejected.length + stats.cancelled.length,
+      label: 'ตีกลับ',
+      sublabel: 'สาขาให้แก้ไข',
+      count: stats.rejected.length,
+      icon: RotateCcw,
+      color: '#ea580c',
+      iconBg: '#fff7ed',
+      href: '/vendor/jobs?tab=returned',
+    },
+    {
+      label: 'ปฏิเสธ',
+      sublabel: 'ปฏิเสธรับงาน',
+      count: stats.cancelled.length,
       icon: XCircle,
       color: '#ef4444',
       iconBg: '#fef2f2',
-      href: '/vendor/jobs?tab=rejected',
+      href: '/vendor/jobs?tab=declined',
     },
   ];
 
@@ -159,7 +169,7 @@ export default function SupplierDashboardPage() {
       </div>
 
       {/* 2. Stat Cards — 4 columns, compact */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {counterCards.map(card => {
           const Icon = card.icon;
           return (
