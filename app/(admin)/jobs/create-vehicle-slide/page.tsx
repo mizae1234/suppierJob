@@ -385,33 +385,6 @@ export default function CreateVehicleSlidePage() {
             </p>
           </div>
         </div>
-
-        <div className="p-3 rounded-2xl bg-[#eaf5ee] border border-emerald-950/10 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-[#0f5238] shadow-xs">
-            <MapPin className="w-4 h-4" />
-          </div>
-          <div>
-            {(currentRole === 'ADMIN' || currentRole === 'MASTER') ? (
-              <>
-                <select
-                  value={selectedOriginBranchId}
-                  onChange={(e) => setSelectedOriginBranchId(e.target.value)}
-                  className="text-xs font-bold text-gray-900 bg-transparent border-none outline-none cursor-pointer pr-4"
-                >
-                  {availableBranches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-emerald-700">มีรถพร้อมสไลด์: {branchStockVehicles.length} คัน</p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-bold text-gray-900">ต้นทาง: {activeBranch?.name}</p>
-                <p className="text-[11px] text-emerald-700">มีรถพร้อมสไลด์: {branchStockVehicles.length} คัน</p>
-              </>
-            )}
-          </div>
-        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
