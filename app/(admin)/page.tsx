@@ -4,7 +4,6 @@ import React, { useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
-import { DashboardStatsCards } from '@/components/dashboard/DashboardStatsCards';
 import { WorkflowPipeline } from '@/components/dashboard/WorkflowPipeline';
 import { UrgentApprovalsSection } from '@/components/dashboard/UrgentApprovalsSection';
 import { RecentJobsTable } from '@/components/dashboard/RecentJobsTable';
@@ -73,27 +72,17 @@ export default function DashboardPage() {
         activeBranchName={activeBranch?.name}
       />
 
-      {/* 2. Key Metrics KPI 6-Cards Grid */}
-      <DashboardStatsCards
-        totalJobsCount={stats.totalCount}
-        pendingSupplierCount={stats.pendingSupplier.length}
-        pendingCarWashCount={stats.pendingCarWashCount}
-        pendingSlideCount={stats.pendingSlideCount}
-        waitingApprovalCount={stats.waitingApproval.length}
-        rejectedCount={stats.rejectedCount}
-        approvedCount={stats.approvedCount}
-        approvedAmount={stats.approvedAmount}
-        invoicedCount={stats.invoicedCount}
-        invoicedAmount={stats.invoicedAmount}
-      />
-
-      {/* 3. Workflow Pipeline (01 Dispatched -> 05 Invoiced) */}
+      {/* 2. Unified Workflow Pipeline & Key Metrics (01 Dispatched -> 05 Invoiced with Amounts) */}
       <WorkflowPipeline
+        totalJobsCount={stats.totalCount}
         pendingSupplierCount={stats.pendingSupplier.length}
         inProgressCount={stats.inProgressCount}
         waitingApprovalCount={stats.waitingApproval.length}
         approvedCount={stats.approvedCount}
+        approvedAmount={stats.approvedAmount}
+        rejectedCount={stats.rejectedCount}
         invoicedCount={stats.invoicedCount}
+        invoicedAmount={stats.invoicedAmount}
       />
 
       {/* 4. Urgent Waiting Approvals Banner & Preview Cards */}
