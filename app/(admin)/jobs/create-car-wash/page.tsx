@@ -26,7 +26,9 @@ import {
   Building,
   ChevronDown,
   AlertCircle,
-  Loader2
+  Loader2,
+  Lock,
+  Truck
 } from 'lucide-react';
 
 export default function CreateCarWashPage() {
@@ -439,41 +441,78 @@ export default function CreateCarWashPage() {
                 filteredVehicles.map(v => {
                   const isSelected = selectedItems.some(it => it.vin === v.vin);
                   const busyJob = v.activeJob;
+                  const isWash = busyJob?.jobType === 'CAR_WASH';
                   return (
                     <div
                       key={v.vin}
                       onClick={() => handleToggleVehicle(v)}
-                      title={busyJob ? `มีงานค้าง: ${busyJob.jobNumber}` : undefined}
-                      className={`p-2.5 rounded-xl border text-xs transition-all flex items-center justify-between gap-2 ${
+                      title={busyJob ? `รถคันนี้มีงานค้างอยู่: ${busyJob.jobNumber} (${isWash ? 'งานล้างรถ' : 'งานรถสไลด์'})` : undefined}
+                      className={`p-3 rounded-xl border transition-all flex items-start gap-3 select-none ${
                         isSelected
-                          ? 'border-[#0f5238] bg-[#f4f9f5] font-semibold cursor-pointer'
+                          ? 'border-emerald-600 bg-emerald-50/70 shadow-xs ring-1 ring-emerald-500/20 cursor-pointer'
                           : busyJob
-                          ? 'border-gray-100 bg-gray-50/80 opacity-60 cursor-not-allowed'
-                          : 'border-gray-200 hover:bg-gray-50 cursor-pointer'
+                          ? 'border-gray-200/80 bg-gray-50/90 hover:bg-gray-100/60 cursor-not-allowed'
+                          : 'border-gray-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/20 hover:shadow-2xs cursor-pointer'
                       }`}
                     >
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-[#0f5238] border-[#0f5238] text-white' : busyJob ? 'border-gray-200 bg-gray-100' : 'border-gray-300'
-                        }`}>
-                          {isSelected && <Check className="w-3 h-3" />}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-mono font-bold text-gray-900 truncate">{v.vin}</p>
-                          <p className="text-[11px] text-gray-500 truncate">{v.model} • {v.color}</p>
-                          {busyJob && (
-                            <p className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
-                              <AlertCircle className="w-3 h-3" />
-                              มีงาน{busyJob.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}ค้าง · <span className="font-mono">{busyJob.jobNumber}</span>
-                            </p>
+                      {/* Left icon / checkbox */}
+                      <div className="pt-0.5 shrink-0">
+                        {isSelected ? (
+                          <div className="w-5 h-5 rounded-lg bg-emerald-700 text-white flex items-center justify-center shadow-2xs">
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          </div>
+                        ) : busyJob ? (
+                          <div className="w-5 h-5 rounded-lg bg-amber-100/90 text-amber-700 border border-amber-300/70 flex items-center justify-center shadow-2xs">
+                            <Lock className="w-3 h-3" />
+                          </div>
+                        ) : (
+                          <div className="w-5 h-5 rounded-lg border-2 border-gray-300 hover:border-emerald-500 bg-white transition-colors" />
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Top row: VIN + License plate */}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-mono font-bold text-xs text-gray-900 tracking-tight truncate">
+                            {v.vin}
+                          </p>
+                          {v.licensePlate && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-800 text-[10px] font-bold shadow-2xs shrink-0 whitespace-nowrap">
+                              {v.licensePlate}
+                            </span>
                           )}
                         </div>
+
+                        {/* Model & Color */}
+                        <p className="text-[11px] font-medium text-gray-600 truncate mt-0.5">
+                          {v.model}
+                          {v.color && <span className="text-gray-400"> · {v.color}</span>}
+                        </p>
+
+                        {/* Status tag */}
+                        {busyJob ? (
+                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/90 border border-amber-200/80 text-amber-800 text-[10px] font-medium flex-wrap">
+                            {isWash ? (
+                              <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+                            ) : (
+                              <Truck className="w-3 h-3 text-sky-600 shrink-0" />
+                            )}
+                            <span className="font-semibold">
+                              ติดงาน{isWash ? 'ล้างรถ' : 'รถสไลด์'}
+                            </span>
+                            <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-200 text-amber-900 text-[10px]">
+                              {busyJob.jobNumber}
+                            </span>
+                            <span className="text-gray-400 text-[9px]">(รอดำเนินการ)</span>
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>พร้อมส่งล้าง</span>
+                          </div>
+                        )}
                       </div>
-                      {v.licensePlate && (
-                        <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-[10px] shrink-0">
-                          {v.licensePlate}
-                        </span>
-                      )}
                     </div>
                   );
                 })
