@@ -109,10 +109,10 @@ function ApprovalsContent() {
       } else {
         showToast(
           proxyApproval 
-            ? `✅ อนุมัติแทนสาขาปลายทางเรียบร้อย (${job.jobNumber})` 
+            ? `อนุมัติแทนสาขาปลายทางเรียบร้อย (${job.jobNumber})` 
             : isDest 
-            ? `🎉 ยืนยันรับรถเข้าสาขาเรียบร้อย (${job.jobNumber})` 
-            : `🎉 อนุมัติใบงาน ${job.jobNumber} สำเร็จ`, 
+            ? `ยืนยันรับรถเข้าสาขาเรียบร้อย (${job.jobNumber})` 
+            : `อนุมัติใบงาน ${job.jobNumber} สำเร็จ`, 
           'success'
         );
       }

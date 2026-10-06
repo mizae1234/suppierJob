@@ -370,9 +370,6 @@ export default function CreateCarWashPage() {
                       <p className="text-[11px] text-gray-500 mt-0.5">โทร: {sup.phone}</p>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded font-semibold text-[10px]" style={{ backgroundColor: theme.bgSoft, color: theme.primary }}>
-                    คาร์วอช
-                  </span>
                 </label>
               ))}
             </div>
