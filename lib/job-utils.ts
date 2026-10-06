@@ -351,20 +351,56 @@ export function getScheduleBadge(job: Job, now: Date = new Date()): ScheduleBadg
 }
 
 /**
- * SlideDirection indicates whether a branch is receiving or sending the vehicle in a slide job.
- * - 'INBOUND': The given branch is the destination branch (รับเข้า)
- * - 'OUTBOUND': The given branch is the origin branch (ส่งออก)
- * - null: Not a vehicle slide job, destination is external/map pin, or the branch is neither
+ * SlideDirection indicates whether a branch or company is receiving or sending the vehicle in a slide job.
+ * - 'INBOUND': Receiving the vehicle (รับเข้า)
+ * - 'OUTBOUND': Sending the vehicle out (ส่งออก)
+ * - 'INTERNAL': Moving between branches within the same company (ย้ายสาขา)
+ * - null: Not a vehicle slide job, or not applicable
  */
-export type SlideDirection = 'INBOUND' | 'OUTBOUND' | null;
+export type SlideDirection = 'INBOUND' | 'OUTBOUND' | 'INTERNAL' | null;
 
-export function getSlideDirection(job: Job, branchId?: string | null): SlideDirection {
-  if (job.jobType !== 'VEHICLE_SLIDE' || !branchId) return null;
-  if (job.destBranchId && job.destBranchId === branchId) {
-    return 'INBOUND';
+export function getSlideDirection(
+  job: Job,
+  branchId?: string | null,
+  companyCode?: string | null
+): SlideDirection {
+  if (job.jobType !== 'VEHICLE_SLIDE') return null;
+
+  // 1. Branch-specific perspective (Priority)
+  if (branchId) {
+    if (job.destBranchId && job.destBranchId === branchId) {
+      return 'INBOUND';
+    }
+    if (job.originBranchId === branchId || job.branchId === branchId) {
+      return 'OUTBOUND';
+    }
   }
-  if (job.originBranchId === branchId || job.branchId === branchId) {
-    return 'OUTBOUND';
+
+  // 2. Company-level perspective (Admin / Master view)
+  if (companyCode && companyCode !== 'ALL') {
+    const isOriginCompany = job.companyCode === companyCode;
+
+    // Check destination company from branch name or branch info
+    let isDestCompany = false;
+    if (job.destBranchName) {
+      if (companyCode === 'GI' && job.destBranchName.startsWith('GI')) {
+        isDestCompany = true;
+      } else if (companyCode === 'EV7' && job.destBranchName.startsWith('EV7')) {
+        isDestCompany = true;
+      }
+    }
+
+    if (isOriginCompany && isDestCompany) {
+      return 'INTERNAL';
+    }
+    if (isOriginCompany) {
+      return 'OUTBOUND';
+    }
+    if (isDestCompany) {
+      return 'INBOUND';
+    }
   }
+
   return null;
 }
+

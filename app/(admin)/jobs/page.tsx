@@ -14,6 +14,7 @@ import {
   DATE_RANGE_OPTIONS,
   DEFAULT_DATE_RANGE,
   DateRangePreset,
+  getSlideDirection,
 } from '@/lib/job-utils';
 import {
   JobFilters,
@@ -67,6 +68,7 @@ function JobsContent() {
     currentSupplierId, 
     activeBranch,
     currentBranchId,
+    currentCompany,
     updateJobStatus, 
     updateCarWashItemStatus,
     addJobEvidence,
@@ -513,10 +515,9 @@ function JobsContent() {
                   {/* Direction Badge for Vehicle Slide */}
                   {activeJob.jobType === 'VEHICLE_SLIDE' && (() => {
                     const myBranchId = activeBranch?.id || currentBranchId;
-                    const isDest = Boolean(activeJob.destBranchId && activeJob.destBranchId === myBranchId);
-                    const isOrigin = Boolean((activeJob.originBranchId && activeJob.originBranchId === myBranchId) || (activeJob.branchId && activeJob.branchId === myBranchId));
+                    const dir = getSlideDirection(activeJob, myBranchId, currentCompany);
 
-                    if (isDest) {
+                    if (dir === 'INBOUND') {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
@@ -524,14 +525,14 @@ function JobsContent() {
                         </span>
                       );
                     }
-                    if (isOrigin && activeJob.destBranchId) {
+                    if (dir === 'OUTBOUND') {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-xs">
                           📤 ส่งออก (สาขาต้นทาง)
                         </span>
                       );
                     }
-                    if (activeJob.destBranchId) {
+                    if (dir === 'INTERNAL' || activeJob.destBranchId) {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs">
                           🚚 ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}

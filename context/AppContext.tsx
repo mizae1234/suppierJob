@@ -165,11 +165,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ─── Sync user auth data to context ─────────────
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    if (!isAuthenticated || !user) {
+      setCurrentRole('ADMIN');
+      setCurrentCompany('ALL');
+      setCurrentBranchId('');
+      setCurrentSupplierId('');
+      return;
+    }
 
     setCurrentRole(user.role as UserRole);
-    if (user.branchId) setCurrentBranchId(user.branchId);
-    if (user.supplierId) setCurrentSupplierId(user.supplierId);
+    setCurrentBranchId(user.branchId || '');
+    setCurrentSupplierId(user.supplierId || '');
 
     // Set company based on user's role + login selection
     if (user.role === 'MASTER') {
@@ -187,7 +193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     fetchData();
-  }, [isAuthenticated, user, fetchData]);
+  }, [isAuthenticated, user, selectedCompany, fetchData]);
 
   const activeBranch = branches.find(b => b.id === currentBranchId);
   const activeSupplier = suppliers.find(s => s.id === currentSupplierId);

@@ -4,7 +4,7 @@ import React, { useState, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
-import { getJobTotalCost, getVehicleLabel } from '@/lib/job-utils';
+import { getJobTotalCost, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
 import { useToast } from '@/components/ui/Toast';
 import { 
   CheckCircle2, 
@@ -54,7 +54,8 @@ function ApprovalsContent() {
     updateCarWashItemStatus, 
     currentRole,
     activeBranch,
-    currentBranchId
+    currentBranchId,
+    currentCompany
   } = useApp();
   const { showToast } = useToast();
 
@@ -366,10 +367,9 @@ function ApprovalsContent() {
                           {/* Direction Badge for Vehicle Slide */}
                           {job.jobType === 'VEHICLE_SLIDE' && (() => {
                             const myBranchId = activeBranch?.id || currentBranchId;
-                            const isDest = Boolean(job.destBranchId && job.destBranchId === myBranchId);
-                            const isOrigin = Boolean((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId));
+                            const dir = getSlideDirection(job, myBranchId, currentCompany);
 
-                            if (isDest) {
+                            if (dir === 'INBOUND') {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10px] shadow-2xs">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
@@ -377,14 +377,14 @@ function ApprovalsContent() {
                                 </span>
                               );
                             }
-                            if (isOrigin && job.destBranchId) {
+                            if (dir === 'OUTBOUND') {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-[10px] shadow-2xs">
                                   📤 ส่งออก (สาขาต้นทาง)
                                 </span>
                               );
                             }
-                            if (job.destBranchId) {
+                            if (dir === 'INTERNAL' || job.destBranchId) {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
                                   🚚 ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}

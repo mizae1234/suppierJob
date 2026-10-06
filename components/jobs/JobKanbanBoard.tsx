@@ -114,7 +114,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
   onApproveItem,
   onRejectItem,
 }) => {
-  const { activeBranch, currentBranchId } = useApp();
+  const { activeBranch, currentBranchId, currentCompany } = useApp();
   const vehicleCards = useMemo(() => toVehicleCards(jobs), [jobs]);
   const isReviewer = currentRole !== 'SUPPLIER';
 
@@ -289,7 +289,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                               {/* Direction chip for slide jobs */}
                               {!isCarWash && (() => {
                                 const myBranchId = activeBranch?.id || currentBranchId;
-                                const dir = getSlideDirection(job, myBranchId);
+                                const dir = getSlideDirection(job, myBranchId, currentCompany);
                                 if (dir === 'INBOUND') {
                                   return (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
@@ -301,6 +301,13 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                                   return (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
                                       📤 ส่งออก
+                                    </span>
+                                  );
+                                }
+                                if (dir === 'INTERNAL') {
+                                  return (
+                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                                      🔄 ย้ายสาขา
                                     </span>
                                   );
                                 }
