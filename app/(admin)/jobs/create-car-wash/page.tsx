@@ -23,7 +23,6 @@ import {
   ArrowLeft,
   Search,
   Plus,
-  Building,
   ChevronDown,
   AlertCircle,
   Loader2,
@@ -61,7 +60,6 @@ export default function CreateCarWashPage() {
   const [requestedBy, setRequestedBy] = useState<string>(autoName);
   const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
   const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
-  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
   const [openWashTypeVin, setOpenWashTypeVin] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -270,68 +268,6 @@ export default function CreateCarWashPage() {
             <p className="text-xs text-gray-500 mt-0.5">
               เลือก Supplier และระบุรถ VIN จากสต็อกสาขาเพื่อออกใบสั่งงานหลายคันพร้อมกัน
             </p>
-          </div>
-        </div>
-
-        {/* Current Branch Badge */}
-        <div className="p-3 rounded-2xl border flex items-center gap-3 relative" style={{ backgroundColor: theme.bgFooter, borderColor: theme.borderSoft }}>
-          <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs" style={{ color: theme.primary }}>
-            <Car className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            {(currentRole === 'ADMIN' || currentRole === 'MASTER') ? (
-              availableBranches.length > 1 ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)}
-                    onBlur={() => setTimeout(() => setIsBranchDropdownOpen(false), 200)}
-                    className="flex items-center gap-2 text-xs font-bold cursor-pointer"
-                    style={{ color: theme.primary }}
-                  >
-                    <span className="truncate">{availableBranches.find(b => b.id === selectedBranchId)?.name || 'เลือกสาขา'}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${isBranchDropdownOpen ? 'rotate-180' : ''}`} style={{ color: theme.textMuted }} />
-                  </button>
-
-                  {/* Custom Branch Dropdown */}
-                  {isBranchDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-64 rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden z-50">
-                      {availableBranches.map((branch) => {
-                        const isSelected = selectedBranchId === branch.id;
-                        return (
-                          <button
-                            type="button"
-                            key={branch.id}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              setSelectedBranchId(branch.id);
-                              setSelectedItems([]);
-                              setIsBranchDropdownOpen(false);
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs transition-colors cursor-pointer ${
-                              isSelected
-                                ? 'bg-gray-50 text-gray-900 font-bold'
-                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium'
-                            }`}
-                          >
-                            <Building className="w-3.5 h-3.5 shrink-0 opacity-50" />
-                            <span className="flex-1 text-left truncate">{branch.name}</span>
-                            {isSelected && (
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: theme.primary }} />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-xs font-bold text-gray-900">{availableBranches[0]?.name || 'EV7'}</p>
-              )
-            ) : (
-              <p className="text-xs font-bold text-gray-900">{activeBranch?.name || 'EV7'}</p>
-            )}
-            <p className="text-[11px]" style={{ color: theme.textMuted }}>รถในสต็อก{currentCompany === 'EV7' ? '' : 'สาขานี้'}: {branchStockVehicles.length} คัน</p>
           </div>
         </div>
       </div>
