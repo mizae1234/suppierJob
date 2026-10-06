@@ -10,7 +10,12 @@ export async function GET(request: NextRequest) {
   const { user } = auth;
 
   try {
-    const whereClause = user.role === 'ADMIN' && user.companyId ? { companyId: user.companyId } : {};
+    const whereClause =
+      user.role === 'BRANCH' && user.branchId
+        ? { id: user.branchId }
+        : user.role === 'ADMIN' && user.companyId
+        ? { companyId: user.companyId }
+        : {};
 
     const branches = await prisma.branch.findMany({
       where: whereClause,
@@ -35,7 +40,17 @@ export async function GET(request: NextRequest) {
     const activeJobs = await prisma.job.findMany({
       where: {
         status: { in: ['PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL'] },
-        ...(user.role === 'ADMIN' && user.companyId ? { companyId: user.companyId } : {}),
+        ...(user.role === 'BRANCH' && user.branchId
+          ? {
+              OR: [
+                { branchId: user.branchId },
+                { originBranchId: user.branchId },
+                { destBranchId: user.branchId },
+              ],
+            }
+          : user.role === 'ADMIN' && user.companyId
+          ? { companyId: user.companyId }
+          : {}),
       },
       select: {
         id: true,

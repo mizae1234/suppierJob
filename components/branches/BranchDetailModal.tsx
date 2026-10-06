@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { Branch } from '@/types';
 import {
   Building2,
@@ -24,7 +25,16 @@ export interface BranchDetailModalProps {
 }
 
 export function BranchDetailModal({ branch, onClose, onUpdated, onDeleted, onOpenMap }: BranchDetailModalProps) {
-  const { currentRole } = useApp();
+  const { currentRole, currentCompany } = useApp();
+  const { user } = useAuth();
+  const isBranchUser =
+    currentRole === 'BRANCH' ||
+    user?.role === 'BRANCH' ||
+    Boolean(user?.branchId) ||
+    currentCompany === 'EV7' ||
+    user?.companyCode === 'EV7' ||
+    branch.code === 'EV7';
+
   const [activeTab, setActiveTab] = useState<'INFO' | 'VEHICLES' | 'USERS'>('INFO');
   const [detailData, setDetailData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -185,26 +195,36 @@ export function BranchDetailModal({ branch, onClose, onUpdated, onDeleted, onOpe
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
-                    ชื่อสาขา: *
+                    ชื่อสาขา: {isBranchUser ? <span className="text-[10px] text-gray-400 font-normal">(จัดการโดยส่วนกลาง)</span> : '*'}
                   </label>
                   <input
                     type="text"
                     required
+                    disabled={isBranchUser}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-gray-50 border border-gray-200 text-xs font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
+                    className={`w-full h-10 px-3 rounded-xl border text-xs font-medium focus:outline-none transition-colors ${
+                      isBranchUser
+                        ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-50 border-gray-200 text-gray-800 focus:bg-white focus:ring-2 focus:ring-[#0f5238]'
+                    }`}
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
-                    รหัสสาขา (Code): *
+                    รหัสสาขา (Code): {isBranchUser ? <span className="text-[10px] text-gray-400 font-normal">(จัดการโดยส่วนกลาง)</span> : '*'}
                   </label>
                   <input
                     type="text"
                     required
+                    disabled={isBranchUser}
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    className="w-full h-10 px-3 rounded-xl bg-gray-50 border border-gray-200 text-xs font-mono font-bold text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
+                    className={`w-full h-10 px-3 rounded-xl border text-xs font-mono font-bold focus:outline-none transition-colors ${
+                      isBranchUser
+                        ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
+                        : 'bg-gray-50 border-gray-200 text-gray-800 focus:bg-white focus:ring-2 focus:ring-[#0f5238]'
+                    }`}
                   />
                 </div>
               </div>

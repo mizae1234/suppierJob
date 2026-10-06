@@ -9,7 +9,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request, ['MASTER', 'ADMIN']);
+  const auth = await requireAuth(request, ['MASTER', 'ADMIN', 'BRANCH']);
   if (auth.response) return auth.response;
   const { user } = auth;
 
@@ -30,6 +30,10 @@ export async function PATCH(
 
     if (user.role === 'ADMIN' && user.companyId && user.companyId !== branch.companyId) {
       return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขสาขาของบริษัทอื่น' }, { status: 403 });
+    }
+
+    if (user.role === 'BRANCH' && user.branchId !== branch.id) {
+      return NextResponse.json({ error: 'คุณสามารถแก้ไขพิกัดได้เฉพาะสาขาของตนเองเท่านั้น' }, { status: 403 });
     }
 
     const updated = await prisma.branch.update({

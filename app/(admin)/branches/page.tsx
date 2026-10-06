@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Branch, Company } from '@/types';
 import { BranchDetailModal, CreateBranchModal } from '@/components/branches';
@@ -40,11 +41,21 @@ export default function BranchManagementPage() {
     vehicles,
     jobs,
     currentRole,
+    currentCompany,
     refreshData,
   } = useApp();
+  const { user } = useAuth();
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const isBranchUser =
+    currentRole === 'BRANCH' ||
+    user?.role === 'BRANCH' ||
+    Boolean(user?.branchId) ||
+    currentCompany === 'EV7' ||
+    user?.companyCode === 'EV7' ||
+    (!isLoading && branches.length <= 1);
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState<'ALL' | string>('ALL');
   const [gpsFilter, setGpsFilter] = useState<'ALL' | 'HAS_GPS' | 'NO_GPS'>('ALL');
@@ -174,157 +185,475 @@ export default function BranchManagementPage() {
             >
               <Building2 className="w-5 h-5 text-white" />
             </div>
-            <span>จัดการข้อมูลสาขา (Branch Management)</span>
+            <span>
+              {isBranchUser || (!isLoading && branches.length <= 1) ? 'ข้อมูลสาขาของคุณ (Branch Profile)' : 'จัดการข้อมูลสาขา (Branch Management)'}
+            </span>
           </h1>
           <p className="text-xs text-gray-500 mt-1">
-            บริหารรายชื่อสาขา พิกัด GPS จุดรับ-ส่งรถ สต็อกรถประจำสาขา และข้อมูลการติดต่อ
+            {isBranchUser || (!isLoading && branches.length <= 1)
+              ? 'ตรวจสอบและแก้ไขข้อมูลการติดต่อ จุดรับ-ส่งรถ และพิกัด GPS ประจำสาขาของคุณ'
+              : 'บริหารรายชื่อสาขา พิกัด GPS จุดรับ-ส่งรถ สต็อกรถประจำสาขา และข้อมูลการติดต่อ'}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-200/80 shadow-2xs">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            สาขาในระบบ {branches.length} สาขา
-          </span>
+          {isBranchUser || (!isLoading && branches.length <= 1) ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-200/80 shadow-2xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              สาขาของคุณ: {branches[0]?.name || user?.branchName || 'สาขาประจำตัว'} ({branches[0]?.code || user?.branchCode || '-'})
+            </span>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-200/80 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                สาขาในระบบ {branches.length} สาขา
+              </span>
 
-          {['MASTER', 'ADMIN'].includes(currentRole) && (
-            <button
-              onClick={() => setIsCreateOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-xs font-bold shadow-sm transition-all cursor-pointer hover:shadow-md"
-            >
-              <Plus className="w-4 h-4" />
-              <span>เพิ่มสาขาใหม่</span>
-            </button>
+              {currentRole === 'MASTER' && (
+                <button
+                  onClick={() => setIsCreateOpen(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-xs font-bold shadow-sm transition-all cursor-pointer hover:shadow-md"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>เพิ่มสาขาใหม่</span>
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* ── Toolbar: Search, Filters & View Toggle ── */}
-      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Left: Search input */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ค้นหาชื่อสาขา, รหัสสาขา, ที่อยู่, เบอร์โทร..."
-            className="w-full h-10 pl-10 pr-8 rounded-xl bg-[#f4f9f5] border border-gray-200/80 text-xs font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0f5238] transition-all"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-
-        {/* Right: Filter Tabs & View Toggle */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Company Filter Tabs */}
-          <div className="flex items-center p-1 rounded-xl bg-[#f4f9f5] border border-gray-200/60">
-            <button
-              onClick={() => setCompanyFilter('ALL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                companyFilter === 'ALL'
-                  ? 'bg-white text-gray-900 shadow-2xs'
-                  : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              ทั้งหมด ({branches.length})
-            </button>
-            {giCount > 0 && (
+      {/* ── Toolbar: Search, Filters & View Toggle (Only for MASTER / multi-branch ADMIN) ── */}
+      {!isBranchUser && !isLoading && branches.length > 1 && (
+        <div className="bg-white p-3 sm:p-4 rounded-2xl border border-gray-100 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Left: Search input */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหาชื่อสาขา, รหัสสาขา, ที่อยู่, เบอร์โทร..."
+              className="w-full h-10 pl-10 pr-8 rounded-xl bg-[#f4f9f5] border border-gray-200/80 text-xs font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0f5238] transition-all"
+            />
+            {searchTerm && (
               <button
-                onClick={() => setCompanyFilter('GI')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  companyFilter === 'GI'
-                    ? 'bg-white text-gray-900 shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
               >
-                GI ({giCount})
-              </button>
-            )}
-            {ev7Count > 0 && (
-              <button
-                onClick={() => setCompanyFilter('EV7')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  companyFilter === 'EV7'
-                    ? 'bg-white text-gray-900 shadow-2xs'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                EV7 ({ev7Count})
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          {/* GPS status filter */}
-          <div className="flex items-center p-1 rounded-xl bg-[#f4f9f5] border border-gray-200/60">
-            <button
-              onClick={() => setGpsFilter('ALL')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                gpsFilter === 'ALL' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              พิกัดทั้งหมด
-            </button>
-            <button
-              onClick={() => setGpsFilter('HAS_GPS')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                gpsFilter === 'HAS_GPS'
-                  ? 'bg-white text-emerald-800 shadow-2xs'
-                  : 'text-gray-500 hover:text-emerald-700'
-              }`}
-            >
-              🟢 มีพิกัด ({hasGpsCount})
-            </button>
-            <button
-              onClick={() => setGpsFilter('NO_GPS')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                gpsFilter === 'NO_GPS'
-                  ? 'bg-white text-amber-800 shadow-2xs'
-                  : 'text-gray-500 hover:text-amber-700'
-              }`}
-            >
-              🟡 ไม่มีพิกัด ({noGpsCount})
-            </button>
-          </div>
+          {/* Right: Filter Tabs & View Toggle */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Company Filter Tabs */}
+            <div className="flex items-center p-1 rounded-xl bg-[#f4f9f5] border border-gray-200/60">
+              <button
+                onClick={() => setCompanyFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  companyFilter === 'ALL'
+                    ? 'bg-white text-gray-900 shadow-2xs'
+                    : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                ทั้งหมด ({branches.length})
+              </button>
+              {giCount > 0 && (
+                <button
+                  onClick={() => setCompanyFilter('GI')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    companyFilter === 'GI'
+                      ? 'bg-white text-gray-900 shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  GI ({giCount})
+                </button>
+              )}
+              {ev7Count > 0 && (
+                <button
+                  onClick={() => setCompanyFilter('EV7')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    companyFilter === 'EV7'
+                      ? 'bg-white text-gray-900 shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  EV7 ({ev7Count})
+                </button>
+              )}
+            </div>
 
-          {/* View Mode Switcher */}
-          <div className="flex items-center p-1 rounded-xl bg-[#f4f9f5] border border-gray-200/60 ml-auto sm:ml-0">
-            <button
-              type="button"
-              onClick={() => setViewMode('CARDS')}
-              title="มุมมองการ์ด"
-              className={`p-1.5 rounded-lg transition-all ${
-                viewMode === 'CARDS'
-                  ? 'bg-white text-emerald-800 shadow-2xs'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('TABLE')}
-              title="มุมมองตาราง"
-              className={`p-1.5 rounded-lg transition-all ${
-                viewMode === 'TABLE'
-                  ? 'bg-white text-emerald-800 shadow-2xs'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              <TableIcon className="w-4 h-4" />
-            </button>
+            {/* GPS status filter */}
+            <div className="flex items-center p-1 rounded-xl bg-[#f4f9f5] border border-gray-200/60">
+              <button
+                onClick={() => setGpsFilter('ALL')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  gpsFilter === 'ALL' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                พิกัดทั้งหมด
+              </button>
+              <button
+                onClick={() => setGpsFilter('HAS_GPS')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  gpsFilter === 'HAS_GPS'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
+                    : 'text-gray-500 hover:text-emerald-700'
+                }`}
+              >
+                🟢 มีพิกัด ({hasGpsCount})
+              </button>
+              <button
+                onClick={() => setGpsFilter('NO_GPS')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  gpsFilter === 'NO_GPS'
+                    ? 'bg-white text-amber-800 shadow-2xs'
+                    : 'text-gray-500 hover:text-amber-700'
+                }`}
+              >
+                🟡 ไม่มีพิกัด ({noGpsCount})
+              </button>
+            </div>
+
+            {/* View Mode Switcher */}
+            <div className="flex items-center p-1 rounded-xl bg-[#f4f9f5] border border-gray-200/60 ml-auto sm:ml-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('CARDS')}
+                title="มุมมองการ์ด"
+                className={`p-1.5 rounded-lg transition-all ${
+                  viewMode === 'CARDS'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('TABLE')}
+                title="มุมมองตาราง"
+                className={`p-1.5 rounded-lg transition-all ${
+                  viewMode === 'TABLE'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <TableIcon className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Content View: Empty State ── */}
-      {filteredBranches.length === 0 ? (
+      {/* ── Content View ── */}
+      {isBranchUser || (!isLoading && branches.length <= 1) ? (
+        /* ── Dedicated Branch Profile Hub for Branch Admin ── */
+        (() => {
+          const myBranch = branches[0] || (user?.branchId ? branches.find((b) => b.id === user.branchId) : null);
+
+          if (isLoading) {
+            return (
+              <div className="bg-white rounded-3xl border border-gray-100 p-8 animate-pulse shadow-2xs flex flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-200" />
+                  <div className="space-y-2 flex-1">
+                    <div className="h-6 w-48 bg-gray-200 rounded" />
+                    <div className="h-4 w-32 bg-gray-100 rounded" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                  <div className="h-24 bg-gray-100 rounded-2xl" />
+                  <div className="h-24 bg-gray-100 rounded-2xl" />
+                  <div className="h-24 bg-gray-100 rounded-2xl" />
+                </div>
+              </div>
+            );
+          }
+
+          if (!myBranch) {
+            return (
+              <div className="p-12 text-center bg-white rounded-3xl border border-gray-100 shadow-2xs flex flex-col items-center justify-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <p className="text-gray-900 font-bold text-base">ไม่พบข้อมูลสาขาที่ผูกกับบัญชีผู้ใช้ของคุณ</p>
+                <p className="text-xs text-gray-500 max-w-md">
+                  กรุณาติดต่อผู้ดูแลระบบ (Master Admin) เพื่อตรวจสอบการกำหนดสาขาสังกัดของบัญชีคุณ
+                </p>
+              </div>
+            );
+          }
+
+          const hasGps = Boolean(myBranch.latitude && myBranch.longitude);
+          const branchVehicles = vehicles.filter((v) => v.currentBranchId === myBranch.id);
+          const branchJobs = jobs.filter(
+            (j) => j.branchId === myBranch.id || j.originBranchId === myBranch.id || j.destBranchId === myBranch.id
+          );
+          const activeJobs = branchJobs.filter((j) =>
+            ['PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL'].includes(j.status)
+          );
+          const completedJobs = branchJobs.filter((j) => ['APPROVED', 'INVOICED'].includes(j.status));
+          const monogram = getBranchMonogram(myBranch.name, myBranch.code);
+          const isGI = myBranch.companyCode === 'GI';
+
+          return (
+            <div className="flex flex-col gap-6">
+              {/* Main Branch Hub Card */}
+              <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                {/* Card Banner / Header */}
+                <div
+                  className="p-6 sm:p-8 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative"
+                  style={{
+                    background: isGI
+                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(4, 120, 87, 0.02) 100%)'
+                      : 'linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(3, 105, 161, 0.02) 100%)',
+                  }}
+                >
+                  <div className="flex items-center gap-5">
+                    <div
+                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl flex items-center justify-center text-white font-black text-xl sm:text-2xl tracking-wider shadow-md shrink-0"
+                      style={{
+                        background: isGI
+                          ? 'linear-gradient(135deg, #10b981, #047857)'
+                          : 'linear-gradient(135deg, #0284c7, #0369a1)',
+                      }}
+                    >
+                      {monogram}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="font-mono text-sm font-bold text-gray-700 bg-white/80 px-2.5 py-0.5 rounded-lg border border-gray-200/80 shadow-2xs">
+                          {myBranch.code}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-xs font-black tracking-wider ${
+                            isGI ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'
+                          }`}
+                        >
+                          {myBranch.companyCode || 'CORP'}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full font-bold text-xs border ${
+                            hasGps
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                              : 'bg-amber-50 text-amber-800 border-amber-300'
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full ${hasGps ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                          {hasGps ? 'มีพิกัด GPS ประจำสาขาแล้ว' : 'ยังไม่ได้ระบุพิกัด GPS'}
+                        </span>
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                        {myBranch.name}
+                      </h2>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        สังกัดบริษัท: {myBranch.companyName || myBranch.companyCode || '-'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Quick action buttons */}
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setMapPickerBranch(myBranch)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-xs font-bold shadow-sm hover:shadow transition-all cursor-pointer"
+                    >
+                      <Map className="w-4 h-4" />
+                      <span>{hasGps ? 'แก้ไขหมุดพิกัด GPS' : 'ปักหมุดพิกัดบนแผนที่'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBranch(myBranch)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-700" />
+                      <span>แก้ไขข้อมูลติดต่อ / ดูรายละเอียด</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Details Section */}
+                <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Contact & Location Info */}
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-700" />
+                      <span>ข้อมูลจุดบริการและช่องทางติดต่อ</span>
+                    </h3>
+
+                    <div className="space-y-3.5 bg-gray-50/70 p-5 rounded-2xl border border-gray-100">
+                      {/* Phone */}
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-white border border-gray-200/80 flex items-center justify-center text-emerald-700 shrink-0">
+                          <Phone className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-gray-400 block">เบอร์โทรศัพท์ติดต่อสาขา</span>
+                          {myBranch.phone ? (
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <a
+                                href={`tel:${myBranch.phone}`}
+                                className="text-sm font-bold text-gray-800 hover:text-emerald-700 transition-colors"
+                              >
+                                {myBranch.phone}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(myBranch.phone!, 'phone')}
+                                title="คัดลอกเบอร์โทร"
+                                className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 cursor-pointer"
+                              >
+                                {copiedId === 'phone' ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-amber-600 font-medium">ยังไม่ได้ระบุเบอร์โทรศัพท์</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Address */}
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-white border border-gray-200/80 flex items-center justify-center text-emerald-700 shrink-0 mt-0.5">
+                          <MapPin className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-gray-400 block">ที่อยู่จุดรับ-ส่งรถ</span>
+                          <p className="text-xs font-medium text-gray-800 leading-relaxed mt-0.5 break-words">
+                            {myBranch.address || 'ยังไม่ได้ระบุที่อยู่สาขา'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* GPS Coordinates */}
+                      <div className="flex items-start gap-3 pt-2 border-t border-gray-200/60">
+                        <div className="w-8 h-8 rounded-xl bg-white border border-gray-200/80 flex items-center justify-center text-emerald-700 shrink-0">
+                          <Compass className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[11px] font-semibold text-gray-400 block">พิกัดแผนที่ (Latitude, Longitude)</span>
+                          {hasGps ? (
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="font-mono text-xs font-bold text-gray-800 bg-white px-2 py-0.5 rounded border border-gray-200">
+                                {myBranch.latitude?.toFixed(6)}, {myBranch.longitude?.toFixed(6)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(`${myBranch.latitude},${myBranch.longitude}`, 'gps')}
+                                className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 cursor-pointer"
+                                title="คัดลอกพิกัด"
+                              >
+                                {copiedId === 'gps' ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <a
+                                href={`https://www.google.com/maps?q=${myBranch.latitude},${myBranch.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline ml-1"
+                              >
+                                <Navigation className="w-3 h-3" />
+                                <span>เปิดดูบน Google Maps</span>
+                              </a>
+                            </div>
+                          ) : (
+                            <div className="mt-1 flex items-center justify-between gap-2">
+                              <span className="text-xs text-amber-600 font-medium">ยังไม่มีพิกัดในระบบ</span>
+                              <button
+                                type="button"
+                                onClick={() => setMapPickerBranch(myBranch)}
+                                className="text-[11px] font-bold text-emerald-700 hover:underline cursor-pointer"
+                              >
+                                + ปักหมุดทันที
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Statistics & Guidelines */}
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4 text-emerald-700" />
+                      <span>ภาพรวมข้อมูลและสถิติประจำสาขา</span>
+                    </h3>
+
+                    {/* Stats 3 cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-4 rounded-2xl bg-[#f4f9f5] border border-gray-100 text-center">
+                        <div className="w-8 h-8 rounded-xl bg-white text-gray-700 mx-auto mb-2 flex items-center justify-center shadow-2xs">
+                          <Car className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                          รถในสาขา
+                        </span>
+                        <span className="text-lg font-black text-gray-900 mt-1 block">
+                          {myBranch.vehiclesCount !== undefined ? myBranch.vehiclesCount : branchVehicles.length}
+                        </span>
+                        <span className="text-[10px] text-gray-400 font-medium">คัน</span>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-100 text-center">
+                        <div className="w-8 h-8 rounded-xl bg-white text-amber-600 mx-auto mb-2 flex items-center justify-center shadow-2xs">
+                          <ClipboardList className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
+                          งานกำลังทำ
+                        </span>
+                        <span className="text-lg font-black text-amber-600 mt-1 block">
+                          {myBranch.activeJobsCount !== undefined ? myBranch.activeJobsCount : activeJobs.length}
+                        </span>
+                        <span className="text-[10px] text-amber-700 font-medium">รายการ</span>
+                      </div>
+
+                      <div className="p-4 rounded-2xl bg-emerald-50/50 border border-emerald-100 text-center">
+                        <div className="w-8 h-8 rounded-xl bg-white text-[#0f5238] mx-auto mb-2 flex items-center justify-center shadow-2xs">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                          งานทั้งหมด
+                        </span>
+                        <span className="text-lg font-black text-[#0f5238] mt-1 block">
+                          {myBranch.totalJobsCount !== undefined ? myBranch.totalJobsCount : branchJobs.length}
+                        </span>
+                        <span className="text-[10px] text-emerald-700 font-medium">รายการ</span>
+                      </div>
+                    </div>
+
+                    {/* Guidelines / Info Box */}
+                    <div className="p-4 rounded-2xl bg-sky-50/60 border border-sky-100 text-xs flex gap-3 items-start">
+                      <AlertCircle className="w-4 h-4 text-sky-700 shrink-0 mt-0.5" />
+                      <div className="space-y-1 text-sky-950">
+                        <p className="font-bold">คำแนะนำสำหรับผู้ดูแลสาขา:</p>
+                        <p className="text-[11px] text-sky-800 leading-relaxed">
+                          • คุณสามารถปรับปรุงเบอร์โทรศัพท์ติดต่อและปักหมุดพิกัด GPS ได้ตลอดเวลา เพื่อความสะดวกในการนำทางของ Supplier สไลด์รถ
+                        </p>
+                        <p className="text-[11px] text-sky-800 leading-relaxed">
+                          • ชื่อสาขาและรหัสสาขาถูกกำหนดโดยส่วนกลาง หากพบข้อผิดพลาดหรือต้องการเปลี่ยนแปลง กรุณาติดต่อ Master Admin
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      ) : filteredBranches.length === 0 ? (
         <div className="p-12 text-center bg-white rounded-3xl border border-gray-100 shadow-2xs flex flex-col items-center justify-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400">
             <Building2 className="w-6 h-6" />

@@ -49,6 +49,10 @@ export async function GET(
       return NextResponse.json({ error: 'คุณไม่มีสิทธิ์เข้าถึงสาขานี้' }, { status: 403 });
     }
 
+    if (user.role === 'BRANCH' && user.branchId && user.branchId !== branch.id) {
+      return NextResponse.json({ error: 'คุณไม่มีสิทธิ์เข้าถึงสาขานี้' }, { status: 403 });
+    }
+
     return NextResponse.json({ branch });
   } catch (error) {
     console.error('GET /api/branches/[id] error:', error);
@@ -61,7 +65,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(request, ['MASTER', 'ADMIN']);
+  const auth = await requireAuth(request, ['MASTER', 'ADMIN', 'BRANCH']);
   if (auth.response) return auth.response;
   const { user } = auth;
 
@@ -83,8 +87,14 @@ export async function PATCH(
       return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขสาขาของบริษัทอื่น' }, { status: 403 });
     }
 
-    // If code is changing, check uniqueness
-    if (code && code.trim() !== branch.code) {
+    if (user.role === 'BRANCH' && user.branchId !== branch.id) {
+      return NextResponse.json({ error: 'คุณสามารถแก้ไขได้เฉพาะสาขาของตนเองเท่านั้น' }, { status: 403 });
+    }
+
+    const isBranch = user.role === 'BRANCH';
+
+    // If code is changing, check uniqueness (only for MASTER/ADMIN)
+    if (!isBranch && code && code.trim() !== branch.code) {
       const existing = await prisma.branch.findUnique({
         where: {
           companyId_code: {
@@ -104,8 +114,8 @@ export async function PATCH(
     const updated = await prisma.branch.update({
       where: { id },
       data: {
-        ...(name?.trim() ? { name: name.trim() } : {}),
-        ...(code?.trim() ? { code: code.trim() } : {}),
+        ...(!isBranch && name?.trim() ? { name: name.trim() } : {}),
+        ...(!isBranch && code?.trim() ? { code: code.trim() } : {}),
         ...(phone !== undefined ? { phone: phone?.trim() || null } : {}),
         ...(address !== undefined ? { address: address?.trim() || null } : {}),
         ...(lat !== null && Number.isFinite(lat) ? { latitude: lat } : lat === null ? { latitude: null } : {}),
