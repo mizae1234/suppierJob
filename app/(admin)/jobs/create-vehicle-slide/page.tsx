@@ -445,8 +445,7 @@ export default function CreateVehicleSlidePage() {
                     />
                     <div>
                       <p className="font-bold text-gray-900">{sup.name}</p>
-                      {sup.address && <p className="text-[11px] text-gray-500 mt-0.5">{sup.address}</p>}
-                      <p className="text-[11px] font-mono text-[#0f5238] mt-0.5">{sup.phone}</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5">โทร: {sup.phone}</p>
                     </div>
                   </div>
                 </label>
