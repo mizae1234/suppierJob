@@ -27,21 +27,11 @@ import {
   Ban,
 } from 'lucide-react';
 import type { Job, CarWashItemStatus } from '@/types';
-
-// ─── Per-car status presentation ──
-const ITEM_STATUS_UI: Record<CarWashItemStatus, { label: string; pill: string; card: string; icon: React.ElementType }> = {
-  APPROVED:  { label: 'อนุมัติแล้ว',        pill: 'bg-emerald-600 text-white',     card: 'border-emerald-300 ring-2 ring-emerald-100', icon: CheckCircle2 },
-  COMPLETED: { label: 'รอตรวจรับ',         pill: 'bg-amber-400 text-amber-950',   card: 'border-amber-200',                           icon: Eye },
-  REJECTED:  { label: 'ตีกลับแก้ไข',       pill: 'bg-red-600 text-white',         card: 'border-red-200',                             icon: RotateCcw },
-  CANCELLED: { label: 'Supplier ปฏิเสธ',  pill: 'bg-gray-600 text-white',        card: 'border-gray-200 opacity-75',                 icon: Ban },
-  PENDING:   { label: 'รอ Supplier ส่งงาน', pill: 'bg-white/90 text-gray-600',     card: 'border-dashed border-gray-300',              icon: Clock },
-};
-
-const WASH_TYPE_LABEL: Record<string, string> = {
-  STANDARD: 'ล้างปกติ',
-  DEEP_CLEAN: 'ล้างเชิงลึก',
-  POLISH: 'ขัดเคลือบ',
-};
+import {
+  ApprovalRejectModal,
+  ProxyApprovalModal,
+  CarWashItemReviewCard,
+} from '@/components/approvals';
 
 function ApprovalsContent() {
   const searchParams = useSearchParams();
@@ -77,7 +67,6 @@ function ApprovalsContent() {
   // Reject modal state
   const [rejectingJobId, setRejectingJobId] = useState<string | null>(null);
   const [rejectingItemId, setRejectingItemId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
 
   // Item-level action states
   const [approvingItemId, setApprovingItemId] = useState<string | null>(null);
@@ -136,48 +125,6 @@ function ApprovalsContent() {
     } finally {
       setApprovingItemId(null);
     }
-  };
-
-  // Handle per-item reject
-  const handleRejectItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rejectingJobId || !rejectingItemId) {
-      // Whole-job reject (original behavior)
-      if (rejectingJobId) {
-        await updateJobStatus(rejectingJobId, 'REJECTED', {
-          rejectReason: rejectReason || 'งานไม่ผ่านเกณฑ์ ขอให้ช่างแก้ไขงานซ้ำ'
-        });
-      }
-      setRejectingJobId(null);
-      setRejectingItemId(null);
-      setRejectReason('');
-      return;
-    }
-
-    // Per-item reject
-    await updateCarWashItemStatus(
-      rejectingJobId,
-      rejectingItemId,
-      'REJECTED',
-      rejectReason || 'ล้างไม่สะอาด ขอให้แก้ไข'
-    );
-    setRejectingJobId(null);
-    setRejectingItemId(null);
-    setRejectReason('');
-  };
-
-  // Handle whole-job reject (legacy)
-  const handleRejectConfirm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!rejectingJobId) return;
-
-    await updateJobStatus(rejectingJobId, 'REJECTED', {
-      rejectReason: rejectReason || 'งานไม่ผ่านเกณฑ์ ขอให้ช่างแก้ไขงานซ้ำ'
-    });
-
-    setRejectingJobId(null);
-    setRejectingItemId(null);
-    setRejectReason('');
   };
 
   const currentList = activeTab === 'WAITING' 
@@ -520,174 +467,21 @@ function ApprovalsContent() {
                 {/* ── Per-car review cards (Ultra-Compact Redesign) ── */}
                 {job.carWashItems && job.carWashItems.length > 0 && (
                   <div className="px-3 pb-3 sm:px-4 sm:pb-4 pt-2.5 bg-gray-50/60 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-                    {job.carWashItems.map((item) => {
-                      const cfg = ITEM_STATUS_UI[item.status] || ITEM_STATUS_UI.PENDING;
-                      const StatusIcon = cfg.icon;
-                      const isItemCompleted = item.status === 'COMPLETED';
-                      const isItemApproved = item.status === 'APPROVED';
-                      const isItemCancelled = item.status === 'CANCELLED';
-                      const isItemRejected = item.status === 'REJECTED';
-                      const isApprovingThis = approvingItemId === item.id;
-                      const itemEvidences = (job.evidences || []).filter(e => e.vin === item.vin);
-                      const hero = itemEvidences[0];
-                      const canReview = isItemCompleted && (job.status === 'WAITING_APPROVAL' || job.status === 'IN_PROGRESS');
-                      const remarkLabel = isItemRejected ? 'ตีกลับ' : isItemCancelled ? 'ปฏิเสธ' : 'หมายเหตุ';
-
-                      return (
-                        <div
-                          key={item.id}
-                          className={`rounded-lg bg-white border overflow-hidden flex flex-col transition-all hover:shadow-md ${cfg.card}`}
-                        >
-                          {/* Photo - Cinematic Ultra-Compact Banner */}
-                          <div className="relative h-24 sm:h-28 bg-gray-100 overflow-hidden">
-                            {hero ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedPhoto({ url: hero.photoUrl, caption: hero.caption, type: hero.evidenceType })}
-                                className="group block w-full h-full cursor-zoom-in"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={hero.photoUrl}
-                                  alt={hero.caption}
-                                  className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300 ${isItemCancelled ? 'grayscale' : ''}`}
-                                />
-                              </button>
-                            ) : (
-                              <div className="w-full h-full flex flex-col items-center justify-center gap-0.5 text-gray-400">
-                                <Camera className="w-4 h-4 opacity-50" />
-                                <span className="text-[9px] font-medium">
-                                  {isItemCancelled ? 'ไม่ทำ' : item.status === 'PENDING' ? 'รอรูป' : 'ไม่มีรูป'}
-                                </span>
-                              </div>
-                            )}
-                            <div className="pointer-events-none absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-black/40 to-transparent" />
-                            
-                            {/* Badges on Photo */}
-                            <span className={`absolute top-1.5 left-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold shadow-xs backdrop-blur-md ${cfg.pill}`}>
-                              <StatusIcon className="w-2.5 h-2.5" />
-                              <span className="truncate max-w-[65px]">{cfg.label}</span>
-                            </span>
-
-                            <span className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-white/95 backdrop-blur-md text-[9px] font-black font-mono shadow-xs ${
-                              isItemCancelled ? 'text-gray-400 line-through' : 'text-[#0f5238]'
-                            }`}>
-                              ฿{item.unitPrice.toLocaleString()}
-                            </span>
-
-                            {itemEvidences.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedPhoto({ url: hero?.photoUrl || '', caption: hero?.caption, type: hero?.evidenceType })}
-                                className="absolute bottom-1 right-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-xs text-white text-[8px] font-bold hover:bg-black/80 transition-colors"
-                              >
-                                <ImageIcon className="w-2 h-2" /> {itemEvidences.length} รูป
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Extra thumbnail swatches - Micro strip if > 1 */}
-                          {itemEvidences.length > 1 && (
-                            <div className="flex gap-1 px-1.5 pt-1 overflow-x-auto scrollbar-none bg-gray-50/50 border-b border-gray-100">
-                              {itemEvidences.map((evi, idx) => (
-                                <button
-                                  key={evi.id}
-                                  type="button"
-                                  onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: evi.evidenceType })}
-                                  className={`w-5 h-5 rounded overflow-hidden border shrink-0 cursor-zoom-in transition-all ${idx === 0 ? 'border-emerald-600 ring-1 ring-emerald-400' : 'border-gray-200 hover:opacity-80'}`}
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={evi.photoUrl} alt={evi.caption} className="w-full h-full object-cover" />
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Details - Ultra Compact */}
-                          <div className="p-2 flex flex-col gap-0.5 flex-1 justify-between">
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <p className={`text-xs font-black tracking-tight leading-tight truncate ${isItemCancelled ? 'text-gray-400' : 'text-gray-900'}`} title={item.licensePlate || item.vin}>
-                                  {getVehicleLabel(item.vin, item.licensePlate)}
-                                </p>
-                                <span className={`px-1 py-0.2 rounded text-[8px] font-bold shrink-0 ${
-                                  isCarWash ? 'bg-gray-100 text-gray-700' : 'bg-sky-50 text-sky-700'
-                                }`}>
-                                  {isCarWash ? (WASH_TYPE_LABEL[item.washType] || item.washType) : 'สไลด์'}
-                                </span>
-                              </div>
-
-                              <p className="text-[10px] text-gray-600 truncate leading-tight" title={`${item.vehicleModel} ${item.vehicleColor || ''} (VIN: ${item.vin})`}>
-                                {item.vehicleModel}
-                                {item.vehicleColor && <span className="text-gray-400"> · {item.vehicleColor}</span>}
-                              </p>
-
-                              <p className="font-mono text-[9px] text-gray-400 truncate leading-tight" title={item.vin}>
-                                VIN: ...{item.vin.slice(-8)}
-                              </p>
-
-                              {isCarWash ? (
-                                <p className="flex items-center gap-1 text-[9px] text-gray-400 leading-tight">
-                                  <Calendar className="w-2.5 h-2.5 shrink-0" />
-                                  <span>{formatThaiDate(item.actualWashDate)}</span>
-                                </p>
-                              ) : (
-                                <p className="flex items-center gap-1 text-[9px] text-gray-400 truncate leading-tight" title={`${job.originBranchName || job.branchName} → ${job.destBranchName || job.customDestAddress || 'ปลายทาง'}`}>
-                                  <MapPin className="w-2.5 h-2.5 shrink-0" />
-                                  <span className="truncate">{job.destBranchName || 'ปลายทาง'}</span>
-                                </p>
-                              )}
-
-                              {item.remarks && (
-                                <p className={`text-[9px] px-1.5 py-0.5 rounded leading-tight truncate mt-0.5 ${
-                                  isItemRejected
-                                    ? 'bg-red-50 text-red-700 border border-red-100'
-                                    : 'bg-gray-50 text-gray-600 border border-gray-100'
-                                }`} title={item.remarks}>
-                                  <span className="font-semibold">{remarkLabel}:</span> {item.remarks}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Actions - Ultra-Compact Buttons */}
-                            {canReview && (
-                              <div className="pt-1.5 mt-1 border-t border-gray-100 flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setRejectingJobId(job.id);
-                                    setRejectingItemId(item.id);
-                                    setRejectReason('');
-                                  }}
-                                  disabled={isApprovingThis}
-                                  title="ตีกลับ"
-                                  className="h-6 px-1.5 rounded bg-white hover:bg-red-50 text-red-600 text-[10px] font-bold border border-red-200 transition-all cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
-                                >
-                                  <RotateCcw className="w-2.5 h-2.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApproveItem(job.id, item.id, getVehicleLabel(item.vin, item.licensePlate))}
-                                  disabled={isApprovingThis}
-                                  className="h-6 flex-1 flex items-center justify-center gap-1 px-1.5 rounded bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold shadow-2xs transition-all cursor-pointer active:scale-[0.98] disabled:opacity-60 truncate"
-                                >
-                                  <Check className="w-3 h-3 shrink-0" />
-                                  <span>{isApprovingThis ? 'บันทึก...' : 'อนุมัติ'}</span>
-                                </button>
-                              </div>
-                            )}
-
-                            {isItemApproved && (
-                              <div className="mt-1 flex items-center justify-center gap-1 h-5 rounded bg-emerald-50 text-emerald-700 text-[9px] font-bold border border-emerald-100">
-                                <CheckCircle2 className="w-2.5 h-2.5" />
-                                ผ่านตรวจรับ
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    {job.carWashItems.map((item) => (
+                      <CarWashItemReviewCard
+                        key={item.id}
+                        item={item}
+                        job={job}
+                        isCarWash={isCarWash}
+                        isApprovingThis={approvingItemId === item.id}
+                        onPreviewPhoto={(photo) => setSelectedPhoto({ url: photo.url, caption: photo.caption || '', type: photo.type || '' })}
+                        onApproveItem={(jobId, itemId, label) => handleApproveItem(jobId, itemId, label)}
+                        onRejectItem={(jobId, itemId) => {
+                          setRejectingJobId(jobId);
+                          setRejectingItemId(itemId);
+                        }}
+                      />
+                    ))}                  </div>
                 )}
 
                 {/* Vehicle Slide details (Single Car) */}
@@ -837,142 +631,39 @@ function ApprovalsContent() {
       )}
 
       {/* Reject Confirmation Modal — supports both whole-job and per-item */}
-      {rejectingJobId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-xl border border-gray-100 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
-                <span>
-                  {rejectingItemId
-                    ? 'ตีกลับรถคันนี้ (Reject Item)'
-                    : 'ระบุข้อเสนอแนะในการแก้ไข (Reject Job)'
-                  }
-                </span>
-              </h3>
-              <button
-                onClick={() => {
-                  setRejectingJobId(null);
-                  setRejectingItemId(null);
-                }}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <ApprovalRejectModal
+        jobId={rejectingJobId}
+        itemId={rejectingItemId}
+        onClose={() => {
+          setRejectingJobId(null);
+          setRejectingItemId(null);
+        }}
+        onConfirmRejectJob={async (jobId, reason) => {
+          await updateJobStatus(jobId, 'REJECTED', {
+            rejectReason: reason || 'งานไม่ผ่านเกณฑ์ ขอให้ช่างแก้ไขงานซ้ำ'
+          });
+          showToast('ตีกลับงานเรียบร้อยแล้ว', 'info');
+        }}
+        onConfirmRejectItem={async (jobId, itemId, reason) => {
+          await updateCarWashItemStatus(
+            jobId,
+            itemId,
+            'REJECTED',
+            reason || 'ล้างไม่สะอาด ขอให้แก้ไข'
+          );
+          showToast('ตีกลับรถคันนี้เรียบร้อยแล้ว', 'info');
+        }}
+      />
 
-            {rejectingItemId && (
-              <p className="text-xs text-gray-500 bg-amber-50 border border-amber-100 p-2.5 rounded-lg">
-                💡 ตีกลับเฉพาะรถคันนี้ — รถคันอื่นในใบงานไม่ได้รับผลกระทบ
-              </p>
-            )}
-
-            <form onSubmit={rejectingItemId ? handleRejectItem : handleRejectConfirm} className="flex flex-col gap-3">
-              <label className="block text-xs font-semibold text-gray-700">
-                {rejectingItemId
-                  ? 'ระบุจุดที่ต้องแก้ไขสำหรับรถคันนี้:'
-                  : 'รายละเอียดจุดที่ต้องล้างซ้ำ หรือแก้ไข:'
-                }
-              </label>
-              <textarea
-                rows={3}
-                required
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="เช่น ขอบกระจังหน้ายังมีคราบฝังแน่น และมีคราบน้ำมันบริเวณบันไดข้าง..."
-                className="w-full p-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-red-600 outline-none"
-              />
-              <div className="grid grid-cols-2 sm:flex sm:items-center sm:justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRejectingJobId(null);
-                    setRejectingItemId(null);
-                  }}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer text-center"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer text-center"
-                >
-                  {rejectingItemId ? 'ยืนยันตีกลับคันนี้' : 'ยืนยันการ Reject'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal for Proxy Approval (Origin Branch approves on behalf of Destination) */}
-      {confirmProxyJob && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-xl border border-gray-100 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-sky-600 shrink-0" />
-                <span>ยืนยันอนุมัติแทนสาขาปลายทาง</span>
-              </h3>
-              <button
-                onClick={() => setConfirmProxyJob(null)}
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-2 text-xs text-gray-600">
-              <p>
-                งานรถสไลด์นี้มีปลายทางที่ <b className="text-gray-900">{confirmProxyJob.destBranchName || 'สาขาปลายทาง'}</b>
-              </p>
-              <div className="p-3 rounded-xl bg-sky-50 border border-sky-100 text-sky-900 flex flex-col gap-1.5 font-mono text-[11px]">
-                <div className="flex justify-between">
-                  <span className="text-gray-500 font-sans">เลขที่ใบงาน:</span>
-                  <span className="font-bold">{confirmProxyJob.jobNumber}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 font-sans">รถ:</span>
-                  <span className="font-bold font-sans">{confirmProxyJob.vehicle?.model || confirmProxyJob.vin || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 font-sans">สาขาต้นทาง:</span>
-                  <span className="font-bold font-sans">{confirmProxyJob.originBranchName || confirmProxyJob.branchName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 font-sans">สาขาปลายทาง:</span>
-                  <span className="font-bold font-sans text-emerald-700">{confirmProxyJob.destBranchName}</span>
-                </div>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-                ⚠️ คุณกำลังดำเนินการอนุมัติและตรวจรับรถแทนสาขาปลายทาง ระบบจะบันทึกสาขาต้นทางและชื่อของคุณลงในประวัติการตรวจรับ
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={() => setConfirmProxyJob(null)}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-gray-600 hover:bg-gray-100 cursor-pointer"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  const targetJob = confirmProxyJob;
-                  setConfirmProxyJob(null);
-                  await handleApprove(targetJob, true);
-                }}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 shadow-xs cursor-pointer active:scale-95 transition-all"
-              >
-                ยืนยันอนุมัติแทนปลายทาง
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirmation Modal for Proxy Approval */}
+      <ProxyApprovalModal
+        job={confirmProxyJob}
+        onClose={() => setConfirmProxyJob(null)}
+        onConfirm={async (job) => {
+          setConfirmProxyJob(null);
+          await handleApprove(job, true);
+        }}
+      />
     </div>
   );
 }
