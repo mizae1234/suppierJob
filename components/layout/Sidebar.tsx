@@ -18,8 +18,6 @@ import {
   Settings,
   Store,
   ChevronRight,
-  ShieldCheck,
-  Wrench,
   X,
   Smartphone,
   Shield,
@@ -34,7 +32,6 @@ export const Sidebar: React.FC = () => {
     setCurrentRole,
     currentCompany, 
     activeBranch, 
-    activeSupplier, 
     filteredJobs, 
     waitingApprovalCount 
   } = useApp();
@@ -171,33 +168,6 @@ export const Sidebar: React.FC = () => {
 
         </div>
 
-        {/* Current Context Card */}
-        <div className="px-5 py-3 border-b shrink-0" style={{ borderColor: theme.borderSoft }}>
-          <div
-            className="p-3 rounded-2xl border flex items-center justify-between transition-colors duration-300"
-            style={{ backgroundColor: theme.bgCard, borderColor: theme.borderSoft }}
-          >
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-xl bg-white shadow-xs flex items-center justify-center shrink-0">
-                {currentRole === 'MASTER' && <ShieldCheck className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
-                {currentRole === 'ADMIN' && <ShieldCheck className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
-                {currentRole === 'BRANCH' && <Building2 className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
-                {currentRole === 'SUPPLIER' && <Wrench className="w-4 h-4 transition-colors duration-300" style={{ color: theme.iconColor }} />}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-gray-900 truncate">
-                  {currentRole === 'MASTER' && 'โหมดควบคุมสูงสุด (Master)'}
-                  {currentRole === 'ADMIN' && `ผู้ดูแล ${currentCompany}`}
-                  {currentRole === 'BRANCH' && (activeBranch?.name || 'สาขาที่เลือก')}
-                  {currentRole === 'SUPPLIER' && (activeSupplier?.name || 'คู่ค้า Supplier')}
-                </p>
-                <p className="text-[11px] font-medium transition-colors duration-300" style={{ color: theme.textMuted }}>
-                  {currentRole === 'MASTER' ? 'จัดการทุกสาขา & บิล & Supplier' : currentRole === 'ADMIN' ? `จัดการเฉพาะ ${currentCompany}` : `บทบาท: ${currentRole}`}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Navigation List */}
         <div className="flex-1 overflow-y-auto px-4 py-3">
