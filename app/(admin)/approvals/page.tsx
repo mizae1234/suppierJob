@@ -517,9 +517,9 @@ function ApprovalsContent() {
                   )}
                 </div>
 
-                {/* ── Per-car review cards ── */}
+                {/* ── Per-car review cards (Compact Redesign) ── */}
                 {job.carWashItems && job.carWashItems.length > 0 && (
-                  <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-4 bg-gray-50/60 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-3 bg-gray-50/60 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2.5">
                     {job.carWashItems.map((item) => {
                       const cfg = ITEM_STATUS_UI[item.status] || ITEM_STATUS_UI.PENDING;
                       const StatusIcon = cfg.icon;
@@ -536,10 +536,10 @@ function ApprovalsContent() {
                       return (
                         <div
                           key={item.id}
-                          className={`rounded-2xl bg-white border overflow-hidden flex flex-col transition-all hover:shadow-md ${cfg.card}`}
+                          className={`rounded-xl bg-white border overflow-hidden flex flex-col transition-all hover:shadow-md ${cfg.card}`}
                         >
-                          {/* Photo */}
-                          <div className="relative aspect-[16/10] bg-gray-100">
+                          {/* Photo - Compact & Uniform Height */}
+                          <div className="relative h-36 bg-gray-100 overflow-hidden">
                             {hero ? (
                               <button
                                 type="button"
@@ -554,39 +554,39 @@ function ApprovalsContent() {
                                 />
                               </button>
                             ) : (
-                              <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-gray-400">
-                                <Camera className="w-7 h-7 opacity-60" />
-                                <span className="text-[11px] font-medium">
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-gray-400">
+                                <Camera className="w-5 h-5 opacity-50" />
+                                <span className="text-[10px] font-medium">
                                   {isItemCancelled ? 'ไม่ได้ดำเนินการ' : item.status === 'PENDING' ? 'ยังไม่มีรูปถ่าย' : 'ไม่มีรูปถ่ายแนบ'}
                                 </span>
                               </div>
                             )}
-                            <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-black/35 to-transparent" />
-                            <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold shadow-sm ${cfg.pill}`}>
-                              <StatusIcon className="w-3 h-3" />
+                            <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/40 to-transparent" />
+                            <span className={`absolute top-2 left-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-xs backdrop-blur-md ${cfg.pill}`}>
+                              <StatusIcon className="w-2.5 h-2.5" />
                               {cfg.label}
                             </span>
-                            <span className={`absolute top-2 right-2 px-2 py-1 rounded-full bg-white/95 backdrop-blur-sm text-[11px] font-black font-mono shadow-sm ${
+                            <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full bg-white/95 backdrop-blur-md text-[10px] font-black font-mono shadow-xs ${
                               isItemCancelled ? 'text-gray-400 line-through' : 'text-[#0f5238]'
                             }`}>
                               ฿{item.unitPrice.toLocaleString()}
                             </span>
                             {itemEvidences.length > 1 && (
-                              <span className="pointer-events-none absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold">
-                                <ImageIcon className="w-3 h-3" /> {itemEvidences.length} รูป
+                              <span className="pointer-events-none absolute bottom-1.5 right-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-[9px] font-bold">
+                                <ImageIcon className="w-2.5 h-2.5" /> {itemEvidences.length} รูป
                               </span>
                             )}
                           </div>
 
-                          {/* Extra photo thumbnails */}
+                          {/* Extra photo thumbnails - Sleek miniature swatches */}
                           {itemEvidences.length > 1 && (
-                            <div className="flex gap-1.5 px-3 pt-2.5 overflow-x-auto scrollbar-none">
+                            <div className="flex gap-1 px-2.5 pt-1.5 overflow-x-auto scrollbar-none">
                               {itemEvidences.slice(1).map(evi => (
                                 <button
                                   key={evi.id}
                                   type="button"
                                   onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: evi.evidenceType })}
-                                  className="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 shrink-0 cursor-zoom-in hover:ring-2 hover:ring-emerald-300 transition-all"
+                                  className="w-8 h-8 rounded-md overflow-hidden border border-gray-200 shrink-0 cursor-zoom-in hover:ring-2 hover:ring-emerald-400 transition-all"
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={evi.photoUrl} alt={evi.caption} className="w-full h-full object-cover" />
@@ -595,38 +595,38 @@ function ApprovalsContent() {
                             </div>
                           )}
 
-                          {/* Details */}
-                          <div className="p-3 flex flex-col gap-1.5 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className={`text-base font-black leading-tight truncate ${isItemCancelled ? 'text-gray-400' : 'text-gray-900'}`} title={item.licensePlate || item.vin}>
-                                  {getVehicleLabel(item.vin, item.licensePlate)}
-                                </p>
-                                <p className="font-mono text-[10px] text-gray-400 truncate" title={item.vin}>{item.vin}</p>
-                              </div>
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0 ${
-                                isCarWash ? 'bg-gray-100 text-gray-600' : 'bg-sky-50 text-sky-700 border border-sky-100'
+                          {/* Details - Compact & High Legibility */}
+                          <div className="p-2.5 flex flex-col gap-1 flex-1">
+                            <div className="flex items-center justify-between gap-1.5">
+                              <p className={`text-sm font-black tracking-tight leading-tight truncate ${isItemCancelled ? 'text-gray-400' : 'text-gray-900'}`} title={item.licensePlate || item.vin}>
+                                {getVehicleLabel(item.vin, item.licensePlate)}
+                              </p>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${
+                                isCarWash ? 'bg-gray-100 text-gray-700' : 'bg-sky-50 text-sky-700 border border-sky-100'
                               }`}>
                                 {isCarWash ? (WASH_TYPE_LABEL[item.washType] || item.washType) : 'รถสไลด์'}
                               </span>
                             </div>
-                            <p className="text-xs font-semibold text-gray-800 truncate">
+
+                            <p className="text-[11px] font-semibold text-gray-700 truncate" title={`${item.vehicleModel} ${item.vehicleColor || ''}`}>
                               {item.vehicleModel}
-                              {item.vehicleColor && <span className="font-normal text-gray-500"> · {item.vehicleColor}</span>}
+                              {item.vehicleColor && <span className="font-normal text-gray-400"> · {item.vehicleColor}</span>}
                             </p>
+                            <p className="font-mono text-[9px] text-gray-400 truncate" title={item.vin}>VIN: {item.vin}</p>
+
                             {isCarWash ? (
-                              <p className="flex items-center gap-1 text-[11px] text-gray-500">
-                                <Calendar className="w-3 h-3 text-gray-400" />
+                              <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-0.5">
+                                <Calendar className="w-2.5 h-2.5 text-gray-400 shrink-0" />
                                 วันที่ล้าง {formatThaiDate(item.actualWashDate)}
                               </p>
                             ) : (
                               <>
-                                <p className="flex items-center gap-1 text-[11px] text-gray-500">
-                                  <Calendar className="w-3 h-3 text-gray-400" />
-                                  วันที่รับรถ {job.pickupDateTime ? formatThaiDateTime(job.pickupDateTime) : formatThaiDate(item.actualWashDate)}
+                                <p className="flex items-center gap-1 text-[10px] text-gray-500 mt-0.5">
+                                  <Calendar className="w-2.5 h-2.5 text-gray-400 shrink-0" />
+                                  วันที่รับ {job.pickupDateTime ? formatThaiDateTime(job.pickupDateTime) : formatThaiDate(item.actualWashDate)}
                                 </p>
-                                <p className="flex items-center gap-1 text-[11px] text-gray-500 min-w-0">
-                                  <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
+                                <p className="flex items-center gap-1 text-[10px] text-gray-500 min-w-0">
+                                  <MapPin className="w-2.5 h-2.5 text-gray-400 shrink-0" />
                                   <span className="truncate">
                                     {job.originBranchName || job.branchName} → {job.destBranchName || job.customDestAddress || 'ปลายทาง'}
                                   </span>
@@ -635,22 +635,22 @@ function ApprovalsContent() {
                             )}
 
                             {item.remarks && (
-                              <div className={`mt-1 px-2.5 py-1.5 rounded-lg text-[11px] leading-snug ${
+                              <div className={`mt-0.5 px-2 py-1 rounded text-[10px] leading-snug truncate ${
                                 isItemRejected
                                   ? 'bg-red-50 text-red-700 border border-red-100'
                                   : isItemCancelled
                                   ? 'bg-gray-50 text-gray-500 border border-gray-100'
                                   : 'bg-gray-50 text-gray-600 border border-gray-100'
-                              }`}>
+                              }`} title={item.remarks}>
                                 <span className="font-bold">{remarkLabel}: </span>
                                 {item.remarks}
                               </div>
                             )}
                           </div>
 
-                          {/* Actions */}
+                          {/* Actions - Compact button sizing */}
                           {canReview && (
-                            <div className="p-3 pt-0 flex items-center gap-2">
+                            <div className="p-2.5 pt-0 flex items-center gap-1.5">
                               <button
                                 onClick={() => {
                                   setRejectingJobId(job.id);
@@ -659,25 +659,25 @@ function ApprovalsContent() {
                                 }}
                                 disabled={isApprovingThis}
                                 title="ตีกลับให้ Supplier แก้ไข"
-                                className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl bg-white hover:bg-red-50 text-red-600 text-xs font-bold border border-red-200 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                                className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 text-[11px] font-bold border border-red-200 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                               >
-                                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                                <RotateCcw className="w-3 h-3 shrink-0" />
                                 <span>ตีกลับ</span>
                               </button>
                               <button
                                 onClick={() => handleApproveItem(job.id, item.id, getVehicleLabel(item.vin, item.licensePlate))}
                                 disabled={isApprovingThis}
-                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold shadow-sm transition-all cursor-pointer active:scale-[0.98] disabled:opacity-60"
+                                className="flex-1 flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold shadow-xs transition-all cursor-pointer active:scale-[0.98] disabled:opacity-60"
                               >
-                                <Check className="w-4 h-4 shrink-0" />
-                                <span>{isApprovingThis ? 'กำลังอนุมัติ...' : 'อนุมัติคันนี้'}</span>
+                                <Check className="w-3.5 h-3.5 shrink-0" />
+                                <span>{isApprovingThis ? 'กำลังบันทึก...' : 'อนุมัติคันนี้'}</span>
                               </button>
                             </div>
                           )}
 
                           {isItemApproved && (
-                            <div className="mx-3 mb-3 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">
-                              <CheckCircle2 className="w-4 h-4" />
+                            <div className="mx-2.5 mb-2.5 flex items-center justify-center gap-1 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold border border-emerald-100">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
                               ผ่านการตรวจรับ
                             </div>
                           )}
