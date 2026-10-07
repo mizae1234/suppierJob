@@ -282,9 +282,7 @@ function ApprovalsContent() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded-md text-white font-bold text-[10px] font-mono ${
-                            job.companyCode === 'GI' ? 'bg-blue-600' : 'bg-emerald-700'
-                          }`}>
+                          <span className="px-2 py-0.5 rounded-md text-white font-bold text-[10px] font-mono bg-emerald-700">
                             {job.companyCode}
                           </span>
                           <h3 className="text-base sm:text-lg font-black text-gray-900 tracking-tight font-mono">

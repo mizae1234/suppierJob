@@ -273,7 +273,7 @@ export const SupplierSidebar: React.FC = () => {
                 {giBranches.length > 0 && (
                   <div>
                     <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#1e3a5f]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#0f5238]" />
                       <span>สาขา GI</span>
                     </div>
                     {giBranches.map((branch) => {

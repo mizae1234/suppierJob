@@ -53,21 +53,22 @@ const EV7_THEME: ThemeColors = {
   companyLabel: 'EV7',
 };
 
+// Unified to EV7 emerald green theme everywhere
 const GI_THEME: ThemeColors = {
-  primary: '#1e3a5f',
-  primaryLight: '#2563eb',
-  primaryHover: '#172e4a',
-  bgSoft: '#f0f5ff',
-  bgCard: '#f0f5ff',
-  bgFooter: '#e0eaff',
-  borderSoft: 'rgba(30, 58, 95, 0.05)',
-  badgeBg: '#dbeafe',
-  badgeText: '#1e3a5f',
-  textPrimary: '#1e3a5f',
-  textMuted: '#1d4ed8',
-  activeNavBg: '#1e3a5f',
-  activeNavShadow: '0 4px 16px rgba(30, 58, 95, 0.25)',
-  iconColor: '#1d4ed8',
+  primary: '#0f5238',
+  primaryLight: '#2d6a4f',
+  primaryHover: '#0a3d28',
+  bgSoft: '#f4f9f5',
+  bgCard: '#f4f9f5',
+  bgFooter: '#eaf5ee',
+  borderSoft: 'rgba(15, 82, 56, 0.05)',
+  badgeBg: '#dcfce7',
+  badgeText: '#0f5238',
+  textPrimary: '#0f5238',
+  textMuted: '#166534',
+  activeNavBg: '#0f5238',
+  activeNavShadow: '0 4px 16px rgba(15, 82, 56, 0.25)',
+  iconColor: '#166534',
   companyLabel: 'GI',
 };
 

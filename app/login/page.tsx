@@ -313,14 +313,14 @@ export default function LoginPage() {
                         <button
                           type="button"
                           onClick={() => { setCompany('GI'); setDropdownOpen(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'GI' ? 'bg-blue-50' : ''}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'GI' ? 'bg-emerald-50' : ''}`}
                         >
-                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0f5238] to-[#2d6a4f] flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900">GI</p>
                             <p className="text-[10px] text-gray-500">โกลด์ อินทิเกรท (Gold Integrate)</p>
                           </div>
-                          {company === 'GI' && <Check className="w-4 h-4 text-blue-600" />}
+                          {company === 'GI' && <Check className="w-4 h-4 text-emerald-600" />}
                         </button>
 
                         {/* Suppliers Group */}

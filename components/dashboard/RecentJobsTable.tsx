@@ -213,11 +213,7 @@ export const RecentJobsTable: React.FC<RecentJobsTableProps> = ({
               {/* Card Middle: Company / Branch & Supplier */}
               <div className="text-xs text-gray-600 flex flex-col gap-1 pl-1">
                 <div className="flex items-center gap-1.5">
-                  <span
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
-                      isEV7 ? 'bg-emerald-100 text-emerald-900' : 'bg-blue-100 text-blue-900'
-                    }`}
-                  >
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 text-emerald-900">
                     {job.companyCode}
                   </span>
                   <span className="font-medium text-gray-800">{cleanBranch}</span>

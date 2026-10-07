@@ -43,7 +43,7 @@ export const Header: React.FC = () => {
   const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
     { value: 'ALL', label: 'ทุกบริษัท', color: '#0f5238', dot: '#52b788' },
     { value: 'EV7', label: 'EV7', color: '#0f5238', dot: '#2d6a4f' },
-    { value: 'GI', label: 'GI-สำนักงานใหญ่', color: '#1e3a5f', dot: '#3b82f6' },
+    { value: 'GI', label: 'GI-สำนักงานใหญ่', color: '#0f5238', dot: '#2d6a4f' },
   ];
   const activeCompanyOption = companyOptions.find(o => o.value === currentCompany) || companyOptions[0];
 

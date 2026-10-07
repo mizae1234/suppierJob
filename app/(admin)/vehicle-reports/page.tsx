@@ -491,9 +491,7 @@ function VehicleAccordion({
                 {first.licensePlate}
               </span>
             )}
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              first.companyCode === 'EV7' ? 'bg-emerald-100 text-[#0f5238]' : 'bg-blue-100 text-blue-800'
-            }`}>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-[#0f5238]">
               {first.companyCode}
             </span>
           </div>

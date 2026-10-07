@@ -408,18 +408,14 @@ export default function BranchManagementPage() {
                 <div
                   className="p-6 sm:p-8 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative"
                   style={{
-                    background: isGI
-                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(4, 120, 87, 0.02) 100%)'
-                      : 'linear-gradient(135deg, rgba(2, 132, 199, 0.08) 0%, rgba(3, 105, 161, 0.02) 100%)',
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(4, 120, 87, 0.02) 100%)',
                   }}
                 >
                   <div className="flex items-center gap-5">
                     <div
                       className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl flex items-center justify-center text-white font-black text-xl sm:text-2xl tracking-wider shadow-md shrink-0"
                       style={{
-                        background: isGI
-                          ? 'linear-gradient(135deg, #10b981, #047857)'
-                          : 'linear-gradient(135deg, #0284c7, #0369a1)',
+                        background: 'linear-gradient(135deg, #10b981, #047857)',
                       }}
                     >
                       {monogram}
@@ -703,9 +699,7 @@ export default function BranchManagementPage() {
                       <div
                         className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-sm tracking-wider shadow-xs shrink-0"
                         style={{
-                          background: isGI
-                            ? 'linear-gradient(135deg, #10b981, #047857)'
-                            : 'linear-gradient(135deg, #0284c7, #0369a1)',
+                          background: 'linear-gradient(135deg, #10b981, #047857)',
                         }}
                       >
                         {monogram}
@@ -916,9 +910,7 @@ export default function BranchManagementPage() {
                           <div
                             className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs tracking-wider shadow-2xs shrink-0"
                             style={{
-                              background: isGI
-                                ? 'linear-gradient(135deg, #10b981, #047857)'
-                                : 'linear-gradient(135deg, #0284c7, #0369a1)',
+                              background: 'linear-gradient(135deg, #10b981, #047857)',
                             }}
                           >
                             {monogram}

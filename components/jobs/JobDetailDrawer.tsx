@@ -110,9 +110,7 @@ export function JobDetailDrawer({
               {/* Sticky Drawer Header */}
               <div className="px-6 py-4 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs ${
-                    'rounded-full'
-                  }`} style={activeJob.companyCode === 'EV7' ? { backgroundColor: '#dcfce7', color: '#0f5238' } : { backgroundColor: '#dbeafe', color: '#1e3a5f' }}>
+                  <span className="px-2.5 py-0.5 rounded-full font-bold text-xs" style={{ backgroundColor: '#dcfce7', color: '#0f5238' }}>
                     {activeJob.companyCode}
                   </span>
                   

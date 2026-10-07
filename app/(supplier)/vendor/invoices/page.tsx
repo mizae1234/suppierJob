@@ -242,11 +242,7 @@ export default function SupplierInvoicesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between sm:justify-start gap-2 mb-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span
-                          className={`px-2 py-0.5 rounded-md font-bold text-[10px] font-mono text-white shadow-2xs ${
-                            inv.companyCode === 'GI' ? 'bg-blue-600' : 'bg-emerald-700'
-                          }`}
-                        >
+                        <span className="px-2 py-0.5 rounded-md font-bold text-[10px] font-mono text-white shadow-2xs bg-emerald-700">
                           {inv.companyCode}
                         </span>
                         <p className="text-xs sm:text-sm font-bold text-gray-900 font-mono tracking-tight">
