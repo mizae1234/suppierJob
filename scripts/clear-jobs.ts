@@ -16,28 +16,36 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function clearAllJobs() {
-  console.log('🧹 กำลังเคลียร์ Job ทั้งหมด...\n');
+  console.log('🧹 กำลังเคลียร์ Job ทั้งหมดในระบบ...\n');
 
   // 1. ลบรูปหลักฐาน
   const evi = await prisma.jobEvidence.deleteMany({});
   console.log(`  ✓ ลบ JobEvidence: ${evi.count} รายการ`);
 
-  // 2. ลบรายการรถล้าง
+  // 2. ลบกิจกรรม / Timeline
+  const act = await prisma.jobActivity.deleteMany({});
+  console.log(`  ✓ ลบ JobActivity: ${act.count} รายการ`);
+
+  // 3. ลบรายการรถล้าง
   const items = await prisma.carWashItem.deleteMany({});
   console.log(`  ✓ ลบ CarWashItem: ${items.count} รายการ`);
 
-  // 3. Reset สถานะรถทั้งหมดกลับเป็น AVAILABLE
+  // 4. ลบ Job ทั้งหมด
+  const jobs = await prisma.job.deleteMany({});
+  console.log(`  ✓ ลบ Job: ${jobs.count} ใบงาน`);
+
+  // 5. ลบ Invoice ทั้งหมด
+  const inv = await prisma.invoice.deleteMany({});
+  console.log(`  ✓ ลบ Invoice: ${inv.count} ใบ`);
+
+  // 6. Reset สถานะรถทั้งหมดกลับเป็น AVAILABLE
   const vehicles = await prisma.vehicle.updateMany({
     where: { status: { not: 'AVAILABLE' } },
     data: { status: 'AVAILABLE' },
   });
   console.log(`  ✓ Reset Vehicle → AVAILABLE: ${vehicles.count} คัน`);
 
-  // 4. ลบ Job ทั้งหมด
-  const jobs = await prisma.job.deleteMany({});
-  console.log(`  ✓ ลบ Job: ${jobs.count} ใบงาน`);
-
-  console.log('\n✅ เคลียร์เรียบร้อย! ระบบพร้อมใช้งานใหม่');
+  console.log('\n✅ เคลียร์ Job และข้อมูลที่เกี่ยวข้องเรียบร้อยแล้ว!');
   await prisma.$disconnect();
 }
 
