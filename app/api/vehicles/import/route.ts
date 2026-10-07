@@ -49,7 +49,9 @@ export async function POST(request: NextRequest) {
     let effectiveDefaultCompanyId = defaultCompanyId || allCompanies[0]?.id;
     let effectiveDefaultBranchId = defaultBranchId || allBranches[0]?.id;
 
-    if (user.role === 'BRANCH') {
+    const isBranchUser = user.role === 'BRANCH' || Boolean(user.branchId);
+
+    if (isBranchUser) {
       if (user.companyId) effectiveDefaultCompanyId = user.companyId;
       if (user.branchId) effectiveDefaultBranchId = user.branchId;
     } else if (user.role === 'ADMIN' && user.companyId) {
@@ -101,36 +103,43 @@ export async function POST(request: NextRequest) {
       const rawColor = String(item.color || '').trim() || 'สีมาตรฐาน';
       const rawType = String(item.vehicleType || '').trim() || 'Sedan';
 
-      // Company resolution
+      // Company and Branch resolution
       let targetCompanyId = effectiveDefaultCompanyId;
-      if (item.companyCode && (user.role === 'MASTER' || user.role === 'ADMIN')) {
-        const matchedComp = allCompanies.find(c => c.code.toLowerCase() === item.companyCode?.trim().toLowerCase());
-        if (matchedComp) {
-          if (user.role === 'ADMIN' && user.companyId && user.companyId !== matchedComp.id) {
-            // ADMIN cannot import to other company
-          } else {
-            targetCompanyId = matchedComp.id;
+      let targetBranchId = effectiveDefaultBranchId;
+
+      if (isBranchUser) {
+        // สาขาไหนนำเข้าข้อมูล สาขานั้นเป็นเจ้าของรถเสมอ 100%
+        targetCompanyId = user.companyId || effectiveDefaultCompanyId;
+        targetBranchId = user.branchId || effectiveDefaultBranchId;
+      } else {
+        // Master / Admin resolution
+        if (item.companyCode) {
+          const matchedComp = allCompanies.find(c => c.code.toLowerCase() === item.companyCode?.trim().toLowerCase());
+          if (matchedComp) {
+            if (user.role === 'ADMIN' && user.companyId && user.companyId !== matchedComp.id) {
+              // ADMIN cannot import to other company
+            } else {
+              targetCompanyId = matchedComp.id;
+            }
           }
         }
-      }
 
-      // Branch resolution
-      let targetBranchId = effectiveDefaultBranchId;
-      const ev7Branch = allBranches.find(b => b.companyId === targetCompanyId && b.code === 'EV7');
-      if (ev7Branch) {
-        // EV7 has no sub-branches, always assign to the unified EV7 branch
-        targetBranchId = ev7Branch.id;
-      } else if (item.branchCodeOrName && user.role !== 'BRANCH') {
-        const query = item.branchCodeOrName.trim().toLowerCase();
-        const matchedBranch = allBranches.find(b => 
-          b.companyId === targetCompanyId && 
-          (b.code.toLowerCase() === query || b.name.toLowerCase().includes(query) || query.includes(b.name.toLowerCase()))
-        ) || allBranches.find(b => 
-          b.code.toLowerCase() === query || b.name.toLowerCase().includes(query)
-        );
+        const ev7Branch = allBranches.find(b => b.companyId === targetCompanyId && b.code === 'EV7');
+        if (ev7Branch) {
+          // EV7 has no sub-branches, always assign to the unified EV7 branch
+          targetBranchId = ev7Branch.id;
+        } else if (item.branchCodeOrName) {
+          const query = item.branchCodeOrName.trim().toLowerCase();
+          const matchedBranch = allBranches.find(b => 
+            b.companyId === targetCompanyId && 
+            (b.code.toLowerCase() === query || b.name.toLowerCase().includes(query) || query.includes(b.name.toLowerCase()))
+          ) || allBranches.find(b => 
+            b.code.toLowerCase() === query || b.name.toLowerCase().includes(query)
+          );
 
-        if (matchedBranch) {
-          targetBranchId = matchedBranch.id;
+          if (matchedBranch) {
+            targetBranchId = matchedBranch.id;
+          }
         }
       }
 

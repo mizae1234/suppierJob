@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -51,6 +51,13 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isBranchUser =
+    user?.role === 'BRANCH' ||
+    currentRole === 'BRANCH' ||
+    Boolean(user?.branchId);
+
+  const effectiveUserBranchId = user?.branchId || currentBranchId || (isBranchUser ? branches[0]?.id : undefined);
+
   // Configuration options
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(() => {
     if (user?.companyId) return user.companyId;
@@ -70,6 +77,33 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
   const [duplicateAction, setDuplicateAction] = useState<'UPDATE' | 'SKIP'>('UPDATE');
   const [showGuide, setShowGuide] = useState<boolean>(false);
 
+  // Auto-sync company & branch when modal opens or user/context changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (isBranchUser) {
+      const bId = user?.branchId || currentBranchId;
+      if (bId) {
+        setSelectedBranchId(bId);
+        const b = branches.find(item => item.id === bId);
+        if (b) setSelectedCompanyId(b.companyId);
+      } else if (user?.companyId) {
+        setSelectedCompanyId(user.companyId);
+      }
+    } else {
+      if (user?.companyId) {
+        setSelectedCompanyId(user.companyId);
+      } else if (currentCompany !== 'ALL') {
+        const c = companies.find(item => item.code === currentCompany);
+        if (c) setSelectedCompanyId(c.id);
+      }
+
+      if (currentBranchId) {
+        setSelectedBranchId(currentBranchId);
+      }
+    }
+  }, [isOpen, user, currentCompany, currentBranchId, companies, branches, isBranchUser]);
+
   // File parsing states
   const [fileName, setFileName] = useState<string>('');
   const [parsedRows, setParsedRows] = useState<ParsedVehicle[]>([]);
@@ -81,9 +115,14 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
 
   // Filter branches by selected company
   const availableBranches = branches.filter(b => b.companyId === selectedCompanyId);
+  const activeBranch = branches.find(b => b.id === (isBranchUser ? effectiveUserBranchId : selectedBranchId));
+  const activeCompany = companies.find(c => c.id === (isBranchUser ? (user?.companyId || activeBranch?.companyId || selectedCompanyId) : selectedCompanyId));
 
   // ── Template Generator ──
   const handleDownloadTemplate = () => {
+    const defaultCompanyCode = activeCompany?.code || 'EV7';
+    const defaultBranchName = activeBranch?.name || activeBranch?.code || 'EV7';
+
     // 1. Data Sheet (VehicleStock)
     const templateData = [
       {
@@ -93,8 +132,8 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
         'ประเภทรถ (Type)': 'Hatchback',
         'เลขทะเบียน (License Plate)': 'กข-9988 กทม',
         'เลขไมล์ (Mileage)': 2500,
-        'รหัสบริษัท (Company)': 'EV7',
-        'สาขา (Branch)': 'EV7',
+        'รหัสบริษัท (Company)': defaultCompanyCode,
+        'สาขา (Branch)': defaultBranchName,
       },
       {
         'เลขตัวถัง (VIN)': 'LSJ574898PA001122',
@@ -103,8 +142,8 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
         'ประเภทรถ (Type)': 'Convertible',
         'เลขทะเบียน (License Plate)': 'ป้ายแดง',
         'เลขไมล์ (Mileage)': 500,
-        'รหัสบริษัท (Company)': 'GI',
-        'สาขา (Branch)': 'GI Hub บางนา-สุวรรณภูมิ',
+        'รหัสบริษัท (Company)': defaultCompanyCode,
+        'สาขา (Branch)': defaultBranchName,
       },
       {
         'เลขตัวถัง (VIN)': 'NC07C5EB6PA003344',
@@ -113,8 +152,8 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
         'ประเภทรถ (Type)': 'SUV',
         'เลขทะเบียน (License Plate)': '',
         'เลขไมล์ (Mileage)': 0,
-        'รหัสบริษัท (Company)': 'GI',
-        'สาขา (Branch)': 'GI-กาญจนาภิเษก',
+        'รหัสบริษัท (Company)': defaultCompanyCode,
+        'สาขา (Branch)': defaultBranchName,
       }
     ];
 
@@ -184,17 +223,17 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
         'ลำดับ': 7,
         'ชื่อคอลัมน์ (Column)': 'รหัสบริษัท (Company)',
         'ความจำเป็น': 'ไม่บังคับ (Optional)',
-        'ตัวอย่างข้อมูล': 'EV7 หรือ GI',
-        'ค่าเริ่มต้นหากเว้นว่าง': 'ใช้บริษัทเริ่มต้นที่เลือกใน Modal',
-        'คำอธิบายและข้อกำหนด': 'รหัสบริษัท หากไม่ระบุ ระบบจะใช้ค่าจากตัวเลือก "บริษัทเริ่มต้น" ในหน้าต่างการนำเข้า'
+        'ตัวอย่างข้อมูล': defaultCompanyCode,
+        'ค่าเริ่มต้นหากเว้นว่าง': isBranchUser ? `บริษัทของผู้นำเข้า (${defaultCompanyCode})` : 'ใช้บริษัทเริ่มต้นที่เลือกใน Modal',
+        'คำอธิบายและข้อกำหนด': isBranchUser ? 'สาขาผู้นำเข้าจะถูกกำหนดเป็นเจ้าของรถโดยอัตโนมัติ' : 'รหัสบริษัท หากไม่ระบุ ระบบจะใช้ค่าจากตัวเลือก "บริษัทเริ่มต้น" ในหน้าต่างการนำเข้า'
       },
       {
         'ลำดับ': 8,
         'ชื่อคอลัมน์ (Column)': 'สาขา (Branch)',
         'ความจำเป็น': 'ไม่บังคับ (Optional)',
-        'ตัวอย่างข้อมูล': 'EV7, GI Hub บางนา-สุวรรณภูมิ',
-        'ค่าเริ่มต้นหากเว้นว่าง': 'ใช้สาขาเริ่มต้นที่เลือกใน Modal',
-        'คำอธิบายและข้อกำหนด': 'รหัสหรือชื่อสาขาที่รถประจำอยู่ หากไม่ระบุ ระบบจะใช้ค่าจาก "สาขาเริ่มต้น" ในหน้าต่างการนำเข้า'
+        'ตัวอย่างข้อมูล': defaultBranchName,
+        'ค่าเริ่มต้นหากเว้นว่าง': isBranchUser ? `สาขาของผู้นำเข้า (${defaultBranchName})` : 'ใช้สาขาเริ่มต้นที่เลือกใน Modal',
+        'คำอธิบายและข้อกำหนด': isBranchUser ? 'สาขาผู้นำเข้าจะถูกกำหนดเป็นเจ้าของรถโดยอัตโนมัติ' : 'รหัสหรือชื่อสาขาที่รถประจำอยู่ หากไม่ระบุ ระบบจะใช้ค่าจาก "สาขาเริ่มต้น" ในหน้าต่างการนำเข้า'
       }
     ];
 
@@ -372,11 +411,11 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
           vehicleType: r.vehicleType,
           licensePlate: r.licensePlate,
           mileage: r.mileage,
-          companyCode: r.companyCode,
-          branchCodeOrName: r.branchCodeOrName,
+          companyCode: isBranchUser ? (activeCompany?.code || undefined) : r.companyCode,
+          branchCodeOrName: isBranchUser ? (activeBranch?.name || activeBranch?.code || undefined) : r.branchCodeOrName,
         })),
-        defaultCompanyId: selectedCompanyId,
-        defaultBranchId: selectedBranchId,
+        defaultCompanyId: isBranchUser ? (user?.companyId || activeBranch?.companyId || selectedCompanyId) : selectedCompanyId,
+        defaultBranchId: isBranchUser ? (user?.branchId || effectiveUserBranchId || selectedBranchId) : selectedBranchId,
         duplicateAction,
       };
 
@@ -436,71 +475,132 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
         <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-5">
           {/* Controls: Company, Branch, Duplicate Policy & Template */}
           <div className="p-4 rounded-2xl bg-[#f4f9f5] border border-emerald-950/10">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-              {/* Default Company */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                  บริษัทเริ่มต้น:
-                </label>
-                <select
-                  value={selectedCompanyId}
-                  onChange={(e) => setSelectedCompanyId(e.target.value)}
-                  disabled={user?.role === 'BRANCH'}
-                  className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238] disabled:bg-gray-100"
-                >
-                  {companies.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
-                  ))}
-                </select>
-              </div>
+            {isBranchUser ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                {/* Branch Owner Card (Auto-assigned) */}
+                <div className="p-3 rounded-xl bg-white border border-emerald-200/80 shadow-xs flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#0f5238] flex items-center justify-center shrink-0">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                      สาขาเจ้าของรถ (ผู้นำเข้า):
+                    </div>
+                    <div className="text-sm font-extrabold text-gray-900 truncate">
+                      {activeBranch?.name || user?.branchName || 'สาขาของคุณ'}
+                      <span className="ml-1.5 text-xs font-semibold text-gray-500">
+                        ({activeCompany?.code || user?.companyCode || 'EV7/GI'})
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">
+                      รถทุกคันที่นำเข้าจะถูกกำหนดเป็นของสาขานี้อัตโนมัติ
+                    </div>
+                  </div>
+                </div>
 
-              {/* Default Branch */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                  สาขาเริ่มต้น (ถ้าไม่ระบุในไฟล์):
-                </label>
-                <select
-                  value={selectedBranchId}
-                  onChange={(e) => setSelectedBranchId(e.target.value)}
-                  disabled={user?.role === 'BRANCH'}
-                  className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238] disabled:bg-gray-100"
-                >
-                  {availableBranches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
+                {/* Duplicate Action */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                    หากพบ VIN ซ้ำในระบบ:
+                  </label>
+                  <select
+                    value={duplicateAction}
+                    onChange={(e) => setDuplicateAction(e.target.value as 'UPDATE' | 'SKIP')}
+                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
+                  >
+                    <option value="UPDATE">อัปเดตข้อมูลเดิม (Upsert)</option>
+                    <option value="SKIP">ข้ามรายการเดิม (Skip Duplicate)</option>
+                  </select>
+                </div>
 
-              {/* Duplicate Action */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                  หากพบ VIN ซ้ำในระบบ:
-                </label>
-                <select
-                  value={duplicateAction}
-                  onChange={(e) => setDuplicateAction(e.target.value as 'UPDATE' | 'SKIP')}
-                  className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
-                >
-                  <option value="UPDATE">อัปเดตข้อมูลเดิม (Upsert)</option>
-                  <option value="SKIP">ข้ามรายการเดิม (Skip Duplicate)</option>
-                </select>
+                {/* Template Download Button */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 invisible sm:visible">
+                    &nbsp;
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    className="w-full h-10 flex items-center justify-center gap-2 px-3.5 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-[#0f5238] text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>ดาวน์โหลด Template (.xlsx)</span>
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                {/* Default Company */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                    บริษัทเริ่มต้น:
+                  </label>
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(e) => {
+                      const newCompId = e.target.value;
+                      setSelectedCompanyId(newCompId);
+                      const matchingBranches = branches.filter(b => b.companyId === newCompId);
+                      if (matchingBranches.length > 0) {
+                        setSelectedBranchId(matchingBranches[0].id);
+                      }
+                    }}
+                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
+                  >
+                    {companies.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                    ))}
+                  </select>
+                </div>
 
-              {/* Template Download Button — aligned with dropdowns */}
-              <div>
-                <label className="block text-[11px] font-bold text-gray-700 mb-1 invisible sm:visible">
-                  &nbsp;
-                </label>
-                <button
-                  type="button"
-                  onClick={handleDownloadTemplate}
-                  className="w-full h-10 flex items-center justify-center gap-2 px-3.5 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-[#0f5238] text-xs font-bold transition-all shadow-xs cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>ดาวน์โหลด Template (.xlsx)</span>
-                </button>
+                {/* Default Branch */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                    สาขาเริ่มต้น (ถ้าไม่ระบุในไฟล์):
+                  </label>
+                  <select
+                    value={selectedBranchId}
+                    onChange={(e) => setSelectedBranchId(e.target.value)}
+                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
+                  >
+                    {availableBranches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Duplicate Action */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                    หากพบ VIN ซ้ำในระบบ:
+                  </label>
+                  <select
+                    value={duplicateAction}
+                    onChange={(e) => setDuplicateAction(e.target.value as 'UPDATE' | 'SKIP')}
+                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
+                  >
+                    <option value="UPDATE">อัปเดตข้อมูลเดิม (Upsert)</option>
+                    <option value="SKIP">ข้ามรายการเดิม (Skip Duplicate)</option>
+                  </select>
+                </div>
+
+                {/* Template Download Button — aligned with dropdowns */}
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-700 mb-1 invisible sm:visible">
+                    &nbsp;
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    className="w-full h-10 flex items-center justify-center gap-2 px-3.5 rounded-xl border border-emerald-300 bg-white hover:bg-emerald-50 text-[#0f5238] text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>ดาวน์โหลด Template (.xlsx)</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Guidelines Accordion */}
@@ -673,8 +773,18 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
                         <td className="py-2 px-3 text-gray-600">{r.vehicleType || '-'}</td>
                         <td className="py-2 px-3 text-gray-700 whitespace-nowrap">{r.licensePlate || '-'}</td>
                         <td className="py-2 px-3 text-gray-600">{r.mileage !== undefined ? `${r.mileage.toLocaleString()} กม.` : '-'}</td>
-                        <td className="py-2 px-3 text-gray-500 text-[11px] whitespace-nowrap">
-                          {r.branchCodeOrName || 'สาขาเริ่มต้น'} ({r.companyCode || 'บริษัทเริ่มต้น'})
+                        <td className="py-2 px-3 text-[11px] whitespace-nowrap">
+                          {isBranchUser ? (
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              <Building2 className="w-3 h-3 text-emerald-600" />
+                              {activeBranch?.name || user?.branchName || 'สาขาของคุณ'} ({activeCompany?.code || user?.companyCode || 'EV7/GI'})
+                            </span>
+                          ) : (
+                            <span className="text-gray-600">
+                              {r.branchCodeOrName || availableBranches.find(b => b.id === selectedBranchId)?.name || 'สาขาเริ่มต้น'}{' '}
+                              <span className="text-gray-400">({r.companyCode || companies.find(c => c.id === selectedCompanyId)?.code || 'บริษัทเริ่มต้น'})</span>
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
