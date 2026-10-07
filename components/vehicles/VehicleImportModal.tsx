@@ -17,7 +17,11 @@ import {
   Loader2, 
   RefreshCw,
   FileCheck,
-  AlertTriangle
+  AlertTriangle,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle
 } from 'lucide-react';
 
 interface ParsedVehicle {
@@ -64,6 +68,7 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
   });
 
   const [duplicateAction, setDuplicateAction] = useState<'UPDATE' | 'SKIP'>('UPDATE');
+  const [showGuide, setShowGuide] = useState<boolean>(false);
 
   // File parsing states
   const [fileName, setFileName] = useState<string>('');
@@ -79,6 +84,7 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
 
   // ── Template Generator ──
   const handleDownloadTemplate = () => {
+    // 1. Data Sheet (VehicleStock)
     const templateData = [
       {
         'เลขตัวถัง (VIN)': 'LC07C5EB4PA009988',
@@ -112,23 +118,99 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
       }
     ];
 
-    const worksheet = XLSX.utils.json_to_sheet(templateData);
-
-    // Auto-fit column widths
-    const columnWidths = [
-      { wch: 22 }, // VIN
-      { wch: 28 }, // Model
+    const stockWorksheet = XLSX.utils.json_to_sheet(templateData);
+    stockWorksheet['!cols'] = [
+      { wch: 24 }, // VIN
+      { wch: 32 }, // Model
       { wch: 18 }, // Color
       { wch: 16 }, // Type
-      { wch: 24 }, // License Plate
+      { wch: 26 }, // License Plate
       { wch: 16 }, // Mileage
-      { wch: 20 }, // Company
-      { wch: 18 }, // Branch
+      { wch: 22 }, // Company
+      { wch: 26 }, // Branch
     ];
-    worksheet['!cols'] = columnWidths;
+
+    // 2. Instructions Sheet
+    const instructionsData = [
+      {
+        'ลำดับ': 1,
+        'ชื่อคอลัมน์ (Column)': 'เลขตัวถัง (VIN)',
+        'ความจำเป็น': 'จำเป็น (Required)',
+        'ตัวอย่างข้อมูล': 'LC07C5EB4PA009988',
+        'ค่าเริ่มต้นหากเว้นว่าง': '— (ไม่มีแถวนี้จะ Error)',
+        'คำอธิบายและข้อกำหนด': 'เลขประจำตัวรถ/คัสซี (17 หลัก) ต้องไม่เว้นว่าง และต้องไม่ซ้ำกันภายในไฟล์เดียวกัน หากซ้ำกับในระบบจะอิงตามนโยบายที่เลือก (อัปเดตหรือข้าม)'
+      },
+      {
+        'ลำดับ': 2,
+        'ชื่อคอลัมน์ (Column)': 'ยี่ห้อและรุ่น (Model)',
+        'ความจำเป็น': 'จำเป็น (Required)',
+        'ตัวอย่างข้อมูล': 'BYD Dolphin Extended Range',
+        'ค่าเริ่มต้นหากเว้นว่าง': '— (ไม่มีแถวนี้จะ Error)',
+        'คำอธิบายและข้อกำหนด': 'ชื่อยี่ห้อและรุ่นรถ เช่น NETA V-II, MG Cyberster EV, BYD Atto 3'
+      },
+      {
+        'ลำดับ': 3,
+        'ชื่อคอลัมน์ (Column)': 'สีตัวถัง (Color)',
+        'ความจำเป็น': 'ไม่บังคับ (Optional)',
+        'ตัวอย่างข้อมูล': 'Atlantis Grey, ขาว, ดำ',
+        'ค่าเริ่มต้นหากเว้นว่าง': 'มาตรฐาน',
+        'คำอธิบายและข้อกำหนด': 'สีของตัวรถ หากเว้นว่างไว้ ระบบจะตั้งค่าเป็น "มาตรฐาน"'
+      },
+      {
+        'ลำดับ': 4,
+        'ชื่อคอลัมน์ (Column)': 'ประเภทรถ (Type)',
+        'ความจำเป็น': 'ไม่บังคับ (Optional)',
+        'ตัวอย่างข้อมูล': 'Sedan, SUV, Hatchback, Convertible',
+        'ค่าเริ่มต้นหากเว้นว่าง': 'Sedan',
+        'คำอธิบายและข้อกำหนด': 'ประเภทตัวถังรถ หากเว้นว่างไว้ ระบบจะตั้งค่าเป็น "Sedan"'
+      },
+      {
+        'ลำดับ': 5,
+        'ชื่อคอลัมน์ (Column)': 'เลขทะเบียน (License Plate)',
+        'ความจำเป็น': 'ไม่บังคับ (Optional)',
+        'ตัวอย่างข้อมูล': 'กข-9988 กทม หรือ ป้ายแดง',
+        'ค่าเริ่มต้นหากเว้นว่าง': 'เว้นว่าง (ไม่มีเลขทะเบียน)',
+        'คำอธิบายและข้อกำหนด': 'เลขทะเบียนรถ สำหรับรถใหม่ที่ยังไม่จดทะเบียน สามารถระบุ "ป้ายแดง" หรือเว้นว่างได้'
+      },
+      {
+        'ลำดับ': 6,
+        'ชื่อคอลัมน์ (Column)': 'เลขไมล์ (Mileage)',
+        'ความจำเป็น': 'ไม่บังคับ (Optional)',
+        'ตัวอย่างข้อมูล': '2500, 500, 0',
+        'ค่าเริ่มต้นหากเว้นว่าง': '0',
+        'คำอธิบายและข้อกำหนด': 'เลขไมล์สะสมของรถ ใส่เป็นตัวเลข (ไม่ต้องใส่หน่วย กม.)'
+      },
+      {
+        'ลำดับ': 7,
+        'ชื่อคอลัมน์ (Column)': 'รหัสบริษัท (Company)',
+        'ความจำเป็น': 'ไม่บังคับ (Optional)',
+        'ตัวอย่างข้อมูล': 'EV7 หรือ GI',
+        'ค่าเริ่มต้นหากเว้นว่าง': 'ใช้บริษัทเริ่มต้นที่เลือกใน Modal',
+        'คำอธิบายและข้อกำหนด': 'รหัสบริษัท หากไม่ระบุ ระบบจะใช้ค่าจากตัวเลือก "บริษัทเริ่มต้น" ในหน้าต่างการนำเข้า'
+      },
+      {
+        'ลำดับ': 8,
+        'ชื่อคอลัมน์ (Column)': 'สาขา (Branch)',
+        'ความจำเป็น': 'ไม่บังคับ (Optional)',
+        'ตัวอย่างข้อมูล': 'EV7, GI Hub บางนา-สุวรรณภูมิ',
+        'ค่าเริ่มต้นหากเว้นว่าง': 'ใช้สาขาเริ่มต้นที่เลือกใน Modal',
+        'คำอธิบายและข้อกำหนด': 'รหัสหรือชื่อสาขาที่รถประจำอยู่ หากไม่ระบุ ระบบจะใช้ค่าจาก "สาขาเริ่มต้น" ในหน้าต่างการนำเข้า'
+      }
+    ];
+
+    const instructionWorksheet = XLSX.utils.json_to_sheet(instructionsData);
+    instructionWorksheet['!cols'] = [
+      { wch: 8 },  // ลำดับ
+      { wch: 28 }, // Column
+      { wch: 22 }, // ความจำเป็น
+      { wch: 30 }, // ตัวอย่าง
+      { wch: 30 }, // ค่าเริ่มต้น
+      { wch: 70 }, // คำอธิบาย
+    ];
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'VehicleStock');
+    XLSX.utils.book_append_sheet(workbook, stockWorksheet, 'VehicleStock');
+    XLSX.utils.book_append_sheet(workbook, instructionWorksheet, 'คำแนะนำ (Instructions)');
     XLSX.writeFile(workbook, 'vehicle_import_template.xlsx');
   };
 
@@ -143,8 +225,22 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
+        
+        // Auto-detect the sheet containing vehicle data (either named 'VehicleStock' or check headers for VIN)
+        let targetSheetName = workbook.SheetNames[0];
+        for (const name of workbook.SheetNames) {
+          const s = workbook.Sheets[name];
+          const testRows: any[] = XLSX.utils.sheet_to_json(s, { header: 1, range: 0, defval: '' });
+          if (testRows.length > 0 && Array.isArray(testRows[0])) {
+            const headerStr = testRows[0].join(' ').toUpperCase();
+            if (headerStr.includes('VIN') || headerStr.includes('เลขตัวถัง')) {
+              targetSheetName = name;
+              break;
+            }
+          }
+        }
+
+        const worksheet = workbook.Sheets[targetSheetName];
         const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
         if (rawJson.length === 0) {
@@ -405,6 +501,60 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Guidelines Accordion */}
+          <div className="rounded-2xl border border-emerald-100 bg-white overflow-hidden shadow-xs">
+            <button
+              type="button"
+              onClick={() => setShowGuide(!showGuide)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-emerald-50/40 hover:bg-emerald-50 text-xs font-bold text-[#0f5238] transition-colors cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-emerald-600" />
+                <span>ข้อกำหนดและคำแนะนำการเตรียมข้อมูล Excel (คลิกเพื่อ{showGuide ? 'ซ่อนคำแนะนำ' : 'ดูคำแนะนำ'})</span>
+              </span>
+              <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+                {showGuide ? 'ซ่อน' : 'แสดง'}
+                {showGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </span>
+            </button>
+            {showGuide && (
+              <div className="p-4 bg-white border-t border-emerald-100/70 text-xs text-gray-700 animate-in fade-in duration-150">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                  <div className="p-3 rounded-xl bg-red-50/60 border border-red-100">
+                    <div className="font-bold text-red-700 flex items-center gap-1.5 mb-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      คอลัมน์ที่จำเป็นต้องมี (Required)
+                    </div>
+                    <ul className="space-y-1 text-gray-700 text-[11px] leading-relaxed">
+                      <li>• <strong className="text-gray-900">เลขตัวถัง (VIN):</strong> 17 หลัก ห้ามเว้นว่าง และต้องไม่ซ้ำกันในไฟล์</li>
+                      <li>• <strong className="text-gray-900">ยี่ห้อและรุ่น (Model):</strong> ชื่อยี่ห้อและรุ่นรถ เช่น NETA V-II, BYD Dolphin</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                    <div className="font-bold text-emerald-800 flex items-center gap-1.5 mb-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      คอลัมน์ไม่บังคับ (Optional / ค่าเริ่มต้น)
+                    </div>
+                    <ul className="space-y-1 text-gray-700 text-[11px] leading-relaxed">
+                      <li>• <strong className="text-gray-900">สีตัวถัง (Color):</strong> หากเว้นว่างจะเป็น "มาตรฐาน"</li>
+                      <li>• <strong className="text-gray-900">ประเภทรถ (Type):</strong> เช่น Sedan, SUV, Hatchback (ค่าเริ่มต้น: Sedan)</li>
+                      <li>• <strong className="text-gray-900">เลขทะเบียน:</strong> ใส่เลขทะเบียนจริง หรือ "ป้ายแดง" หรือเว้นว่างได้</li>
+                      <li>• <strong className="text-gray-900">เลขไมล์:</strong> ตัวเลขระยะทาง เช่น 2500 (ค่าเริ่มต้น: 0)</li>
+                      <li>• <strong className="text-gray-900">รหัสบริษัท / สาขา:</strong> หากเว้นว่าง ระบบจะใช้ค่าเริ่มต้นที่เลือกด้านบน</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-100/80 text-[11px] text-amber-800 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>ทริค:</strong> ในไฟล์ Template (.xlsx) ที่ดาวน์โหลด จะมีชีต <strong>"คำแนะนำ (Instructions)"</strong> แนบรายละเอียดตัวอย่างและเงื่อนไขครบถ้วนทุกคอลัมน์ สามารถเปิดดูประกอบการทำงานได้เลยครับ
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Upload Dropzone */}
