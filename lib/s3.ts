@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 
@@ -11,7 +11,44 @@ const S3_ACCESS_KEY = process.env.S3_ACCESS_KEY || '';
 const S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_KEY || process.env.S3_SECRET_ACCESS_KEY || '';
 const S3_PUBLIC_BASE_URL = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/+$/, '');
 const S3_DISABLE_ACL = process.env.S3_DISABLE_ACL === 'true';
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './public/uploads';
+// ไฟล์ใหม่เก็บแบบ private และเปิดผ่าน /api/files (ตรวจสิทธิ์ก่อน) — ตั้ง S3_PUBLIC_UPLOADS=true เพื่อกลับไปใช้ public-read
+const S3_PUBLIC_UPLOADS = process.env.S3_PUBLIC_UPLOADS === 'true';
+// Local fallback อยู่นอก public/ เพื่อไม่ให้เปิดได้ตรงๆ โดยไม่ผ่านการตรวจสิทธิ์
+const UPLOAD_DIR = process.env.UPLOAD_DIR || './storage/uploads';
+
+export const FILES_ROUTE_PREFIX = '/api/files/';
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
+
+const IMAGE_TYPES: Record<string, { ext: string; mime: string }> = {
+  jpg: { ext: 'jpg', mime: 'image/jpeg' },
+  png: { ext: 'png', mime: 'image/png' },
+  webp: { ext: 'webp', mime: 'image/webp' },
+};
+
+/**
+ * ตรวจชนิดไฟล์จาก magic bytes (ไม่เชื่อนามสกุลหรือ content-type ที่ผู้ใช้ส่งมา)
+ */
+export function detectImageType(buf: Buffer): { ext: string; mime: string } | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return IMAGE_TYPES.jpg;
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return IMAGE_TYPES.png;
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return IMAGE_TYPES.webp;
+  return null;
+}
+
+export function mimeFromKey(key: string): string {
+  const ext = key.split('.').pop()?.toLowerCase() || '';
+  return (IMAGE_TYPES[ext === 'jpeg' ? 'jpg' : ext] || IMAGE_TYPES.jpg).mime;
+}
+
+/** อนุญาตเฉพาะ A-Z a-z 0-9 _ - ในแต่ละ segment ของ key (กัน path traversal) */
+function safeSegment(value: string, fallback: string): string {
+  const cleaned = value.trim().replace(/[^A-Za-z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 64);
+  return cleaned && cleaned !== '-' ? cleaned : fallback;
+}
+
+export function isSafeStorageKey(key: string): boolean {
+  return /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\/[A-Za-z0-9_-]+\.(jpg|png|webp)$/.test(key) && !key.includes('..');
+}
 
 // Initialize S3Client if credentials exist
 export const s3Client = S3_ACCESS_KEY && S3_SECRET_ACCESS_KEY && S3_BUCKET
@@ -64,10 +101,11 @@ export function buildS3EvidenceKey(params: {
 }): string {
   const typeFolder = getJobTypeFolder(params.jobType);
   const ymFolder = getYearMonthFolder(params.createdAt);
-  const jobFolder = (params.jobNumber || 'unassigned').trim().replace(/[\/\\]/g, '-');
-  const vinFolder = (params.vin || 'general').trim().replace(/[\/\\]/g, '-');
-  const ext = (params.extension || 'jpg').replace(/^\./, '');
-  const typeTag = params.evidenceType ? `${params.evidenceType.toLowerCase()}_` : '';
+  const jobFolder = safeSegment(params.jobNumber || '', 'unassigned');
+  const vinFolder = safeSegment(params.vin || '', 'general');
+  const extKey = (params.extension || 'jpg').replace(/^\./, '').toLowerCase();
+  const ext = (IMAGE_TYPES[extKey === 'jpeg' ? 'jpg' : extKey] || IMAGE_TYPES.jpg).ext;
+  const typeTag = params.evidenceType ? `${safeSegment(params.evidenceType.toLowerCase(), 'photo')}_` : '';
   const rand = Math.random().toString(36).slice(2, 8);
   const filename = `${Date.now()}_${typeTag}${rand}.${ext}`;
 
@@ -92,7 +130,8 @@ export function getS3PublicUrl(key: string): string {
 }
 
 /**
- * Upload buffer to S3 or fallback to local disk
+ * Upload buffer to S3 or fallback to local disk.
+ * Returns the URL to store in DB (ค่า default: /api/files/<key> ซึ่งต้อง login และมีสิทธิ์ในงานนั้น)
  */
 export async function uploadToStorage(params: {
   buffer: Buffer;
@@ -100,6 +139,7 @@ export async function uploadToStorage(params: {
   contentType: string;
 }): Promise<string> {
   const { buffer, key, contentType } = params;
+  if (!isSafeStorageKey(key)) throw new Error('Invalid storage key');
 
   if (s3Client) {
     await s3Client.send(
@@ -108,20 +148,41 @@ export async function uploadToStorage(params: {
         Key: key,
         Body: buffer,
         ContentType: contentType,
-        ACL: S3_DISABLE_ACL ? undefined : 'public-read',
+        ACL: S3_PUBLIC_UPLOADS && !S3_DISABLE_ACL ? 'public-read' : undefined,
       })
     );
-    return getS3PublicUrl(key);
+    return S3_PUBLIC_UPLOADS ? getS3PublicUrl(key) : `${FILES_ROUTE_PREFIX}${key}`;
   }
 
   // Local storage fallback
-  const localTarget = path.join(process.cwd(), UPLOAD_DIR, key);
-  const dir = path.dirname(localTarget);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  const baseDir = path.resolve(process.cwd(), UPLOAD_DIR);
+  const localTarget = path.resolve(baseDir, key);
+  if (!localTarget.startsWith(baseDir + path.sep)) throw new Error('Invalid storage path');
+  fs.mkdirSync(path.dirname(localTarget), { recursive: true });
   fs.writeFileSync(localTarget, buffer);
-  return `/uploads/${key}`;
+  return `${FILES_ROUTE_PREFIX}${key}`;
+}
+
+/**
+ * Read a stored object (S3 or local). Returns null if not found.
+ */
+export async function readFromStorage(key: string): Promise<Buffer | null> {
+  if (!isSafeStorageKey(key)) return null;
+
+  if (s3Client) {
+    try {
+      const obj = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+      if (!obj.Body) return null;
+      return Buffer.from(await obj.Body.transformToByteArray());
+    } catch {
+      return null;
+    }
+  }
+
+  const baseDir = path.resolve(process.cwd(), UPLOAD_DIR);
+  const localTarget = path.resolve(baseDir, key);
+  if (!localTarget.startsWith(baseDir + path.sep) || !fs.existsSync(localTarget)) return null;
+  return fs.promises.readFile(localTarget);
 }
 
 /**
@@ -143,15 +204,18 @@ export async function uploadBase64Evidence(params: {
     throw new Error('รูปแบบ Base64 Data URL ไม่ถูกต้อง');
   }
 
-  const contentType = match[1];
-  const base64Content = match[2];
-  const buffer = Buffer.from(base64Content, 'base64');
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > MAX_UPLOAD_BYTES) {
+    throw new Error('ไฟล์รูปใหญ่เกิน 10MB');
+  }
 
-  // Determine file extension
-  let extension = 'jpg';
-  if (contentType.includes('png')) extension = 'png';
-  else if (contentType.includes('webp')) extension = 'webp';
-  else if (contentType.includes('jpeg') || contentType.includes('jpg')) extension = 'jpg';
+  // ตัดสินชนิดไฟล์จากเนื้อไฟล์จริง ไม่ใช่จาก data URL header
+  const detected = detectImageType(buffer);
+  if (!detected) {
+    throw new Error('รองรับเฉพาะไฟล์รูป JPG, PNG, WEBP');
+  }
+  const contentType = detected.mime;
+  const extension = detected.ext;
 
   const effectiveVin = params.vin || params.job.vin || 'general';
 

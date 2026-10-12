@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
-import { uploadBase64Evidence, uploadToStorage, buildS3EvidenceKey } from '@/lib/s3';
+import { requireAuth, type SessionUser } from '@/lib/auth';
+import { uploadBase64Evidence, uploadToStorage, buildS3EvidenceKey, detectImageType, MAX_UPLOAD_BYTES } from '@/lib/s3';
+import { canViewJob } from '@/lib/job-access';
+
+const EVIDENCE_TYPES = ['BEFORE', 'AFTER', 'PICKUP', 'DROPOFF', 'GENERAL'];
+
+function badRequest(error: string) {
+  return NextResponse.json({ error }, { status: 400 });
+}
+
+async function loadJobForUpload(id: string, user: SessionUser) {
+  const job = await prisma.job.findUnique({ where: { id } });
+  if (!job) return { response: NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 }) };
+  if (!canViewJob(user, job)) {
+    return { response: NextResponse.json({ error: 'คุณไม่มีสิทธิ์แนบหลักฐานในงานนี้' }, { status: 403 }) };
+  }
+  return { job };
+}
 
 // POST: เพิ่มรูปหลักฐาน พร้อมอัปโหลดขึ้น S3 (DigitalOcean Spaces) ตามโครงสร้างโฟลเดอร์ที่กำหนด
 export async function POST(
@@ -35,24 +51,17 @@ export async function POST(
           { status: 400 }
         );
       }
+      if (!EVIDENCE_TYPES.includes(evidenceType)) return badRequest('evidenceType ไม่ถูกต้อง');
+      if (file.size > MAX_UPLOAD_BYTES) return badRequest('ไฟล์รูปใหญ่เกิน 10MB');
 
-      // Verify job exists
-      const job = await prisma.job.findUnique({ where: { id } });
-      if (!job) {
-        return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
-      }
+      const loaded = await loadJobForUpload(id, user);
+      if (loaded.response) return loaded.response;
+      const { job } = loaded;
 
-      if (user.role === 'SUPPLIER' && job.supplierId !== user.supplierId) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แนบหลักฐานในงานนี้' }, { status: 403 });
-      }
-
-      if (user.role === 'BRANCH' && user.companyId && job.companyId !== user.companyId) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แนบหลักฐานในงานของบริษัทอื่น' }, { status: 403 });
-      }
-
-      const bytes = await file.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      const ext = file.name?.split('.').pop() || 'jpg';
+      const buffer = Buffer.from(await file.arrayBuffer());
+      // ตรวจชนิดไฟล์จากเนื้อไฟล์จริง (ไม่ใช้นามสกุล/ชนิดที่ client ส่งมา)
+      const detected = detectImageType(buffer);
+      if (!detected) return badRequest('รองรับเฉพาะไฟล์รูป JPG, PNG, WEBP');
 
       const key = buildS3EvidenceKey({
         jobType: job.jobType,
@@ -60,13 +69,13 @@ export async function POST(
         jobNumber: job.jobNumber,
         vin: vin || job.vin || 'general',
         evidenceType,
-        extension: ext,
+        extension: detected.ext,
       });
 
       photoUrl = await uploadToStorage({
         buffer,
         key,
-        contentType: file.type || 'image/jpeg',
+        contentType: detected.mime,
       });
 
       const evidence = await prisma.jobEvidence.create({
@@ -84,10 +93,10 @@ export async function POST(
 
     // Handle JSON payload
     const body = await request.json();
-    vin = body.vin || null;
-    photoUrl = body.photoUrl || '';
-    caption = body.caption || '';
-    evidenceType = body.evidenceType || '';
+    vin = typeof body.vin === 'string' ? body.vin : null;
+    photoUrl = typeof body.photoUrl === 'string' ? body.photoUrl : '';
+    caption = typeof body.caption === 'string' ? body.caption : '';
+    evidenceType = typeof body.evidenceType === 'string' ? body.evidenceType : '';
 
     if (!photoUrl || !evidenceType) {
       return NextResponse.json(
@@ -95,39 +104,37 @@ export async function POST(
         { status: 400 }
       );
     }
+    if (!EVIDENCE_TYPES.includes(evidenceType)) return badRequest('evidenceType ไม่ถูกต้อง');
 
     // Verify job exists and user has access
-    const job = await prisma.job.findUnique({ where: { id } });
-    if (!job) {
-      return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
-    }
-
-    if (user.role === 'SUPPLIER' && job.supplierId !== user.supplierId) {
-      return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แนบหลักฐานในงานนี้' }, { status: 403 });
-    }
-
-    if (user.role === 'BRANCH' && user.companyId && job.companyId !== user.companyId) {
-      return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แนบหลักฐานในงานของบริษัทอื่น' }, { status: 403 });
-    }
+    const loaded = await loadJobForUpload(id, user);
+    if (loaded.response) return loaded.response;
+    const { job } = loaded;
 
     // If photoUrl is base64 data URL, upload to S3 with path:
     // {jobType}/{year-month}/{jobNumber}/{vin}/{filename}
     if (photoUrl.startsWith('data:image/')) {
-      const uploadResult = await uploadBase64Evidence({
-        base64Data: photoUrl,
-        job,
-        vin,
-        evidenceType,
-      });
-      photoUrl = uploadResult.url;
+      try {
+        const uploadResult = await uploadBase64Evidence({
+          base64Data: photoUrl,
+          job,
+          vin,
+          evidenceType,
+        });
+        photoUrl = uploadResult.url;
+      } catch (err) {
+        // ข้อความ validation ของเราเป็นภาษาไทย → ส่งกลับเป็น 400; error อื่น (เช่น S3) ให้เป็น 500
+        if (err instanceof Error && /[\u0E00-\u0E7F]/.test(err.message)) return badRequest(err.message);
+        throw err;
+      }
     } else {
-      // Validate safe URL format (prevent javascript: or XSS payloads)
+      // Validate safe URL format (prevent javascript:, protocol-relative //host,
+      // and linking to another job's private file under /api/files/)
       const isSafeUrl =
-        photoUrl.startsWith('/') ||
-        photoUrl.startsWith('https://') ||
-        photoUrl.startsWith('http://');
+        (photoUrl.startsWith('/') && !photoUrl.startsWith('//') && !photoUrl.startsWith('/api/')) ||
+        photoUrl.startsWith('https://');
 
-      if (!isSafeUrl) {
+      if (!isSafeUrl || photoUrl.length > 1000) {
         return NextResponse.json(
           { error: 'รูปแบบ photoUrl ไม่ถูกต้องหรือไม่ปลอดภัย' },
           { status: 400 }

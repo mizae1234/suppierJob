@@ -45,3 +45,6 @@ next-env.d.ts
 AGENTS.md
 CLAUDE.md
 skill_code.md
+
+# private uploads (local fallback)
+/storage
