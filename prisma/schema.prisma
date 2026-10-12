@@ -156,6 +156,10 @@ model Job {
   approvedBy       String?
   rejectReason     String?
 
+  // ยืนยันตัวรถก่อนเริ่มงาน (Vehicle Slide — ระดับใบงาน)
+  verifiedAt       DateTime?
+  verifiedBy       String?
+
   // รูปหลักฐาน
   evidences        JobEvidence[]
 
@@ -194,6 +198,11 @@ model CarWashItem {
   unitPrice       Float    @default(150.0)
   status          String   @default("PENDING")
   remarks         String?
+
+  // ยืนยันตัวรถ (VIN 6 ตัวท้าย / ทะเบียน + รูปถ่าย) ก่อนเริ่มงาน
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  verifyMethod    String?  // VIN | PLATE
 
   @@index([jobId])
   @@index([vin])

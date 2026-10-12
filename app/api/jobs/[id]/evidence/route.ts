@@ -4,7 +4,7 @@ import { requireAuth, type SessionUser } from '@/lib/auth';
 import { uploadBase64Evidence, uploadToStorage, buildS3EvidenceKey, detectImageType, MAX_UPLOAD_BYTES } from '@/lib/s3';
 import { canViewJob } from '@/lib/job-access';
 
-const EVIDENCE_TYPES = ['BEFORE', 'AFTER', 'PICKUP', 'DROPOFF', 'GENERAL'];
+const EVIDENCE_TYPES = ['BEFORE', 'AFTER', 'PICKUP', 'DROPOFF', 'GENERAL', 'VERIFY'];
 
 function badRequest(error: string) {
   return NextResponse.json({ error }, { status: 400 });

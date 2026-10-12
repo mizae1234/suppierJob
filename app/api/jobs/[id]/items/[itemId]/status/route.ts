@@ -71,6 +71,13 @@ export async function PATCH(
           { status: 400 }
         );
       }
+      // ต้องยืนยันตัวรถ (VIN/ทะเบียน + รูป) ก่อนส่งงาน
+      if (status === 'COMPLETED' && !item.verifiedAt) {
+        return NextResponse.json(
+          { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
+          { status: 400 }
+        );
+      }
     } else if (user.role === 'BRANCH') {
       // Branch can approve (APPROVED) or reject (REJECTED) items for jobs related to their branch
       const isRelatedBranch = 

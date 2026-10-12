@@ -1,0 +1,25 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[Job] ADD [verifiedAt] DATETIME2,
+[verifiedBy] NVARCHAR(1000);
+
+-- AlterTable
+ALTER TABLE [dbo].[CarWashItem] ADD [verifiedAt] DATETIME2,
+[verifiedBy] NVARCHAR(1000),
+[verifyMethod] NVARCHAR(1000);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

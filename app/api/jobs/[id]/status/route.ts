@@ -42,6 +42,18 @@ export async function PATCH(
           { status: 403 }
         );
       }
+      // ต้องยืนยันตัวรถ (VIN/ทะเบียน + รูป) ก่อนส่งงาน
+      if (status === 'WAITING_APPROVAL') {
+        const notVerified = job.jobType === 'VEHICLE_SLIDE'
+          ? !job.verifiedAt
+          : job.carWashItems.some(c => ['PENDING', 'REJECTED'].includes(c.status) && !c.verifiedAt);
+        if (notVerified) {
+          return NextResponse.json(
+            { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
+            { status: 400 }
+          );
+        }
+      }
     } else if (user.role === 'BRANCH') {
       // Branch user can approve/reject jobs related to their branch (requester, origin, or destination)
       const isRelatedBranch = 

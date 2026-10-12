@@ -95,6 +95,10 @@ export interface CarWashItem {
   unitPrice: number;
   status: CarWashItemStatus;
   remarks?: string;
+  // ยืนยันตัวรถก่อนเริ่มงาน
+  verifiedAt?: string;
+  verifiedBy?: string;
+  verifyMethod?: 'VIN' | 'PLATE';
 }
 
 // PENDING = รอ Supplier | COMPLETED = Supplier ส่งงานแล้ว (รอตรวจรับ)
@@ -117,7 +121,7 @@ export interface JobEvidence {
   vin?: string;
   photoUrl: string;
   caption: string;
-  evidenceType: 'BEFORE' | 'AFTER' | 'PICKUP' | 'DROPOFF' | 'GENERAL';
+  evidenceType: 'BEFORE' | 'AFTER' | 'PICKUP' | 'DROPOFF' | 'GENERAL' | 'VERIFY';
   uploadedAt: string;
 }
 
@@ -172,6 +176,9 @@ export interface Job {
   approvedAt?: string;
   approvedBy?: string;
   rejectReason?: string;
+  // ยืนยันตัวรถก่อนเริ่มงาน (Vehicle Slide)
+  verifiedAt?: string;
+  verifiedBy?: string;
 
   // หลักฐานภาพถ่าย
   evidences: JobEvidence[];

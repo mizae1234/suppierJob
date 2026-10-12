@@ -889,7 +889,7 @@ export function JobDetailDrawer({
                                       </div>
                                     </div>
                                     <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-bold uppercase backdrop-blur-xs">
-                                      {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType}
+                                      {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType}
                                     </span>
                                   </div>
                                   <div className="p-2.5">
@@ -933,7 +933,7 @@ export function JobDetailDrawer({
                                       </div>
                                     </div>
                                     <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-bold uppercase backdrop-blur-xs">
-                                      {evi.evidenceType}
+                                      {evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType}
                                     </span>
                                   </div>
                                   <div className="p-2.5">
@@ -970,7 +970,7 @@ export function JobDetailDrawer({
                               </div>
                             </div>
                             <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-bold uppercase backdrop-blur-xs">
-                              {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType}
+                              {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType}
                             </span>
                           </div>
                           <div className="p-3">
@@ -996,6 +996,8 @@ export function JobDetailDrawer({
                     {activeJob.activities.map((activity, idx) => {
                       const dotColors: Record<string, string> = {
                         ITEM_COMPLETED: '#059669',
+                        ITEM_VERIFIED: '#0f5238',
+                        VERIFY_FAILED: '#f59e0b',
                         ITEM_REJECTED: '#dc2626',
                         ITEM_CANCELLED: '#ef4444',
                         JOB_WAITING_APPROVAL: '#2563eb',

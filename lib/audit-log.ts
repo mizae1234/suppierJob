@@ -14,6 +14,7 @@ export type AuditAction =
   | 'CANCEL_JOB'
   | 'SUBMIT_JOB'
   | 'UPDATE_ITEM_STATUS'
+  | 'VERIFY_VEHICLE'
   | 'CREATE_INVOICE'
   | 'UPDATE_INVOICE'
   | 'UPLOAD_EVIDENCE'

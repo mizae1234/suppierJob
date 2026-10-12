@@ -9,7 +9,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost, getVehicleLabel, classifySupplierItem, classifySupplierSlide } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import { Job, JobStatus, CarWashItemStatus } from '@/types';
-import { VendorRejectModal, VendorSubmitPhotoModal, WorkModalTarget } from '@/components/vendor';
+import { VendorRejectModal, VendorSubmitPhotoModal, VendorVerifyVehicleModal, WorkModalTarget } from '@/components/vendor';
 import {
   ClipboardList,
   Clock,
@@ -26,6 +26,8 @@ import {
   Route,
   ExternalLink,
   RotateCcw,
+  ScanLine,
+  ShieldCheck,
 } from 'lucide-react';
 
 // returned = สาขาตรวจรับไม่ผ่าน ตีกลับให้แก้ไข | declined = Supplier ปฏิเสธรับงานเอง
@@ -79,6 +81,7 @@ interface SupplierItemCard {
   itemStatus: CarWashItemStatus;
   itemRemarks?: string;
   actualWashDate: string;
+  verifiedAt?: string; // ยืนยันตัวรถแล้วเมื่อ (ขั้นตอนแรกก่อนเริ่มงาน)
   // Parent job reference
   jobId: string;
   jobNumber: string;
@@ -93,7 +96,7 @@ interface SupplierItemCard {
 }
 
 function SupplierJobsPageContent() {
-  const { jobs, vehicles, updateJobStatus, updateCarWashItemStatus, addJobEvidence, activeSupplier, currentSupplierId, currentBranchId, activeBranch } = useApp();
+  const { jobs, vehicles, updateJobStatus, updateCarWashItemStatus, addJobEvidence, refreshData, activeSupplier, currentSupplierId, currentBranchId, activeBranch } = useApp();
   const { user } = useAuth();
   const { showToast } = useToast();
   const theme = useTheme();
@@ -114,6 +117,7 @@ function SupplierJobsPageContent() {
   // Modal states
   const [rejectingTarget, setRejectingTarget] = useState<WorkModalTarget | null>(null);
   const [photoModalTarget, setPhotoModalTarget] = useState<WorkModalTarget | null>(null);
+  const [verifyTarget, setVerifyTarget] = useState<WorkModalTarget | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   // ─── Filter jobs by supplier ──
@@ -146,6 +150,7 @@ function SupplierJobsPageContent() {
             itemStatus: item.status,
             itemRemarks: item.remarks,
             actualWashDate: item.actualWashDate,
+            verifiedAt: item.verifiedAt,
             jobId: job.id,
             jobNumber: job.jobNumber,
             jobStatus: job.status,
@@ -279,12 +284,23 @@ function SupplierJobsPageContent() {
   };
 
   // ─── Open photo modal handlers ──
+  // ขั้นตอนแรกต้องยืนยันตัวรถ (VIN/ทะเบียน + รูป) ก่อน จึงจะไปหน้าส่งงานได้
   const handleOpenPhotoModalForWash = (card: SupplierItemCard) => {
-    setPhotoModalTarget(itemCardToTarget(card));
+    const target = itemCardToTarget(card);
+    if (card.verifiedAt) setPhotoModalTarget(target);
+    else setVerifyTarget(target);
   };
 
   const handleOpenPhotoModalForSlide = (job: Job) => {
-    setPhotoModalTarget(slideJobToTarget(job));
+    const target = slideJobToTarget(job);
+    if (job.verifiedAt) setPhotoModalTarget(target);
+    else setVerifyTarget(target);
+  };
+
+  const handleVehicleVerified = async (target: WorkModalTarget) => {
+    setVerifyTarget(null);
+    await refreshData();
+    setPhotoModalTarget(target);
   };
 
   // ─── Open reject modal handlers ──
@@ -325,18 +341,25 @@ function SupplierJobsPageContent() {
 
       if (target.itemId) {
         const progress = await updateCarWashItemStatus(target.jobId, target.itemId, 'COMPLETED');
-        if (progress?.allCompleted) {
+        if (!progress) throw new Error('update item failed');
+        if (progress.allCompleted) {
           showToast(`🎉 ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เสร็จ — ใบงาน ${target.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
-        } else if (progress) {
+        } else {
           showToast(`✅ ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
         }
       } else {
-        await updateJobStatus(target.jobId, 'WAITING_APPROVAL');
+        const result = await updateJobStatus(target.jobId, 'WAITING_APPROVAL');
+        if (!result.success) {
+          showToast(result.error || 'ไม่สามารถส่งงานได้', 'error');
+          throw new Error(result.error);
+        }
         showToast(`🎉 ส่งงานรถสไลด์ ${target.jobNumber} เสร็จเรียบร้อย! รอสาขาตรวจรับ`, 'success');
       }
     } catch (e) {
       console.error(e);
-      showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
+      if (!(e instanceof Error && e.message && e.message !== 'update item failed')) {
+        showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
+      }
       throw e;
     } finally {
       setSubmittingId(null);
@@ -464,6 +487,14 @@ function SupplierJobsPageContent() {
           })()}
         </div>
 
+        {/* Verification badge (step 1 done) */}
+        {card.verifiedAt && (isPending || isRejected) && (
+          <div className="flex items-center gap-1.5 mb-3 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/70 text-[11px] font-bold text-emerald-800">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ยืนยันตัวรถแล้ว • พร้อมส่งงาน</span>
+          </div>
+        )}
+
         {/* Action Row */}
         <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
           {/* PENDING items: Show submit + reject */}
@@ -485,8 +516,8 @@ function SupplierJobsPageContent() {
                 className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
               >
-                <Camera className="w-3.5 h-3.5" />
-                <span>ถ่ายรูป + ส่งงาน</span>
+                {card.verifiedAt ? <Camera className="w-3.5 h-3.5" /> : <ScanLine className="w-3.5 h-3.5" />}
+                <span>{card.verifiedAt ? 'ถ่ายรูป + ส่งงาน' : 'ยืนยันรถก่อนเริ่มงาน'}</span>
               </button>
             </>
           )}
@@ -731,6 +762,14 @@ function SupplierJobsPageContent() {
           )}
         </div>
 
+        {/* Verification badge (step 1 done) */}
+        {job.verifiedAt && (isActiveJob || isRejected) && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/70 text-[11px] font-bold text-emerald-800">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ยืนยันตัวรถแล้ว • พร้อมส่งงาน</span>
+          </div>
+        )}
+
         {/* ── Action Row: Bottom buttons ── */}
         <div className="flex items-center gap-2 pt-1">
           {isActiveJob && (
@@ -750,8 +789,8 @@ function SupplierJobsPageContent() {
                 className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
                 style={{ backgroundColor: theme.primary }}
               >
-                <Camera className="w-3.5 h-3.5" />
-                <span>ถ่ายรูป + ส่งงาน</span>
+                {job.verifiedAt ? <Camera className="w-3.5 h-3.5" /> : <ScanLine className="w-3.5 h-3.5" />}
+                <span>{job.verifiedAt ? 'ถ่ายรูป + ส่งงาน' : 'ยืนยันรถก่อนเริ่มงาน'}</span>
               </button>
             </>
           )}
@@ -892,6 +931,14 @@ function SupplierJobsPageContent() {
         target={rejectingTarget}
         onClose={() => setRejectingTarget(null)}
         onConfirm={handleConfirmReject}
+      />
+
+      {/* Vehicle Verification Modal (step 1) */}
+      <VendorVerifyVehicleModal
+        key={verifyTarget ? `${verifyTarget.jobId}:${verifyTarget.itemId || ''}` : 'none'}
+        target={verifyTarget}
+        onClose={() => setVerifyTarget(null)}
+        onVerified={handleVehicleVerified}
       />
 
       {/* Photo Upload Modal */}

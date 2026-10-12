@@ -157,6 +157,9 @@ export async function GET(request: NextRequest) {
         unitPrice: item.unitPrice,
         status: item.status,
         remarks: item.remarks,
+        verifiedAt: item.verifiedAt?.toISOString(),
+        verifiedBy: item.verifiedBy || undefined,
+        verifyMethod: item.verifyMethod || undefined,
       })),
       // Approval — Requester Snapshot
       requestedById: job.requestedById || '',
@@ -167,6 +170,8 @@ export async function GET(request: NextRequest) {
       approvedAt: job.approvedAt?.toISOString(),
       approvedBy: job.approvedBy,
       rejectReason: job.rejectReason,
+      verifiedAt: job.verifiedAt?.toISOString(),
+      verifiedBy: job.verifiedBy || undefined,
       // Evidence
       evidences: job.evidences.map((e: any) => ({
         id: e.id,
