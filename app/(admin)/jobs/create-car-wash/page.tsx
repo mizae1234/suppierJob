@@ -8,8 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import TagSearch from '@/components/ui/TagSearch';
 import { CompanyCode, Job } from '@/types';
-import { WashConfirmModal, WashOrderPrintModal } from '@/components/jobs';
-import { formatThaiDate } from '@/lib/date-utils';
+import { WashConfirmModal, WashOrderPrintModal, SupplierSelector } from '@/components/jobs';
 import { 
   Sparkles, 
   Car, 
@@ -278,41 +277,15 @@ export default function CreateCarWashPage() {
         {/* Left Column: Supplier & Available Stock Selector */}
         <div className="lg:col-span-1 flex flex-col gap-5">
           {/* Step 1: Choose Supplier */}
-          <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col gap-3">
-            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>1</span>
-              <span>เลือก Supplier คู่ค้า</span>
-            </h2>
-
-            <div className="flex flex-col gap-2 mt-1">
-              {washSuppliers.map(sup => (
-                <label
-                  key={sup.id}
-                  className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-start justify-between gap-2 ${
-                    selectedSupplierId === sup.id
-                      ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <input
-                      type="radio"
-                      name="supplier"
-                      checked={selectedSupplierId === sup.id}
-                      onChange={() => setSelectedSupplierId(sup.id)}
-                      className="mt-0.5 text-[#0f5238] focus:ring-[#0f5238]"
-                    />
-                    <div>
-                      <p className="font-bold text-gray-900">{sup.name}</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">โทร: {sup.phone}</p>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-
-          </div>
+          <SupplierSelector
+            suppliers={washSuppliers}
+            selectedSupplierId={selectedSupplierId}
+            onSelect={setSelectedSupplierId}
+            serviceType="CAR_WASH"
+            stepNumber={1}
+            title="เลือก Supplier คู่ค้า"
+            themeColor={theme.primary}
+          />
 
           {/* Step 2: Select VINs from Branch Stock */}
           <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col gap-3">

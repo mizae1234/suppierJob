@@ -10,7 +10,7 @@ import BranchSelect from '@/components/ui/BranchSelect';
 import { CompanyCode, Job } from '@/types';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { haversineDistance, calculateSlideCost } from '@/lib/job-utils';
-import { SlideConfirmModal, SlideSuccessModal } from '@/components/jobs';
+import { SlideConfirmModal, SlideSuccessModal, SupplierSelector } from '@/components/jobs';
 import dynamic from 'next/dynamic';
 import { 
   Truck, 
@@ -374,40 +374,15 @@ export default function CreateVehicleSlidePage() {
         {/* Column 1: Choose Supplier & Select VIN */}
         <div className="lg:col-span-1 flex flex-col gap-5">
           {/* Step 1: Choose Slide Supplier */}
-          <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3">
-            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">1</span>
-              <span>เลือก Supplier รถสไลด์</span>
-            </h2>
-
-            <div className="flex flex-col gap-2 mt-1">
-              {slideSuppliers.map(sup => (
-                <label
-                  key={sup.id}
-                  className={`p-3 rounded-xl border text-xs cursor-pointer transition-all flex items-start justify-between gap-2 ${
-                    selectedSupplierId === sup.id
-                      ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <input
-                      type="radio"
-                      name="slideSupplier"
-                      value={sup.id}
-                      checked={selectedSupplierId === sup.id}
-                      onChange={() => setSelectedSupplierId(sup.id)}
-                      className="mt-0.5 text-[#0f5238] focus:ring-[#0f5238]"
-                    />
-                    <div>
-                      <p className="font-bold text-gray-900">{sup.name}</p>
-                      <p className="text-[11px] text-gray-500 mt-0.5">โทร: {sup.phone}</p>
-                    </div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
+          <SupplierSelector
+            suppliers={slideSuppliers}
+            selectedSupplierId={selectedSupplierId}
+            onSelect={setSelectedSupplierId}
+            serviceType="VEHICLE_SLIDE"
+            stepNumber={1}
+            title="เลือก Supplier รถสไลด์"
+            themeColor="#0f5238"
+          />
 
           {/* Step 2: Select VIN from current branch */}
           <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3">

@@ -9,4 +9,5 @@ export { SlideConfirmModal } from './SlideConfirmModal';
 export { SlideSuccessModal } from './SlideSuccessModal';
 export { WashConfirmModal } from './WashConfirmModal';
 export { WashOrderPrintModal } from './WashOrderPrintModal';
+export { SupplierSelector } from './SupplierSelector';
 export { STATUS_MAP, KANBAN_COLUMNS, SAMPLE_PHOTOS } from './constants';
