@@ -1,42 +1,39 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { verifySessionToken } from './lib/auth';
+import { verifySessionToken, SESSION_COOKIE } from './lib/session';
 
-export async function middleware(request: NextRequest) {
+const PUBLIC_API = ['/api/auth/login', '/api/auth/logout', '/api/auth/check-user'];
+const STATIC_FILE = /\.(png|jpe?g|svg|webp|gif|ico)$/i;
+
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApi = pathname.startsWith('/api/');
 
-  // 1. Allow public static assets and auth endpoints
+  // 1. Public endpoints & static assets (static-extension bypass ไม่ใช้กับ /api)
   if (
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/favicon.ico') ||
-    pathname.startsWith('/api/auth/login') ||
-    pathname.startsWith('/api/auth/logout') ||
-    pathname.startsWith('/api/auth/check-user') ||
+    pathname === '/favicon.ico' ||
+    PUBLIC_API.includes(pathname) ||
     (pathname === '/api/suppliers' && request.method === 'GET') ||
-    pathname.startsWith('/public') ||
-    pathname.endsWith('.png') ||
-    pathname.endsWith('.jpg') ||
-    pathname.endsWith('.svg')
+    (!isApi && STATIC_FILE.test(pathname))
   ) {
     return NextResponse.next();
   }
 
-  const sessionCookie = request.cookies.get('session');
+  const sessionCookie = request.cookies.get(SESSION_COOKIE);
   const user = sessionCookie ? await verifySessionToken(sessionCookie.value) : null;
 
-  // 2. Handling Login Page
+  // 2. Login page
   if (pathname === '/login') {
     if (user) {
-      if (user.role === 'SUPPLIER') {
-        return NextResponse.redirect(new URL('/vendor', request.url));
-      }
-      return NextResponse.redirect(new URL('/', request.url));
+      if (user.mustChangePassword) return NextResponse.redirect(new URL('/change-password', request.url));
+      return NextResponse.redirect(new URL(user.role === 'SUPPLIER' ? '/vendor' : '/', request.url));
     }
     return NextResponse.next();
   }
 
-  // 3. Protected API Routes
-  if (pathname.startsWith('/api/')) {
+  // 3. Protected API routes (route handlers also re-check auth + DB state)
+  if (isApi) {
     if (!user) {
       return NextResponse.json(
         { error: 'กรุณาเข้าสู่ระบบก่อนทำรายการ (Unauthorized)' },
@@ -46,19 +43,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 4. Protected Page Routes
+  // 4. Protected pages
   if (!user) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. Role-based Route Protection
+  // 5. Forced password change
+  if (pathname === '/change-password') return NextResponse.next();
+  if (user.mustChangePassword) {
+    return NextResponse.redirect(new URL('/change-password', request.url));
+  }
+
+  // 6. Role-based route protection
   const isSupplierRoute = pathname.startsWith('/vendor');
   if (user.role === 'SUPPLIER' && !isSupplierRoute) {
     return NextResponse.redirect(new URL('/vendor', request.url));
   }
-
   if (user.role !== 'SUPPLIER' && user.role !== 'MASTER' && isSupplierRoute) {
     return NextResponse.redirect(new URL('/', request.url));
   }

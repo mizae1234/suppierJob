@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, invalidateUserSession } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 
 interface RouteContext {
@@ -45,6 +45,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         isActive: true,
       },
     });
+    invalidateUserSession(id);
 
     logAuditFromUser(sessionUser, {
       action: 'TOGGLE_USER_STATUS',

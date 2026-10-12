@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, invalidateUserSession } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 
 interface RouteContext {
@@ -129,6 +129,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         supplier: { select: { id: true, code: true, name: true } },
       },
     });
+    invalidateUserSession(id);
 
     logAuditFromUser(sessionUser, {
       action: 'UPDATE_USER',
@@ -181,6 +182,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     await prisma.user.delete({
       where: { id },
     });
+    invalidateUserSession(id);
 
     logAuditFromUser(sessionUser, {
       action: 'DELETE_USER',

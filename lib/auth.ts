@@ -1,127 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { verifySessionToken, SESSION_COOKIE, type SessionUser } from '@/lib/session';
 
-export interface SessionUser {
-  id: string;
-  username: string;
-  displayName: string;
-  firstName: string | null;
-  lastName: string | null;
-  position: string | null;
-  phone: string | null;
-  role: 'MASTER' | 'ADMIN' | 'BRANCH' | 'SUPPLIER';
-  companyId: string | null;
-  companyCode: string | null;
-  branchId: string | null;
-  branchName: string | null;
-  branchCode: string | null;
-  supplierId: string | null;
-  supplierName: string | null;
+export type { SessionUser } from '@/lib/session';
+export { createSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/session';
+
+// ─── DB-backed session validation (with short cache) ─────────────
+// ป้องกันกรณี user ถูกปิดใช้งาน / เปลี่ยนสิทธิ์ แต่ cookie เดิมยังใช้ได้
+type DbState = { isActive: boolean; role: string; companyId: string | null; supplierId: string | null; branchId: string | null; mustChangePassword: boolean };
+const CACHE_TTL_MS = 30_000;
+const userStateCache = new Map<string, { state: DbState | null; expires: number }>();
+
+async function getUserState(userId: string): Promise<DbState | null> {
+  const cached = userStateCache.get(userId);
+  if (cached && cached.expires > Date.now()) return cached.state;
+
+  const state = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isActive: true, role: true, companyId: true, supplierId: true, branchId: true, mustChangePassword: true },
+  });
+  userStateCache.set(userId, { state, expires: Date.now() + CACHE_TTL_MS });
+  if (userStateCache.size > 5000) userStateCache.clear();
+  return state;
 }
 
-const SESSION_SECRET = process.env.SESSION_SECRET || 'supplier-job-mgmt-secret-salt-key-2026-production';
-const encoder = new TextEncoder();
-
-async function getHmacKey(): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw',
-    encoder.encode(SESSION_SECRET),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify']
-  );
-}
-
-function bufferToBase64Url(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-function base64UrlToBuffer(base64url: string): Uint8Array {
-  let base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-  while (base64.length % 4) {
-    base64 += '=';
-  }
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function stringToBase64Url(str: string): string {
-  return bufferToBase64Url(encoder.encode(str));
-}
-
-function base64UrlToString(base64url: string): string {
-  const bytes = base64UrlToBuffer(base64url);
-  return new TextDecoder().decode(bytes);
+/** Call after changing a user's status/role/password so the change applies immediately */
+export function invalidateUserSession(userId: string) {
+  userStateCache.delete(userId);
 }
 
 /**
- * Creates a cryptographically signed session token: payload.signature
- * Compatible with Edge Runtime and Node.js via standard Web Crypto API
- */
-export async function createSessionToken(data: SessionUser): Promise<string> {
-  const payloadStr = JSON.stringify(data);
-  const payload = stringToBase64Url(payloadStr);
-  const key = await getHmacKey();
-  const signatureBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
-  const signature = bufferToBase64Url(signatureBuffer);
-  return `${payload}.${signature}`;
-}
-
-/**
- * Verifies a signed session token using Web Crypto API
- */
-export async function verifySessionToken(token: string): Promise<SessionUser | null> {
-  if (!token || typeof token !== 'string') return null;
-  const parts = token.split('.');
-  if (parts.length !== 2) return null;
-
-  const [payload, signature] = parts;
-
-  try {
-    const key = await getHmacKey();
-    const signatureBytes = base64UrlToBuffer(signature);
-    const isValid = await crypto.subtle.verify(
-      'HMAC',
-      key,
-      signatureBytes as any,
-      encoder.encode(payload)
-    );
-
-    if (!isValid) return null;
-
-    const jsonStr = base64UrlToString(payload);
-    return JSON.parse(jsonStr) as SessionUser;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Extracts and verifies the session from NextRequest cookies
+ * Extracts the session from cookies, verifies signature/expiry and
+ * re-checks the user against the database (active, same role/scope).
  */
 export async function getSessionUser(request: NextRequest): Promise<SessionUser | null> {
-  const cookie = request.cookies.get('session');
+  const cookie = request.cookies.get(SESSION_COOKIE);
   if (!cookie?.value) return null;
-  return verifySessionToken(cookie.value);
+  const user = await verifySessionToken(cookie.value);
+  if (!user) return null;
+
+  const state = await getUserState(user.id);
+  if (
+    !state ||
+    !state.isActive ||
+    state.role !== user.role ||
+    state.supplierId !== user.supplierId ||
+    state.branchId !== user.branchId ||
+    // BRANCH users derive companyId from their branch, so only compare for other roles
+    (user.role !== 'BRANCH' && state.companyId !== user.companyId)
+  ) {
+    return null;
+  }
+  return { ...user, mustChangePassword: state.mustChangePassword };
 }
 
-type AuthResult = 
+type AuthResult =
   | { user: SessionUser; response?: never }
   | { user?: never; response: NextResponse };
 
 /**
- * Ensures user is authenticated and optionally checks role authorization
+ * Ensures user is authenticated and optionally checks role authorization.
+ * Users flagged mustChangePassword are blocked until they change it.
  */
 export async function requireAuth(
   request: NextRequest,
@@ -133,6 +72,15 @@ export async function requireAuth(
       response: NextResponse.json(
         { error: 'กรุณาเข้าสู่ระบบก่อนทำรายการ (Unauthorized)' },
         { status: 401 }
+      ),
+    };
+  }
+
+  if (user.mustChangePassword) {
+    return {
+      response: NextResponse.json(
+        { error: 'กรุณาเปลี่ยนรหัสผ่านก่อนใช้งาน', code: 'MUST_CHANGE_PASSWORD' },
+        { status: 403 }
       ),
     };
   }
