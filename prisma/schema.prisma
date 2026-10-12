@@ -25,6 +25,7 @@ model User {
   supplierId  String?
   supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   isActive    Boolean   @default(true)
+  mustChangePassword Boolean @default(false) // บังคับเปลี่ยนรหัสผ่านตอน login ครั้งถัดไป
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -173,6 +174,8 @@ model Job {
   @@index([companyId, status])
   @@index([supplierId, status])
   @@index([branchId])
+  @@index([originBranchId])
+  @@index([destBranchId])
   @@index([status])
   @@index([createdAt])
   @@index([vin])
