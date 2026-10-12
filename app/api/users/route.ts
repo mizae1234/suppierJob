@@ -192,6 +192,7 @@ export async function POST(request: NextRequest) {
         branchId: branchId || null,
         supplierId: supplierId || null,
         isActive: true,
+        mustChangePassword: true, // รหัสผ่านแรกตั้งโดย MASTER → ให้ผู้ใช้เปลี่ยนเอง
       },
       select: {
         id: true,

@@ -19,6 +19,7 @@ interface AuthUser {
   companyCode: string | null;
   supplierId: string | null;
   supplierName: string | null;
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextType {
@@ -29,6 +30,7 @@ interface AuthContextType {
   setSelectedCompany: (company: 'EV7' | 'GI' | null) => void;
   login: (username: string, password: string, company?: 'EV7' | 'GI') => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  setUser: (user: AuthUser | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -65,11 +67,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isLoading) return;
 
     const isLoginPage = pathname === '/login';
+    const isChangePasswordPage = pathname === '/change-password';
     const isSupplierRoute = pathname?.startsWith('/vendor');
 
     if (!user && !isLoginPage) {
       router.replace('/login');
-    } else if (user && isLoginPage) {
+    } else if (user?.mustChangePassword) {
+      // บังคับเปลี่ยนรหัสผ่านก่อนใช้งานหน้าอื่น
+      if (!isChangePasswordPage) router.replace('/change-password');
+    } else if (user && (isLoginPage || isChangePasswordPage)) {
       // Redirect based on role after login
       if (user.role === 'SUPPLIER') {
         router.replace('/vendor');
@@ -126,6 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSelectedCompany,
         login,
         logout,
+        setUser,
       }}
     >
       {children}

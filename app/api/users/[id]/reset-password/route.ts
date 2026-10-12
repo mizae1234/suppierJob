@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, invalidateUserSession } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 import bcrypt from 'bcryptjs';
 
@@ -39,8 +39,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     await prisma.user.update({
       where: { id },
-      data: { password: hashedPassword },
+      // รหัสผ่านที่ MASTER ตั้งให้เป็นรหัสชั่วคราว → บังคับให้ผู้ใช้เปลี่ยนเองตอน login
+      data: { password: hashedPassword, mustChangePassword: true },
     });
+    invalidateUserSession(id);
 
     logAuditFromUser(sessionUser, {
       action: 'RESET_PASSWORD',
