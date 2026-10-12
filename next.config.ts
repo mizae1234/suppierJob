@@ -31,6 +31,17 @@ const nextConfig: NextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(self), microphone=(), geolocation=(self)',
           },
+          {
+            // บังคับ HTTPS (มีผลเฉพาะเมื่อเปิดผ่าน HTTPS)
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains',
+          },
+          {
+            // CSP พื้นฐาน: กัน clickjacking, plugin, <base> hijack และ form ส่งออกนอกโดเมน
+            // (ยังไม่จำกัด script-src เพราะ Next.js ใช้ inline script — ถ้าจะเข้มขึ้นต้องใช้ nonce)
+            key: 'Content-Security-Policy',
+            value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+          },
         ],
       },
     ];
