@@ -60,10 +60,16 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // นับงานที่ active ต่อสาขาในรอบเดียว (งานเดียวนับครั้งเดียวต่อสาขา แม้ branchId = origin/dest)
+    const activeCountByBranch = new Map<string, number>();
+    for (const j of activeJobs) {
+      for (const bid of new Set([j.branchId, j.originBranchId, j.destBranchId])) {
+        if (bid) activeCountByBranch.set(bid, (activeCountByBranch.get(bid) || 0) + 1);
+      }
+    }
+
     const branchesWithStats = branches.map((b) => {
-      const activeCount = activeJobs.filter(
-        (j) => j.branchId === b.id || j.originBranchId === b.id || j.destBranchId === b.id
-      ).length;
+      const activeCount = activeCountByBranch.get(b.id) || 0;
 
       return {
         ...b,

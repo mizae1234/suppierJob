@@ -199,7 +199,9 @@ export async function GET(request: NextRequest) {
     // Sort by date descending
     results.sort((a, b) => b.serviceDate.localeCompare(a.serviceDate));
 
-    return NextResponse.json({ items: results, total: results.length });
+    // แจ้ง client ถ้าข้อมูลชนเพดาน (500 รายการล้างรถ / 200 งานสไลด์) → ควรกรองให้แคบลง
+    const truncated = carWashItems.length >= 500 || slideJobs.length >= 200;
+    return NextResponse.json({ items: results, total: results.length, truncated });
   } catch (error) {
     console.error('GET /api/vehicle-reports error:', error);
     return NextResponse.json(

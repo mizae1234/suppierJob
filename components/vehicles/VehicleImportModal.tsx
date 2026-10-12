@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+// xlsx โหลดแบบ dynamic เมื่อใช้งานจริง เพื่อไม่ให้ bundle หน้า vehicles ใหญ่เกินจำเป็น
+const loadXlsx = () => import('xlsx');
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
@@ -119,7 +120,8 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
   const activeCompany = companies.find(c => c.id === (isBranchUser ? (user?.companyId || activeBranch?.companyId || selectedCompanyId) : selectedCompanyId));
 
   // ── Template Generator ──
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
+    const XLSX = await loadXlsx();
     const defaultCompanyCode = activeCompany?.code || 'EV7';
     const defaultBranchName = activeBranch?.name || activeBranch?.code || 'EV7';
 
@@ -260,8 +262,9 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
     setFileName(file.name);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await loadXlsx();
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
