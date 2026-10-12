@@ -34,8 +34,12 @@ export async function GET(request: NextRequest) {
       if (companyId) where.companyId = companyId;
       if (branchId) where.currentBranchId = branchId;
     } else if (user.role === 'SUPPLIER') {
-      // Supplier only needs vehicles assigned to their active jobs
-      if (companyId) where.companyId = companyId;
+      // Supplier เห็นเฉพาะรถที่อยู่ในงานของตัวเองเท่านั้น
+      const ownSupplierId = user.supplierId || 'none';
+      where.OR = [
+        { jobs: { some: { supplierId: ownSupplierId } } },
+        { carWashItems: { some: { job: { supplierId: ownSupplierId } } } },
+      ];
     }
 
     if (status) where.status = status;

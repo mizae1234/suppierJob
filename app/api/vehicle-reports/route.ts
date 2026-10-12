@@ -34,9 +34,11 @@ export async function GET(request: NextRequest) {
       jobWhere.companyId = user.companyId;
     }
 
-    // Filters
-    if (companyId) jobWhere.companyId = companyId;
-    if (supplierId) jobWhere.supplierId = supplierId;
+    // Filters — ห้ามทับค่าที่จำกัดตาม role (กัน IDOR)
+    const canPickCompany = user.role === 'MASTER' || (user.role === 'ADMIN' && !user.companyId);
+    const canPickSupplier = user.role !== 'SUPPLIER';
+    if (companyId && canPickCompany) jobWhere.companyId = companyId;
+    if (supplierId && canPickSupplier) jobWhere.supplierId = supplierId;
     if (invoiceId) jobWhere.invoiceId = invoiceId;
     if (vin) itemWhere.vin = vin;
 
