@@ -144,29 +144,28 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
             {/* Supplier Details */}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
                 {selectedSupplier.code && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#0f5238] text-white tracking-wider">
+                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#0f5238] text-white tracking-wider">
                     {selectedSupplier.code}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  เลือกอยู่
-                </span>
+                <p className="font-bold text-gray-900 text-xs sm:text-sm truncate">
+                  {selectedSupplier.name}
+                </p>
               </div>
-              <p className="font-bold text-gray-900 text-xs sm:text-sm truncate mt-0.5">
-                {selectedSupplier.name}
-              </p>
-              <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-0.5">
-                <span className="flex items-center gap-1 truncate">
+              <div className="flex items-center gap-2.5 text-[11px] text-gray-500 mt-1">
+                <span className="flex items-center gap-1 shrink-0">
                   <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                   {selectedSupplier.phone || 'ไม่มีเบอร์โทร'}
                 </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  เลือกอยู่
+                </span>
                 {selectedSupplier.address && (
                   <span className="hidden sm:flex items-center gap-1 truncate text-gray-400">
-                    <MapPin className="w-3 h-3 shrink-0" />
-                    {selectedSupplier.address}
+                    • {selectedSupplier.address}
                   </span>
                 )}
               </div>
@@ -236,10 +235,10 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                         : 'hover:bg-emerald-50/40 text-gray-700'
                     }`}
                   >
-                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
                       {/* Radio / Check indicator */}
                       <div
-                        className={`w-4 h-4 rounded-full mt-0.5 flex items-center justify-center shrink-0 transition-all ${
+                        className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all ${
                           isSelected
                             ? 'bg-[#0f5238] text-white'
                             : 'border-2 border-gray-300'
@@ -250,22 +249,22 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
                       {/* Info */}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
                           {sup.code && (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-gray-100 text-gray-700 border border-gray-200">
+                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-gray-100 text-gray-700 border border-gray-200">
                               {sup.code}
                             </span>
                           )}
                           <span
-                            className={`font-bold truncate ${
+                            className={`font-bold truncate text-xs ${
                               isSelected ? 'text-[#0f5238]' : 'text-gray-900'
                             }`}
                           >
                             {sup.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
-                          <span className="flex items-center gap-1">
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1">
+                          <span className="flex items-center gap-1 shrink-0">
                             <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                             {sup.phone || 'ไม่มีเบอร์โทร'}
                           </span>
