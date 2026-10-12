@@ -181,14 +181,32 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
       ) : (
         <button
           type="button"
-          onClick={() => setIsOpen(true)}
-          className="w-full text-left p-3.5 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#0f5238] bg-gray-50/50 hover:bg-emerald-50/30 transition-all flex items-center justify-between"
+          onClick={() => setIsOpen(o => !o)}
+          className={`w-full text-left p-3 rounded-xl border transition-all duration-200 flex items-center justify-between gap-3 ${
+            isOpen
+              ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20 shadow-sm'
+              : 'border-2 border-dashed border-gray-200 hover:border-[#0f5238] bg-gray-50/70 hover:bg-emerald-50/30'
+          }`}
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
         >
-          <div className="flex items-center gap-2.5 text-gray-500 text-xs">
-            <Store className="w-4 h-4 text-gray-400" />
-            <span>กรุณาคลิกเพื่อเลือก Supplier</span>
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-400 flex items-center justify-center shrink-0 border border-gray-200 shadow-2xs">
+              <ServiceIcon className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-gray-700 text-xs sm:text-sm truncate">
+                คลิกเพื่อเลือก Supplier {serviceType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                มี {suppliers.length} คู่ค้าพร้อมให้บริการ
+              </p>
+            </div>
           </div>
-          <ChevronsUpDown className="w-4 h-4 text-gray-400" />
+          <div className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-600/30 bg-white text-xs font-semibold text-[#0f5238] shadow-2xs hover:bg-emerald-50">
+            <span>เลือก</span>
+            <ChevronsUpDown className="w-3.5 h-3.5 text-emerald-600" />
+          </div>
         </button>
       )}
 

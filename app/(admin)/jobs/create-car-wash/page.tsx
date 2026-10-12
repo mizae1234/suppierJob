@@ -49,8 +49,8 @@ export default function CreateCarWashPage() {
   // Wash Suppliers
   const washSuppliers = suppliers.filter(s => s.services.includes('CAR_WASH'));
 
-  // Selected supplier
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(washSuppliers[0]?.id || '');
+  // Selected supplier (starts empty, user must choose)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const selectedSupplier = washSuppliers.find(s => s.id === selectedSupplierId);
 
   // Auto-fill requester info from logged-in user

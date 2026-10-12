@@ -96,7 +96,7 @@ export default function CreateVehicleSlidePage() {
   const [destBranchId, setDestBranchId] = useState<string>(
     availableBranches.find(b => b.id !== selectedOriginBranchId)?.id || branches.find(b => b.id !== selectedOriginBranchId)?.id || ''
   );
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(slideSuppliers[0]?.id || '');
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [pickupDateTime, setPickupDateTime] = useState<string>(
     new Date(Date.now() + 3600 * 1000 * 2).toISOString().slice(0, 16)
   );
