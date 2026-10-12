@@ -14,6 +14,7 @@ import {
   AlertCircle,
   XCircle,
   RotateCcw,
+  ScanLine,
   ArrowRight,
   Sparkles,
   Truck,
@@ -68,6 +69,15 @@ export default function SupplierDashboardPage() {
   }, [invoices, supplierId, isAll]);
 
   const counterCards = [
+    {
+      label: 'รอยืนยันรถ',
+      sublabel: 'ตรวจ VIN / ทะเบียน',
+      count: stats.tabs.verify,
+      icon: ScanLine,
+      color: '#0284c7',
+      iconBg: '#f0f9ff',
+      href: '/vendor/jobs?tab=verify',
+    },
     {
       label: 'งานที่ต้องทำ',
       sublabel: 'กำลังดำเนินการ',
@@ -162,8 +172,8 @@ export default function SupplierDashboardPage() {
         </div>
       </div>
 
-      {/* 2. Stat Cards — 4 columns, compact */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* 2. Stat Cards — 6 columns, compact */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {counterCards.map(card => {
           const Icon = card.icon;
           return (

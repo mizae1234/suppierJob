@@ -14,10 +14,14 @@ export function getVehicleLabel(vin?: string | null, licensePlate?: string | nul
  * Supplier work buckets — shared by the supplier dashboard counters and the
  * supplier jobs page tabs so both always show the same numbers.
  */
-export type SupplierTabKey = 'progress' | 'waiting' | 'approved' | 'returned' | 'declined';
+export type SupplierTabKey = 'verify' | 'progress' | 'waiting' | 'approved' | 'returned' | 'declined';
 
-/** Car-wash: classify one car by its own status + its job status */
-export function classifySupplierItem(itemStatus: string, jobStatus: string): SupplierTabKey | null {
+/** Car-wash: classify one car by its own status + its job status + verifiedAt */
+export function classifySupplierItem(
+  itemStatus: string,
+  jobStatus: string,
+  verifiedAt?: string | Date | null
+): SupplierTabKey | null {
   if (itemStatus === 'CANCELLED') return 'declined';           // supplier declined this car
   if (itemStatus === 'REJECTED') return 'returned';            // branch sent this car back
   if (itemStatus === 'APPROVED') return 'approved';
@@ -28,13 +32,20 @@ export function classifySupplierItem(itemStatus: string, jobStatus: string): Sup
     if (['IN_PROGRESS', 'WAITING_APPROVAL'].includes(jobStatus)) return 'waiting';
     return null;
   }
-  if (itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(jobStatus)) return 'progress';
+  if (itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(jobStatus)) {
+    return verifiedAt ? 'progress' : 'verify';
+  }
   return null;
 }
 
-/** Vehicle slide: classified at job level */
-export function classifySupplierSlide(jobStatus: string): SupplierTabKey | null {
-  if (['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(jobStatus)) return 'progress';
+/** Vehicle slide: classified at job level + verifiedAt */
+export function classifySupplierSlide(
+  jobStatus: string,
+  verifiedAt?: string | Date | null
+): SupplierTabKey | null {
+  if (['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(jobStatus)) {
+    return verifiedAt ? 'progress' : 'verify';
+  }
   if (jobStatus === 'WAITING_APPROVAL') return 'waiting';
   if (['APPROVED', 'INVOICED'].includes(jobStatus)) return 'approved';
   if (jobStatus === 'REJECTED') return 'returned';
@@ -44,15 +55,22 @@ export function classifySupplierSlide(jobStatus: string): SupplierTabKey | null 
 
 /** Count supplier work per bucket (car wash = per car, slide = per job) */
 export function countSupplierTabs(jobs: Job[]): Record<SupplierTabKey, number> {
-  const counts: Record<SupplierTabKey, number> = { progress: 0, waiting: 0, approved: 0, returned: 0, declined: 0 };
+  const counts: Record<SupplierTabKey, number> = {
+    verify: 0,
+    progress: 0,
+    waiting: 0,
+    approved: 0,
+    returned: 0,
+    declined: 0,
+  };
   jobs.forEach(job => {
     if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
       job.carWashItems.forEach(item => {
-        const tab = classifySupplierItem(item.status, job.status);
+        const tab = classifySupplierItem(item.status, job.status, item.verifiedAt);
         if (tab) counts[tab]++;
       });
     } else if (job.jobType === 'VEHICLE_SLIDE') {
-      const tab = classifySupplierSlide(job.status);
+      const tab = classifySupplierSlide(job.status, job.verifiedAt);
       if (tab) counts[tab]++;
     }
   });

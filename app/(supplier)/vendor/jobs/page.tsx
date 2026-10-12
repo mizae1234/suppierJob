@@ -31,8 +31,8 @@ import {
 } from 'lucide-react';
 
 // returned = สาขาตรวจรับไม่ผ่าน ตีกลับให้แก้ไข | declined = Supplier ปฏิเสธรับงานเอง
-type TabKey = 'progress' | 'waiting' | 'approved' | 'returned' | 'declined';
-const VALID_TABS: TabKey[] = ['progress', 'waiting', 'approved', 'returned', 'declined'];
+type TabKey = 'verify' | 'progress' | 'waiting' | 'approved' | 'returned' | 'declined';
+const VALID_TABS: TabKey[] = ['verify', 'progress', 'waiting', 'approved', 'returned', 'declined'];
 
 // ─── Google Maps navigation helpers (deep links — no API key needed) ──
 // Prefer exact GPS coordinates; fall back to address / name text search.
@@ -108,10 +108,10 @@ function SupplierJobsPageContent() {
 
   const rawTab = searchParams.get('tab');
   const initialTab: TabKey =
-    rawTab === 'new' ? 'progress'
+    rawTab === 'new' ? 'verify'
     : rawTab === 'rejected' ? 'returned' // backward-compatible link
     : VALID_TABS.includes(rawTab as TabKey) ? (rawTab as TabKey)
-    : 'progress';
+    : 'verify';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
   // Modal states
@@ -173,6 +173,7 @@ function SupplierJobsPageContent() {
   const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE'), [myJobs]);
 
   const tabConfig: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
+    { key: 'verify', label: 'รอยืนยันรถ', icon: ScanLine, color: '#0284c7' },
     { key: 'progress', label: 'งานที่ต้องทำ', icon: Clock, color: '#f59e0b' },
     { key: 'waiting', label: 'รอตรวจรับ', icon: AlertCircle, color: '#ef4444' },
     { key: 'approved', label: 'ผ่านแล้ว', icon: CheckCircle2, color: theme.primary },
@@ -184,8 +185,8 @@ function SupplierJobsPageContent() {
   // Shared with the supplier dashboard (lib/job-utils) so counts always match.
   // Car wash = per car (item status + job status), slide = per job.
   const getTabItems = (tabKey: TabKey) => {
-    const items = allItemCards.filter(c => classifySupplierItem(c.itemStatus, c.jobStatus) === tabKey);
-    const slides = slideJobs.filter(j => classifySupplierSlide(j.status) === tabKey);
+    const items = allItemCards.filter(c => classifySupplierItem(c.itemStatus, c.jobStatus, c.verifiedAt) === tabKey);
+    const slides = slideJobs.filter(j => classifySupplierSlide(j.status, j.verifiedAt) === tabKey);
     return { items, slides };
   };
 
@@ -300,6 +301,7 @@ function SupplierJobsPageContent() {
   const handleVehicleVerified = async (target: WorkModalTarget) => {
     setVerifyTarget(null);
     await refreshData();
+    setActiveTab('progress');
     setPhotoModalTarget(target);
   };
 
@@ -389,6 +391,8 @@ function SupplierJobsPageContent() {
   const renderItemCard = (card: SupplierItemCard) => {
     const isSubmitting = submittingId === card.itemId;
     const isPending = card.itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(card.jobStatus);
+    const isNeedsVerify = isPending && !card.verifiedAt;
+    const isVerifiedPending = isPending && !!card.verifiedAt;
     const isCompleted = card.itemStatus === 'COMPLETED' || card.itemStatus === 'APPROVED';
     const isApproved = card.itemStatus === 'APPROVED' ||
       (card.itemStatus === 'COMPLETED' && ['APPROVED', 'INVOICED'].includes(card.jobStatus));
@@ -398,7 +402,9 @@ function SupplierJobsPageContent() {
       <div
         key={card.itemId}
         className={`p-4 rounded-2xl bg-white border shadow-xs transition-all overflow-hidden ${
-          isPending
+          isNeedsVerify
+            ? 'border-sky-200/90 hover:border-sky-300'
+            : isVerifiedPending
             ? 'border-amber-200/80 hover:border-amber-300'
             : isCompleted
             ? 'border-emerald-200/60'
@@ -409,13 +415,15 @@ function SupplierJobsPageContent() {
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2.5">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-              isPending
+              isNeedsVerify
+                ? 'bg-sky-50 text-sky-600 border border-sky-100'
+                : isVerifiedPending
                 ? 'bg-amber-50 text-amber-600 border border-amber-100'
                 : isCompleted
                 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                 : 'bg-red-50 text-red-600 border border-red-100'
             }`}>
-              <Car className="w-5 h-5" />
+              {isNeedsVerify ? <ScanLine className="w-5 h-5" /> : <Car className="w-5 h-5" />}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -465,13 +473,14 @@ function SupplierJobsPageContent() {
           {card.totalItemsInJob > 1 && (() => {
             const counts: Record<string, number> = {};
             (card.job.carWashItems || []).forEach(it => {
-              const tab = classifySupplierItem(it.status, card.jobStatus);
+              const tab = classifySupplierItem(it.status, card.jobStatus, it.verifiedAt);
               if (tab) counts[tab] = (counts[tab] || 0) + 1;
             });
             const chips = [
-              { key: 'approved', label: 'ตรวจแล้ว', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-              { key: 'waiting', label: 'รอตรวจ', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+              { key: 'verify', label: 'รอยืนยัน', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
               { key: 'progress', label: 'รอทำ', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+              { key: 'waiting', label: 'รอตรวจ', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+              { key: 'approved', label: 'ตรวจแล้ว', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
               { key: 'returned', label: 'ตีกลับ', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
               { key: 'declined', label: 'ปฏิเสธ', cls: 'bg-red-50 text-red-700 border-red-200' },
             ].filter(c => counts[c.key]);
@@ -580,6 +589,8 @@ function SupplierJobsPageContent() {
   const renderSlideJobCard = (job: Job) => {
     const cost = getJobTotalCost(job);
     const isActiveJob = job.status === 'IN_PROGRESS' || job.status === 'PENDING_SUPPLIER';
+    const isNeedsVerify = isActiveJob && !job.verifiedAt;
+    const isVerifiedPending = isActiveJob && !!job.verifiedAt;
     const isSubmitting = submittingId === job.id;
 
     const isPending = isActiveJob;
@@ -607,8 +618,10 @@ function SupplierJobsPageContent() {
       <div
         key={job.id}
         className={`p-4 sm:p-5 rounded-3xl bg-white border transition-all duration-200 shadow-2xs hover:shadow-md overflow-hidden flex flex-col gap-3.5 ${
-          isPending
-            ? 'border-gray-200/90 hover:border-emerald-300'
+          isNeedsVerify
+            ? 'border-sky-200/90 hover:border-sky-300'
+            : isVerifiedPending
+            ? 'border-amber-200/90 hover:border-amber-300'
             : isCompleted
             ? 'border-emerald-200/70 bg-[#fafdfb]'
             : 'border-red-200/70 bg-[#fdfafb]'
