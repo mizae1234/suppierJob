@@ -61,8 +61,15 @@ export default function CreateVehicleSlidePage() {
   } = useApp();
   const { user: authUser } = useAuth();
 
-  // Slide suppliers
-  const slideSuppliers = suppliers.filter(s => s.services.includes('VEHICLE_SLIDE'));
+  // Slide suppliers (handles both array and comma-separated string)
+  const slideSuppliers = useMemo(() => {
+    return suppliers.filter(s => {
+      if (Array.isArray(s.services)) {
+        return s.services.includes('VEHICLE_SLIDE');
+      }
+      return typeof s.services === 'string' && (s.services as string).includes('VEHICLE_SLIDE');
+    });
+  }, [suppliers]);
 
   // Branches filtered by selected company context
   const availableBranches = useMemo(() => {

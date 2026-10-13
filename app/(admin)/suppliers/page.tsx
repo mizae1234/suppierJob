@@ -51,8 +51,11 @@ export default function SupplierManagementPage() {
   const filteredSuppliers = useMemo(() => {
     return suppliers.filter(supplier => {
       // Service filter
-      if (serviceFilter !== 'ALL' && !supplier.services.includes(serviceFilter)) {
-        return false;
+      if (serviceFilter !== 'ALL') {
+        const hasService = Array.isArray(supplier.services)
+          ? supplier.services.includes(serviceFilter)
+          : String(supplier.services).includes(serviceFilter);
+        if (!hasService) return false;
       }
 
       // Search term

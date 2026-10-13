@@ -52,8 +52,15 @@ export default function CreateCarWashPage() {
   const { user: authUser } = useAuth();
   const theme = useTheme();
 
-  // Wash Suppliers
-  const washSuppliers = suppliers.filter(s => s.services.includes('CAR_WASH'));
+  // Wash Suppliers (handles both array and comma-separated string)
+  const washSuppliers = useMemo(() => {
+    return suppliers.filter(s => {
+      if (Array.isArray(s.services)) {
+        return s.services.includes('CAR_WASH');
+      }
+      return typeof s.services === 'string' && (s.services as string).includes('CAR_WASH');
+    });
+  }, [suppliers]);
 
   // Selected supplier (starts empty, user must choose)
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');

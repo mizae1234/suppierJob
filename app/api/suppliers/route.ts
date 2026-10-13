@@ -6,16 +6,25 @@ export async function GET(request: NextRequest) {
   const user = await getSessionUser(request);
 
   try {
-    const suppliers = await prisma.supplier.findMany({
-      where: { isActive: true },
-      include: {
-        rateItems: {
-          where: { isActive: true },
-          orderBy: { serviceCode: 'asc' },
+    let suppliers: any[];
+    try {
+      suppliers = await (prisma.supplier as any).findMany({
+        where: { isActive: true },
+        include: {
+          rateItems: {
+            where: { isActive: true },
+            orderBy: { serviceCode: 'asc' },
+          },
         },
-      },
-      orderBy: { name: 'asc' },
-    });
+        orderBy: { name: 'asc' },
+      });
+    } catch (includeErr) {
+      console.warn('Fallback: querying suppliers without rateItems include');
+      suppliers = await prisma.supplier.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      });
+    }
 
     // Mask sensitive financial information if user is not ADMIN/MASTER or the supplier themselves
     const formatted = suppliers.map(s => {
@@ -30,10 +39,10 @@ export async function GET(request: NextRequest) {
         id: s.id,
         code: s.code,
         name: s.name,
-        services: s.services.split(',').map(sv => sv.trim()),
-        phone: isOwnerOrAdmin ? s.phone : null,
-        email: isOwnerOrAdmin ? s.email : null,
-        address: isOwnerOrAdmin ? s.address : null,
+        services: Array.isArray(s.services) ? s.services : s.services.split(',').map((sv: string) => sv.trim()),
+        phone: s.phone,
+        email: s.email,
+        address: s.address,
         bankName: isOwnerOrAdmin ? s.bankName : null,
         bankAccount: isOwnerOrAdmin ? s.bankAccount : (s.bankAccount ? '***-*-*****-*' : null),
         taxId: isOwnerOrAdmin ? s.taxId : null,
@@ -41,15 +50,15 @@ export async function GET(request: NextRequest) {
         vatType: s.vatType,
         vatRate: s.vatRate,
         showroomLabel: s.showroomLabel,
-        rateItems: s.rateItems,
+        rateItems: s.rateItems || [],
       };
     });
 
     return NextResponse.json({ suppliers: formatted });
-  } catch (error) {
+  } catch (error: any) {
     console.error('GET /api/suppliers error:', error);
     return NextResponse.json(
-      { error: 'ไม่สามารถดึงข้อมูล Supplier ได้' },
+      { error: 'ไม่สามารถดึงข้อมูล Supplier ได้', details: error?.message || String(error) },
       { status: 500 }
     );
   }
