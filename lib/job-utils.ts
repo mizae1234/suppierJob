@@ -439,10 +439,18 @@ export function haversineDistance(lat1: number, lon1: number, lat2: number, lon2
   return R * c;
 }
 
+import { calculateSlideJobCost } from '@/lib/vehicle-slide-rates';
+
 /**
- * Calculate estimated slide cost based on distance in kilometers
+ * Calculate estimated slide cost based on distance and optional supplier code
  */
-export function calculateSlideCost(distanceKm: number): number {
-  return Math.round(distanceKm * 50);
+export function calculateSlideCost(distanceKm: number, supplierCode?: string): number {
+  const result = calculateSlideJobCost({
+    distanceKm,
+    supplierCodeOrId: supplierCode,
+    originMode: 'custom',
+    destMode: 'custom',
+  });
+  return result.costPerCar;
 }
 

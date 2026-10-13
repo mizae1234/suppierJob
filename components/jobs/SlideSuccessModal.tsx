@@ -11,6 +11,7 @@ export interface SlideSuccessModalProps {
   selectedVins: string[];
   distance: number | null;
   estimatedCost: number;
+  formulaBadge?: string;
   onClose?: () => void;
 }
 
@@ -19,6 +20,7 @@ export function SlideSuccessModal({
   selectedVins,
   distance,
   estimatedCost,
+  formulaBadge,
   onClose,
 }: SlideSuccessModalProps) {
   const router = useRouter();
@@ -62,6 +64,14 @@ export function SlideSuccessModal({
           <p><strong>ระยะทาง:</strong> {distance ? `${distance} กม.` : '-'}</p>
           <p><strong>Supplier:</strong> {createdJob.supplierName}</p>
           <p><strong>เวลารับรถ:</strong> {formatThaiDateTime(createdJob.pickupDateTime)}</p>
+          {formulaBadge && (
+            <p>
+              <strong>เงื่อนไขสัญญา:</strong>{' '}
+              <span className="font-bold text-[#0f5238] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {formulaBadge}
+              </span>
+            </p>
+          )}
           <p>
             <strong>ประมาณการค่าบริการรวม:</strong>{' '}
             <span className="font-bold text-[#0f5238]">

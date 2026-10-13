@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Supplier } from '@/types';
 import { getSupplierWashConfig } from '@/lib/car-wash-rates';
+import { getSlideSupplierInfo } from '@/lib/vehicle-slide-rates';
 
 export interface SupplierSelectorProps {
   suppliers: Supplier[];
@@ -26,6 +27,8 @@ export interface SupplierSelectorProps {
   className?: string;
   currentBranchCode?: string;
   currentBranchName?: string;
+  recommendedSupplierCode?: string;
+  recommendationReason?: string;
 }
 
 export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
@@ -39,6 +42,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   className = '',
   currentBranchCode,
   currentBranchName,
+  recommendedSupplierCode,
+  recommendationReason,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,6 +67,12 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name);
   }, [serviceType, selectedSupplier]);
 
+  // Selected supplier slide config (for Showroom & Area)
+  const selectedSlideConfig = useMemo(() => {
+    if (serviceType !== 'VEHICLE_SLIDE' || !selectedSupplier) return null;
+    return getSlideSupplierInfo(selectedSupplier.code, selectedSupplier.name);
+  }, [serviceType, selectedSupplier]);
+
   // Filter suppliers based on search query
   const filteredSuppliers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -81,6 +92,13 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
         if (cfg.showrooms.some(sr => sr.toLowerCase().includes(q))) return true;
         if (cfg.vatType === 'VAT_7' && (q === 'vat' || q === 'ภาษี')) return true;
         if (cfg.vatType === 'NO_VAT' && (q === 'no vat' || q === 'ไม่มี vat')) return true;
+      }
+
+      if (serviceType === 'VEHICLE_SLIDE') {
+        const slideCfg = getSlideSupplierInfo(s.code, s.name);
+        const showroom = slideCfg?.showroomLabel || s.showroomLabel || '';
+        if (showroom.toLowerCase().includes(q)) return true;
+        if (slideCfg?.areaDescription.toLowerCase().includes(q)) return true;
       }
 
       return false;
@@ -199,6 +217,17 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                     </span>
                   </>
                 )}
+                {selectedSlideConfig && (
+                  <>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
+                      <MapPin className="w-2.5 h-2.5" />
+                      {selectedSlideConfig.showroomLabel || selectedSupplier.showroomLabel || 'บริการรถสไลด์'}
+                    </span>
+                    <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 bg-slate-100 text-slate-600 border-slate-200">
+                      No VAT
+                    </span>
+                  </>
+                )}
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   เลือกอยู่
@@ -291,6 +320,18 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                     )
                 );
 
+                const itemSlideConfig =
+                  serviceType === 'VEHICLE_SLIDE'
+                    ? getSlideSupplierInfo(sup.code, sup.name)
+                    : null;
+
+                const isRecommendedSlide = Boolean(
+                  serviceType === 'VEHICLE_SLIDE' &&
+                    recommendedSupplierCode &&
+                    (sup.code === recommendedSupplierCode ||
+                      (itemSlideConfig && itemSlideConfig.code === recommendedSupplierCode))
+                );
+
                 return (
                   <button
                     key={sup.id}
@@ -334,6 +375,11 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                               ⭐ แนะนำสาขานี้
                             </span>
                           )}
+                          {isRecommendedSlide && (
+                            <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-1.5 py-0.2 rounded shrink-0">
+                              ⭐ แนะนำตามเส้นทาง
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
                           <span className="flex items-center gap-1 shrink-0">
@@ -353,6 +399,16 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                                 }`}
                               >
                                 {itemWashConfig.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
+                              </span>
+                            </>
+                          )}
+                          {itemSlideConfig && (
+                            <>
+                              <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
+                                📍 {itemSlideConfig.showroomLabel || sup.showroomLabel}
+                              </span>
+                              <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 bg-slate-100 text-slate-600 border-slate-200">
+                                No VAT
                               </span>
                             </>
                           )}

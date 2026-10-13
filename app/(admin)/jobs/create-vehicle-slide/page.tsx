@@ -8,8 +8,12 @@ import { useToast } from '@/components/ui/Toast';
 import TagSearch from '@/components/ui/TagSearch';
 import BranchSelect from '@/components/ui/BranchSelect';
 import { CompanyCode, Job } from '@/types';
-import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
-import { haversineDistance, calculateSlideCost } from '@/lib/job-utils';
+import { haversineDistance } from '@/lib/job-utils';
+import {
+  calculateSlideJobCost,
+  getRecommendedSlideSupplier,
+  SlideCalculationResult,
+} from '@/lib/vehicle-slide-rates';
 import { SlideConfirmModal, SlideSuccessModal, SupplierSelector } from '@/components/jobs';
 import dynamic from 'next/dynamic';
 import { 
@@ -109,8 +113,10 @@ export default function CreateVehicleSlidePage() {
   const [requestedBy, setRequestedBy] = useState<string>(autoName);
   const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
   const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
-  const [estimatedCost, setEstimatedCost] = useState<number>(32 * 50);
+  const [estimatedCost, setEstimatedCost] = useState<number>(2000);
   const [distance, setDistance] = useState<number>(32);
+  const [pricingCalculation, setPricingCalculation] = useState<SlideCalculationResult | null>(null);
+  const [isCustomPrice, setIsCustomPrice] = useState(false);
 
   // ── Hybrid Destination Mode ──
   const [destMode, setDestMode] = useState<'branch' | 'custom'>('branch');
@@ -151,6 +157,26 @@ export default function CreateVehicleSlidePage() {
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
   const destBranch = branches.find(b => b.id === destBranchId);
 
+  // Smart route supplier recommendation
+  const supplierRecommendation = useMemo(() => {
+    return getRecommendedSlideSupplier(
+      originBranchObj?.code,
+      originBranchObj?.name,
+      destMode === 'branch' ? destBranch?.code : null,
+      destMode === 'branch' ? destBranch?.name : null
+    );
+  }, [originBranchObj?.code, originBranchObj?.name, destBranch?.code, destBranch?.name, destMode]);
+
+  // Auto-select recommended supplier if none selected yet
+  useEffect(() => {
+    if (!selectedSupplierId && supplierRecommendation?.recommendedCode && slideSuppliers.length > 0) {
+      const match = slideSuppliers.find(s => s.code === supplierRecommendation.recommendedCode);
+      if (match) {
+        setSelectedSupplierId(match.id);
+      }
+    }
+  }, [supplierRecommendation, selectedSupplierId, slideSuppliers]);
+
   // Effective pickup / drop-off coordinates (custom pin overrides branch location)
   const originPoint = useMemo(() => {
     if (originMode === 'custom' && customOrigin) {
@@ -172,13 +198,12 @@ export default function CreateVehicleSlidePage() {
     return null;
   }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name]);
 
-  // Auto-calculate real road distance and cost whenever pickup or drop-off point changes
+  // Auto-calculate real road distance whenever pickup or drop-off point changes
   useEffect(() => {
     if (!originPoint || !destPoint) return;
     const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
     const initialRoadDist = Math.round(straight * 1.25 * 10) / 10;
     setDistance(initialRoadDist);
-    setEstimatedCost(calculateSlideCost(initialRoadDist));
 
     let cancelled = false;
     fetch(`/api/routes/driving?originLat=${originPoint.lat}&originLng=${originPoint.lng}&destLat=${destPoint.lat}&destLng=${destPoint.lng}`)
@@ -186,7 +211,6 @@ export default function CreateVehicleSlidePage() {
       .then(data => {
         if (!cancelled && data.success && data.distanceKm) {
           setDistance(data.distanceKm);
-          setEstimatedCost(calculateSlideCost(data.distanceKm));
         }
       })
       .catch(err => {
@@ -197,6 +221,40 @@ export default function CreateVehicleSlidePage() {
       cancelled = true;
     };
   }, [originPoint?.lat, originPoint?.lng, destPoint?.lat, destPoint?.lng]);
+
+  // Dynamic slide pricing recalculation based on contract matrices
+  useEffect(() => {
+    const result = calculateSlideJobCost({
+      supplierCodeOrId: selectedSupplier?.code || selectedSupplierId,
+      supplierName: selectedSupplier?.name,
+      distanceKm: distance,
+      originMode,
+      destMode,
+      originBranchCode: originBranchObj?.code,
+      originBranchName: originBranchObj?.name,
+      destBranchCode: destMode === 'branch' ? destBranch?.code : null,
+      destBranchName: destMode === 'branch' ? destBranch?.name : null,
+      carCount: selectedVins.length || 1,
+    });
+
+    setPricingCalculation(result);
+    if (!isCustomPrice) {
+      setEstimatedCost(result.costPerCar);
+    }
+  }, [
+    selectedSupplier?.code,
+    selectedSupplier?.name,
+    selectedSupplierId,
+    distance,
+    originMode,
+    destMode,
+    originBranchObj?.code,
+    originBranchObj?.name,
+    destBranch?.code,
+    destBranch?.name,
+    selectedVins.length,
+    isCustomPrice,
+  ]);
 
   const originLabel = originMode === 'custom' && customOrigin
     ? customOrigin.address.split(',').slice(0, 2).join(',')
@@ -377,11 +435,16 @@ export default function CreateVehicleSlidePage() {
           <SupplierSelector
             suppliers={slideSuppliers}
             selectedSupplierId={selectedSupplierId}
-            onSelect={setSelectedSupplierId}
+            onSelect={(id) => {
+              setSelectedSupplierId(id);
+              setIsCustomPrice(false);
+            }}
             serviceType="VEHICLE_SLIDE"
             stepNumber={1}
             title="เลือก Supplier รถสไลด์"
             themeColor="#0f5238"
+            recommendedSupplierCode={supplierRecommendation?.recommendedCode}
+            recommendationReason={supplierRecommendation?.reason}
           />
 
           {/* Step 2: Select VIN from current branch */}
@@ -809,7 +872,7 @@ export default function CreateVehicleSlidePage() {
                         <div className="p-2.5 rounded-xl bg-[#f4f9f5] border border-emerald-950/10">
                           <p className="text-[10px] text-gray-500 font-semibold">ค่าบริการ (ประมาณ)</p>
                           <p className="text-sm font-bold text-[#0f5238]">
-                            ฿{calculateSlideCost(distance).toLocaleString()}
+                            ฿{(pricingCalculation?.costPerCar ?? estimatedCost).toLocaleString()}
                           </p>
                         </div>
                       </div>
@@ -835,7 +898,6 @@ export default function CreateVehicleSlidePage() {
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                       setDistance(val);
-                      setEstimatedCost(Math.round(val * 50));
                     }}
                     placeholder="เช่น 35"
                     required
@@ -854,11 +916,20 @@ export default function CreateVehicleSlidePage() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setEstimatedCost(calculateSlideCost(Number(distance || 0)))}
-                    className="text-[10px] font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200/80 transition-colors cursor-pointer whitespace-nowrap"
-                    title="คลิกเพื่อคำนวณใหม่ตามระยะทาง: กิโลเมตร × 50 บาท"
+                    onClick={() => {
+                      setIsCustomPrice(false);
+                      if (pricingCalculation) {
+                        setEstimatedCost(pricingCalculation.costPerCar);
+                      }
+                    }}
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg border transition-colors cursor-pointer whitespace-nowrap max-w-[210px] truncate ${
+                      isCustomPrice
+                        ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300'
+                        : 'text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-200/80'
+                    }`}
+                    title={isCustomPrice ? 'คลิกเพื่อรีเซ็ตกลับเป็นราคาตามสัญญา' : 'ราคาคำนวณตามสัญญาของ Supplier นี้'}
                   >
-                    50 บ./กม.
+                    {isCustomPrice ? '↺ คืนค่าสัญญา' : (pricingCalculation?.formulaBadge || 'คำนวณตามสัญญา')}
                   </button>
                 </div>
                 <div className="relative">
@@ -870,6 +941,7 @@ export default function CreateVehicleSlidePage() {
                     onChange={(e) => {
                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                       setEstimatedCost(val);
+                      setIsCustomPrice(true);
                     }}
                     placeholder="เช่น 1600"
                     required
@@ -879,15 +951,24 @@ export default function CreateVehicleSlidePage() {
                     บาท
                   </div>
                 </div>
-                {selectedVins.length > 1 ? (
-                  <p className="text-[10px] text-emerald-700 font-semibold mt-1">
-                    ต่อคัน (รวม {selectedVins.length} คัน = ฿{(estimatedCost * selectedVins.length).toLocaleString()})
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-gray-400 mt-1">
-                    คำนวณอัตโนมัติ: {distance || 0} กม. × 50 บาท
-                  </p>
-                )}
+                <div className="mt-1 flex flex-col gap-0.5">
+                  {selectedVins.length > 1 && (
+                    <p className="text-[10px] text-emerald-700 font-semibold">
+                      ต่อคัน (รวม {selectedVins.length} คัน = ฿{(estimatedCost * selectedVins.length).toLocaleString()})
+                    </p>
+                  )}
+                  {pricingCalculation && (
+                    <p className="text-[10px] text-gray-500 leading-tight">
+                      💡 {pricingCalculation.formulaDetail}
+                    </p>
+                  )}
+                  {pricingCalculation?.isSpecialQuote && (
+                    <div className="mt-1 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-medium flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                      <span>ระยะทางเกิน 1,000 กม. กรุณาติดต่อขอราคาพิเศษ</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Pickup Time */}
@@ -1016,6 +1097,8 @@ export default function CreateVehicleSlidePage() {
         supplierName={selectedSupplier?.name || ''}
         pickupDateTime={pickupDateTime}
         estimatedCost={estimatedCost}
+        formulaBadge={pricingCalculation?.formulaBadge}
+        formulaDetail={pricingCalculation?.formulaDetail}
         onClose={() => setShowConfirmModal(false)}
         onConfirm={handleConfirmSlideJob}
       />
@@ -1026,6 +1109,7 @@ export default function CreateVehicleSlidePage() {
         selectedVins={selectedVins}
         distance={distance}
         estimatedCost={estimatedCost}
+        formulaBadge={pricingCalculation?.formulaBadge}
         onClose={() => setCreatedJob(null)}
       />
 

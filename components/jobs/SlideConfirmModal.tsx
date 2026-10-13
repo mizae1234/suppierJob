@@ -14,6 +14,8 @@ export interface SlideConfirmModalProps {
   supplierName: string;
   pickupDateTime: string;
   estimatedCost: number;
+  formulaBadge?: string;
+  formulaDetail?: string;
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }
@@ -28,6 +30,8 @@ export function SlideConfirmModal({
   supplierName,
   pickupDateTime,
   estimatedCost,
+  formulaBadge,
+  formulaDetail,
   onClose,
   onConfirm,
 }: SlideConfirmModalProps) {
@@ -89,6 +93,19 @@ export function SlideConfirmModal({
             <span className="text-gray-500">กำหนดรับรถ:</span>
             <span className="font-medium text-gray-800">{formatThaiDateTime(pickupDateTime)}</span>
           </div>
+          {formulaBadge && (
+            <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+              <span className="text-gray-500">เงื่อนไขราคา:</span>
+              <span className="font-bold text-[#0f5238] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[11px] text-right">
+                {formulaBadge}
+              </span>
+            </div>
+          )}
+          {formulaDetail && (
+            <p className="text-[10px] text-gray-500 pb-1 border-b border-gray-200">
+              💡 {formulaDetail}
+            </p>
+          )}
           <div className="flex items-center justify-between pt-1">
             <span className="text-gray-600 font-medium">
               {selectedVins.length > 1 ? `ประมาณการค่าบริการรวม (${selectedVins.length} คัน):` : 'ประมาณการค่าบริการ:'}
