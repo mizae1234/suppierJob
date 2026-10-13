@@ -13,6 +13,7 @@ import {
   Store,
 } from 'lucide-react';
 import { Supplier } from '@/types';
+import { getSupplierWashConfig } from '@/lib/car-wash-rates';
 
 export interface SupplierSelectorProps {
   suppliers: Supplier[];
@@ -23,6 +24,8 @@ export interface SupplierSelectorProps {
   title?: string;
   themeColor?: string;
   className?: string;
+  currentBranchCode?: string;
+  currentBranchName?: string;
 }
 
 export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
@@ -34,6 +37,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   title,
   themeColor = '#0f5238',
   className = '',
+  currentBranchCode,
+  currentBranchName,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,18 +56,36 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     [suppliers, selectedSupplierId]
   );
 
+  // Selected supplier wash config (for VAT & Showroom)
+  const selectedWashConfig = useMemo(() => {
+    if (serviceType !== 'CAR_WASH' || !selectedSupplier) return null;
+    return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name);
+  }, [serviceType, selectedSupplier]);
+
   // Filter suppliers based on search query
   const filteredSuppliers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return suppliers;
-    return suppliers.filter(
-      s =>
+    return suppliers.filter(s => {
+      const matchBasic =
         s.name.toLowerCase().includes(q) ||
         (s.code && s.code.toLowerCase().includes(q)) ||
         (s.phone && s.phone.toLowerCase().includes(q)) ||
-        (s.address && s.address.toLowerCase().includes(q))
-    );
-  }, [suppliers, searchQuery]);
+        (s.address && s.address.toLowerCase().includes(q));
+
+      if (matchBasic) return true;
+
+      if (serviceType === 'CAR_WASH') {
+        const cfg = getSupplierWashConfig(s.code, s.name);
+        if (cfg.showroomLabel.toLowerCase().includes(q)) return true;
+        if (cfg.showrooms.some(sr => sr.toLowerCase().includes(q))) return true;
+        if (cfg.vatType === 'VAT_7' && (q === 'vat' || q === 'ภาษี')) return true;
+        if (cfg.vatType === 'NO_VAT' && (q === 'no vat' || q === 'ไม่มี vat')) return true;
+      }
+
+      return false;
+    });
+  }, [suppliers, searchQuery, serviceType]);
 
   // Click outside to close
   useEffect(() => {
@@ -154,20 +177,32 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                   {selectedSupplier.name}
                 </p>
               </div>
-              <div className="flex items-center gap-2.5 text-[11px] text-gray-500 mt-1">
+              <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
                 <span className="flex items-center gap-1 shrink-0">
                   <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                   {selectedSupplier.phone || 'ไม่มีเบอร์โทร'}
                 </span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded shrink-0">
+                {selectedWashConfig && (
+                  <>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
+                      <MapPin className="w-2.5 h-2.5" />
+                      {selectedWashConfig.showroomLabel}
+                    </span>
+                    <span
+                      className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${
+                        selectedWashConfig.vatType === 'VAT_7'
+                          ? 'bg-purple-50 text-purple-700 border-purple-200'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {selectedWashConfig.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
+                    </span>
+                  </>
+                )}
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   เลือกอยู่
                 </span>
-                {selectedSupplier.address && (
-                  <span className="hidden sm:flex items-center gap-1 truncate text-gray-400">
-                    • {selectedSupplier.address}
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -222,7 +257,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="ค้นหาชื่อ, รหัส, หรือเบอร์โทร..."
+                placeholder="ค้นหาชื่อ, รหัส, สาขา หรือเบอร์โทร..."
                 className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#0f5238]/20 focus:border-[#0f5238] transition-all"
               />
               {searchQuery && (
@@ -242,6 +277,20 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
             {filteredSuppliers.length > 0 ? (
               filteredSuppliers.map(sup => {
                 const isSelected = sup.id === selectedSupplierId;
+                const itemWashConfig =
+                  serviceType === 'CAR_WASH'
+                    ? getSupplierWashConfig(sup.code, sup.name)
+                    : null;
+                const isCurrentBranchSupplier = Boolean(
+                  itemWashConfig &&
+                    currentBranchCode &&
+                    itemWashConfig.showrooms.some(
+                      sr =>
+                        currentBranchCode.toLowerCase().includes(sr.toLowerCase()) ||
+                        sr.toLowerCase().includes(currentBranchCode.toLowerCase())
+                    )
+                );
+
                 return (
                   <button
                     key={sup.id}
@@ -280,16 +329,32 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                           >
                             {sup.name}
                           </span>
+                          {isCurrentBranchSupplier && (
+                            <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-1.5 py-0.2 rounded shrink-0">
+                              ⭐ แนะนำสาขานี้
+                            </span>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1">
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
                           <span className="flex items-center gap-1 shrink-0">
                             <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
                             {sup.phone || 'ไม่มีเบอร์โทร'}
                           </span>
-                          {sup.address && (
-                            <span className="truncate text-gray-400">
-                              • {sup.address}
-                            </span>
+                          {itemWashConfig && (
+                            <>
+                              <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
+                                📍 {itemWashConfig.showroomLabel}
+                              </span>
+                              <span
+                                className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${
+                                  itemWashConfig.vatType === 'VAT_7'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {itemWashConfig.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
+                              </span>
+                            </>
                           )}
                         </div>
                       </div>

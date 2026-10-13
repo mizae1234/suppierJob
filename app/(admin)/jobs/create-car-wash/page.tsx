@@ -10,6 +10,12 @@ import TagSearch from '@/components/ui/TagSearch';
 import { CompanyCode, Job } from '@/types';
 import { WashConfirmModal, WashOrderPrintModal, SupplierSelector } from '@/components/jobs';
 import { 
+  getSupplierWashConfig, 
+  getWashServiceDisplay, 
+  calculateWashOrderFinancials,
+  DEFAULT_WASH_CONFIG,
+} from '@/lib/car-wash-rates';
+import { 
   Sparkles, 
   Car, 
   Store, 
@@ -53,6 +59,30 @@ export default function CreateCarWashPage() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const selectedSupplier = washSuppliers.find(s => s.id === selectedSupplierId);
 
+  // Supplier wash config (Rates, Showrooms, VAT)
+  const washConfig = useMemo(() => {
+    if (!selectedSupplier) return DEFAULT_WASH_CONFIG;
+    return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name);
+  }, [selectedSupplier]);
+
+  // Available service options for this supplier
+  const supplierServices = useMemo(() => {
+    return washConfig.services.map(s => {
+      const meta = getWashServiceDisplay(s.serviceCode);
+      return {
+        code: s.serviceCode,
+        name: meta.name,
+        category: meta.category,
+        categoryName: meta.categoryName,
+        priceType: s.priceType,
+        price: s.price,
+        minPrice: s.minPrice,
+        maxPrice: s.maxPrice,
+        defaultRemarks: meta.defaultRemarks,
+      };
+    });
+  }, [washConfig]);
+
   // Auto-fill requester info from logged-in user
   const autoName = authUser?.firstName && authUser?.lastName 
     ? `${authUser.firstName} ${authUser.lastName}` 
@@ -63,12 +93,6 @@ export default function CreateCarWashPage() {
   const [openWashTypeVin, setOpenWashTypeVin] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const washTypeOptions = [
-    { value: 'STANDARD', label: 'Standard (฿180)' },
-    { value: 'DEEP_CLEAN', label: 'Deep Clean (฿350)' },
-    { value: 'POLISH', label: 'ขัดเคลือบเงา (฿650)' },
-  ];
 
   // Branches filtered by selected company context
   const availableBranches = useMemo(() => {
@@ -106,8 +130,11 @@ export default function CreateCarWashPage() {
     color: string;
     licensePlate?: string;
     actualWashDate: string;
-    washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH';
+    washType: string;
     unitPrice: number;
+    priceType?: 'FIXED' | 'RANGE';
+    minPrice?: number;
+    maxPrice?: number;
     remarks: string;
   }
 
@@ -115,6 +142,34 @@ export default function CreateCarWashPage() {
 
   // Created Job for PDF Modal
   const [createdJob, setCreatedJob] = useState<Job | null>(null);
+
+  // When supplier changes, adapt existing items to the new supplier's rates
+  useEffect(() => {
+    if (!selectedSupplierId || selectedItems.length === 0 || supplierServices.length === 0) return;
+    const defaultSvc = supplierServices[0];
+
+    setSelectedItems(prev => prev.map(item => {
+      const matched = supplierServices.find(s => s.code === item.washType);
+      if (matched) {
+        return {
+          ...item,
+          unitPrice: matched.priceType === 'FIXED' ? matched.price : Math.max(matched.minPrice || 0, Math.min(item.unitPrice, matched.maxPrice || Infinity)),
+          priceType: matched.priceType,
+          minPrice: matched.minPrice,
+          maxPrice: matched.maxPrice,
+        };
+      }
+      return {
+        ...item,
+        washType: defaultSvc.code,
+        unitPrice: defaultSvc.price,
+        priceType: defaultSvc.priceType,
+        minPrice: defaultSvc.minPrice,
+        maxPrice: defaultSvc.maxPrice,
+        remarks: item.remarks || defaultSvc.defaultRemarks || '',
+      };
+    }));
+  }, [selectedSupplierId, supplierServices]);
 
   // Toggle vehicle selection
   const handleToggleVehicle = (vehicle: (typeof branchStockVehicles)[0]) => {
@@ -125,6 +180,14 @@ export default function CreateCarWashPage() {
       showToast(`รถคันนี้มีงานค้างอยู่ (ใบงาน ${vehicle.activeJob.jobNumber}) — สั่งงานซ้ำได้เมื่องานเดิมเสร็จสิ้น`, 'warning');
       return;
     } else {
+      const defaultSvc = supplierServices[0] || {
+        code: 'WASH_AND_COAT',
+        price: 500,
+        priceType: 'FIXED' as const,
+        minPrice: undefined,
+        maxPrice: undefined,
+        defaultRemarks: 'ล้างทำความสะอาดทั่วไป',
+      };
       setSelectedItems(prev => [
         ...prev,
         {
@@ -133,9 +196,12 @@ export default function CreateCarWashPage() {
           color: vehicle.color,
           licensePlate: vehicle.licensePlate,
           actualWashDate: new Date().toISOString().slice(0, 10),
-          washType: 'STANDARD',
-          unitPrice: 180,
-          remarks: 'ล้างทำความสะอาดทั่วไป + ดูดฝุ่น',
+          washType: defaultSvc.code,
+          unitPrice: defaultSvc.price,
+          priceType: defaultSvc.priceType,
+          minPrice: defaultSvc.minPrice,
+          maxPrice: defaultSvc.maxPrice,
+          remarks: defaultSvc.defaultRemarks || '',
         }
       ]);
     }
@@ -147,9 +213,16 @@ export default function CreateCarWashPage() {
       if (item.vin !== vin) return item;
       const updated = { ...item, [field]: value };
       if (field === 'washType') {
-        if (value === 'STANDARD') updated.unitPrice = 180;
-        if (value === 'DEEP_CLEAN') updated.unitPrice = 350;
-        if (value === 'POLISH') updated.unitPrice = 650;
+        const matched = supplierServices.find(s => s.code === value);
+        if (matched) {
+          updated.unitPrice = matched.price;
+          updated.priceType = matched.priceType;
+          updated.minPrice = matched.minPrice;
+          updated.maxPrice = matched.maxPrice;
+          if (!updated.remarks || updated.remarks === 'ล้างทำความสะอาดทั่วไป') {
+            updated.remarks = matched.defaultRemarks || '';
+          }
+        }
       }
       return updated;
     }));
@@ -179,6 +252,14 @@ export default function CreateCarWashPage() {
     } else {
       // Add all missing filtered vehicles to selected items
       const existingVins = new Set(selectedItems.map(it => it.vin));
+      const defaultSvc = supplierServices[0] || {
+        code: 'WASH_AND_COAT',
+        price: 500,
+        priceType: 'FIXED' as const,
+        minPrice: undefined,
+        maxPrice: undefined,
+        defaultRemarks: 'ล้างทำความสะอาดทั่วไป',
+      };
       const toAdd: SelectedWashItem[] = selectableVehicles
         .filter(v => !existingVins.has(v.vin))
         .map(v => ({
@@ -187,15 +268,23 @@ export default function CreateCarWashPage() {
           color: v.color,
           licensePlate: v.licensePlate,
           actualWashDate: new Date().toISOString().slice(0, 10),
-          washType: 'STANDARD',
-          unitPrice: 180,
-          remarks: 'ล้างทำความสะอาดทั่วไป + ดูดฝุ่น',
+          washType: defaultSvc.code,
+          unitPrice: defaultSvc.price,
+          priceType: defaultSvc.priceType,
+          minPrice: defaultSvc.minPrice,
+          maxPrice: defaultSvc.maxPrice,
+          remarks: defaultSvc.defaultRemarks || '',
         }));
       setSelectedItems(prev => [...prev, ...toAdd]);
     }
   };
 
-  const totalEstimatedCost = selectedItems.reduce((sum, it) => sum + it.unitPrice, 0);
+  // Financial calculation (Subtotal, VAT, Grand Total)
+  const orderFinancials = useMemo(() => {
+    return calculateWashOrderFinancials(selectedItems, washConfig.vatType);
+  }, [selectedItems, washConfig.vatType]);
+
+  const totalEstimatedCost = orderFinancials.grandTotal;
 
   const { showToast } = useToast();
 
@@ -235,6 +324,7 @@ export default function CreateCarWashPage() {
         requestedBy,
         requesterPosition,
         requesterPhone,
+        estimatedCost: orderFinancials.grandTotal,
       });
 
       setShowConfirmModal(false);
@@ -285,6 +375,8 @@ export default function CreateCarWashPage() {
             stepNumber={1}
             title="เลือก Supplier คู่ค้า"
             themeColor={theme.primary}
+            currentBranchCode={selectedBranch?.code}
+            currentBranchName={selectedBranch?.name}
           />
 
           {/* Step 2: Select VINs from Branch Stock */}
@@ -479,9 +571,10 @@ export default function CreateCarWashPage() {
                       </div>
                     </div>
 
+
                     {/* Form Controls for this VIN */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center w-full md:w-auto">
-                      {/* Actual Wash Date */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-start w-full md:w-auto flex-1">
+                      {/* 1. Actual Wash Date */}
                       <div>
                         <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
                           วันปฏิบัติงานจริง:
@@ -490,49 +583,55 @@ export default function CreateCarWashPage() {
                           type="date"
                           value={item.actualWashDate}
                           onChange={(e) => updateItemField(item.vin, 'actualWashDate', e.target.value)}
-                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238]"
+                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238] bg-white"
                         />
                       </div>
 
-                      {/* Wash Type */}
+                      {/* 2. Wash Service Type (Dynamic per Supplier) */}
                       <div>
                         <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
-                          ประเภทการล้าง:
+                          ประเภทบริการ:
                         </label>
                         <div className="relative">
                           <button
                             type="button"
                             onClick={() => setOpenWashTypeVin(openWashTypeVin === item.vin ? null : item.vin)}
-                            onBlur={() => setTimeout(() => setOpenWashTypeVin(null), 200)}
-                            className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-1 cursor-pointer hover:border-gray-300 transition-colors"
+                            className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-1 cursor-pointer hover:border-gray-300 transition-colors bg-white"
                             style={{ color: theme.primary }}
                           >
-                            <span className="truncate">{washTypeOptions.find(o => o.value === item.washType)?.label || 'Standard (฿180)'}</span>
+                            <span className="truncate">
+                              {supplierServices.find(s => s.code === item.washType)?.name || item.washType}
+                            </span>
                             <ChevronDown className={`w-3 h-3 shrink-0 text-gray-400 transition-transform duration-200 ${openWashTypeVin === item.vin ? 'rotate-180' : ''}`} />
                           </button>
                           {openWashTypeVin === item.vin && (
-                            <div className="absolute top-full left-0 mt-1 w-full rounded-xl bg-white border border-gray-100 shadow-xl overflow-hidden z-50">
-                              {washTypeOptions.map((opt) => {
-                                const isSelected = item.washType === opt.value;
+                            <div className="absolute top-full left-0 mt-1 w-72 max-w-[90vw] rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 max-h-64 overflow-y-auto">
+                              {supplierServices.map((svc) => {
+                                const isSelected = item.washType === svc.code;
                                 return (
                                   <button
                                     type="button"
-                                    key={opt.value}
+                                    key={svc.code}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
-                                      updateItemField(item.vin, 'washType', opt.value);
+                                      updateItemField(item.vin, 'washType', svc.code);
                                       setOpenWashTypeVin(null);
                                     }}
-                                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors cursor-pointer ${
+                                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors cursor-pointer text-left ${
                                       isSelected
-                                        ? 'bg-gray-50 text-gray-900 font-bold'
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium'
+                                        ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-l-[#0f5238]'
+                                        : 'text-gray-700 hover:bg-gray-50'
                                     }`}
                                   >
-                                    <span>{opt.label}</span>
-                                    {isSelected && (
-                                      <Check className="w-3.5 h-3.5" style={{ color: theme.primary }} />
-                                    )}
+                                    <div className="min-w-0 pr-2">
+                                      <p className="truncate font-semibold">{svc.name}</p>
+                                      <span className="text-[10px] text-gray-400 block">{svc.categoryName}</span>
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                      <span className="text-[11px] font-mono font-bold text-[#0f5238]">
+                                        {svc.priceType === 'RANGE' ? `฿${svc.minPrice} - ฿${svc.maxPrice}` : `฿${svc.price}`}
+                                      </span>
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -541,7 +640,37 @@ export default function CreateCarWashPage() {
                         </div>
                       </div>
 
-                      {/* Remarks */}
+                      {/* 3. Unit Price Input */}
+                      <div>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="block text-[10px] font-bold text-gray-500">
+                            ราคาต่อคัน (บาท):
+                          </label>
+                          {item.priceType === 'RANGE' && (
+                            <span className="text-[9px] text-amber-800 font-semibold bg-amber-50 px-1 rounded border border-amber-200/60">
+                              ช่วงราคา
+                            </span>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">฿</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="any"
+                            value={item.unitPrice}
+                            onChange={(e) => updateItemField(item.vin, 'unitPrice', parseFloat(e.target.value) || 0)}
+                            className="w-full h-8 pl-6 pr-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-1 focus:ring-[#0f5238] bg-white"
+                          />
+                        </div>
+                        {item.priceType === 'RANGE' && item.minPrice !== undefined && item.maxPrice !== undefined && (
+                          <p className="text-[9px] text-amber-700 mt-0.5 truncate font-medium">
+                            ช่วงราคาแนะนำ: ฿{item.minPrice} - ฿{item.maxPrice}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 4. Remarks */}
                       <div>
                         <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
                           หมายเหตุ / จุดระวัง:
@@ -550,20 +679,23 @@ export default function CreateCarWashPage() {
                           type="text"
                           value={item.remarks}
                           onChange={(e) => updateItemField(item.vin, 'remarks', e.target.value)}
-                          placeholder="เช่น ดูดฝุ่นเบาะหลัง"
-                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238]"
+                          placeholder={item.washType === 'POLISH_STAINS' ? 'ระบุตำแหน่งรอย...' : 'หมายเหตุเพิ่มเติม...'}
+                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238] bg-white"
                         />
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between md:flex-col md:items-end gap-2 shrink-0">
-                      <span className="font-bold text-[#0f5238] text-sm">
-                        ฿{item.unitPrice}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-[10px] text-gray-400 block">รวมคันนี้</span>
+                        <span className="font-bold text-[#0f5238] text-sm">
+                          ฿{(item.unitPrice || 0).toLocaleString()}
+                        </span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleToggleVehicle(branchStockVehicles.find(v => v.vin === item.vin)!)}
-                        className="text-red-500 hover:text-red-700 p-1"
+                        className="text-red-400 hover:text-red-600 p-1"
                         title="ลบรายการนี้"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -576,11 +708,38 @@ export default function CreateCarWashPage() {
 
             {/* Bottom Summary Bar */}
             {selectedItems.length > 0 && (
-              <div className="p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2" style={{ backgroundColor: theme.bgCard, borderColor: theme.borderSoft }}>
-                <div>
-                  <span className="text-xs text-gray-500">ยอดรวมค่าบริการโดยประมาณ:</span>
-                  <div className="text-2xl font-bold" style={{ color: theme.primary }}>
-                    ฿{totalEstimatedCost.toLocaleString()}
+              <div className="p-4 sm:p-5 rounded-2xl border border-gray-200 bg-white shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div>
+                    <span className="text-xs text-gray-500">ยอดรวมค่าบริการ (Subtotal):</span>
+                    <div className="text-lg font-bold text-gray-800">
+                      ฿{orderFinancials.subtotal.toLocaleString()}
+                    </div>
+                  </div>
+
+                  <div className="h-8 w-px bg-gray-200 hidden sm:block" />
+
+                  <div>
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <span>ภาษีมูลค่าเพิ่ม:</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold border ${
+                        washConfig.vatType === 'VAT_7' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}>
+                        {washConfig.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
+                      </span>
+                    </span>
+                    <div className="text-sm font-semibold text-gray-700">
+                      {washConfig.vatType === 'VAT_7' ? `+฿${orderFinancials.vatAmount.toLocaleString()}` : 'ไม่มี VAT (บุคคลธรรมดา)'}
+                    </div>
+                  </div>
+
+                  <div className="h-8 w-px bg-gray-200 hidden sm:block" />
+
+                  <div>
+                    <span className="text-xs text-gray-500 font-medium">ยอดสุทธิรวมทั้งสิ้น:</span>
+                    <div className="text-2xl font-bold" style={{ color: theme.primary }}>
+                      ฿{orderFinancials.grandTotal.toLocaleString()}
+                    </div>
                   </div>
                 </div>
 
@@ -610,6 +769,9 @@ export default function CreateCarWashPage() {
         requesterPosition={requesterPosition}
         totalItems={selectedItems.length}
         totalEstimatedCost={totalEstimatedCost}
+        subtotal={orderFinancials.subtotal}
+        vatType={washConfig.vatType}
+        vatAmount={orderFinancials.vatAmount}
         onClose={() => setShowConfirmModal(false)}
         onConfirm={handleConfirmOrder}
       />

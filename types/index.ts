@@ -64,6 +64,8 @@ export interface Supplier {
   bankName?: string;
   bankAccount?: string;
   isActive: boolean;
+  vatType?: 'VAT_7' | 'NO_VAT';
+  showroomLabel?: string;
 }
 
 export interface Vehicle {
@@ -91,7 +93,7 @@ export interface CarWashItem {
   vehicleColor?: string;
   licensePlate?: string;
   actualWashDate: string; // YYYY-MM-DD
-  washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH';
+  washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH' | string;
   unitPrice: number;
   status: CarWashItemStatus;
   remarks?: string;

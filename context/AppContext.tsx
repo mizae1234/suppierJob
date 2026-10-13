@@ -25,13 +25,14 @@ interface CreateCarWashParams {
   items: Array<{
     vin: string;
     actualWashDate: string;
-    washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH';
+    washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH' | string;
     unitPrice: number;
     remarks?: string;
   }>;
   requestedBy: string;
   requesterPosition?: string;
   requesterPhone?: string;
+  estimatedCost?: number;
 }
 
 interface CreateVehicleSlideParams {
@@ -243,6 +244,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           requesterPosition: params.requesterPosition,
           requesterPhone: params.requesterPhone,
           items: params.items,
+          estimatedCost: params.estimatedCost,
         }),
       });
       const data = await res.json();

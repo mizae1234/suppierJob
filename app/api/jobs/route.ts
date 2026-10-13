@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { getActiveJobsByVin } from '@/lib/active-jobs';
 import { getVehicleLabel } from '@/lib/job-utils';
+import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-wash-rates';
 
 // GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
@@ -336,13 +337,20 @@ export async function POST(request: NextRequest) {
 
     if (jobType === 'CAR_WASH') {
       // ─── Car Wash ─────────────────────
-      const { items } = body;
+      const { items, estimatedCost } = body;
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return NextResponse.json({ error: 'กรุณาเลือกรถอย่างน้อย 1 คัน' }, { status: 400 });
       }
 
-      const totalCost = items.reduce((sum: number, it: { unitPrice?: number }) => sum + (it.unitPrice || 150), 0);
+      // Compute totalCost incorporating VAT when applicable
+      const supplier = await prisma.supplier.findUnique({
+        where: { id: supplierId },
+        select: { code: true, name: true },
+      });
+      const washConfig = getSupplierWashConfig(supplier?.code, supplier?.name);
+      const financials = calculateWashOrderFinancials(items, washConfig.vatType);
+      const totalCost = typeof estimatedCost === 'number' && estimatedCost > 0 ? estimatedCost : financials.grandTotal;
 
       const job = await prisma.job.create({
         data: {

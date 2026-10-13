@@ -6,6 +6,7 @@ import { CheckCircle2, Printer } from 'lucide-react';
 import { Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { useTheme } from '@/hooks/useTheme';
+import { getWashServiceDisplay, getSupplierWashConfig, calculateWashOrderFinancials } from '@/lib/car-wash-rates';
 
 export interface WashOrderPrintModalProps {
   createdJob: Job | null;
@@ -20,6 +21,9 @@ export function WashOrderPrintModal({
   const theme = useTheme();
 
   if (!createdJob) return null;
+
+  const washConfig = getSupplierWashConfig(createdJob.supplierId, createdJob.supplierName);
+  const financials = calculateWashOrderFinancials(createdJob.carWashItems || [], washConfig.vatType);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
@@ -79,7 +83,10 @@ export function WashOrderPrintModal({
             <div>
               <p className="text-gray-500">Supplier ผู้รับจ้าง:</p>
               <p className="font-bold text-gray-900">{createdJob.supplierName}</p>
-              <p className="text-gray-600 mt-0.5">สถานะ: รอ Supplier ปฏิบัติงาน</p>
+              <p className="text-gray-600 mt-0.5">
+                ภาษี: {washConfig.vatType === 'VAT_7' ? 'มีภาษีมูลค่าเพิ่ม (VAT 7%)' : 'ไม่มี VAT (บุคคลธรรมดา)'}
+              </p>
+              <p className="text-gray-600">สถานะ: รอ Supplier ปฏิบัติงาน</p>
             </div>
           </div>
 
@@ -93,30 +100,55 @@ export function WashOrderPrintModal({
                   <th className="py-2 px-2">รุ่น / สี</th>
                   <th className="py-2 px-2">ทะเบียน</th>
                   <th className="py-2 px-2">วันที่ล้างจริง</th>
-                  <th className="py-2 px-2">ประเภท</th>
+                  <th className="py-2 px-2">ประเภทบริการ</th>
                   <th className="py-2 px-2 text-right">ราคา</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {createdJob.carWashItems?.map((item, i) => (
-                  <tr key={item.id}>
-                    <td className="py-2 px-2">{i + 1}</td>
-                    <td className="py-2 px-2 font-mono font-bold">{item.vin}</td>
-                    <td className="py-2 px-2">{item.vehicleModel} ({item.vehicleColor})</td>
-                    <td className="py-2 px-2">{item.licensePlate || '-'}</td>
-                    <td className="py-2 px-2">{formatThaiDate(item.actualWashDate)}</td>
-                    <td className="py-2 px-2">{item.washType}</td>
-                    <td className="py-2 px-2 text-right font-bold">฿{item.unitPrice}</td>
-                  </tr>
-                ))}
+                {createdJob.carWashItems?.map((item, i) => {
+                  const serviceMeta = getWashServiceDisplay(item.washType);
+                  return (
+                    <tr key={item.id}>
+                      <td className="py-2 px-2">{i + 1}</td>
+                      <td className="py-2 px-2 font-mono font-bold">{item.vin}</td>
+                      <td className="py-2 px-2">{item.vehicleModel} ({item.vehicleColor})</td>
+                      <td className="py-2 px-2">{item.licensePlate || '-'}</td>
+                      <td className="py-2 px-2">{formatThaiDate(item.actualWashDate)}</td>
+                      <td className="py-2 px-2">
+                        <span className="font-medium">{serviceMeta.name}</span>
+                        {item.remarks && <p className="text-[10px] text-gray-500 mt-0.5">{item.remarks}</p>}
+                      </td>
+                      <td className="py-2 px-2 text-right font-bold">฿{item.unitPrice.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-gray-300 font-bold">
-                  <td colSpan={6} className="py-2 px-2 text-right">ยอดรวมทั้งสิ้น (Estimated Total):</td>
-                  <td className="py-2 px-2 text-right text-sm text-[#0f5238]">
-                    ฿{createdJob.estimatedCost.toLocaleString()}
-                  </td>
-                </tr>
+                {washConfig.vatType === 'VAT_7' ? (
+                  <>
+                    <tr className="border-t-2 border-gray-300 text-gray-600">
+                      <td colSpan={6} className="py-1.5 px-2 text-right font-medium">ยอดรวมค่าบริการ (Subtotal):</td>
+                      <td className="py-1.5 px-2 text-right font-semibold">฿{financials.subtotal.toLocaleString()}</td>
+                    </tr>
+                    <tr className="text-gray-600">
+                      <td colSpan={6} className="py-1 px-2 text-right font-medium">ภาษีมูลค่าเพิ่ม (VAT 7%):</td>
+                      <td className="py-1 px-2 text-right font-semibold text-purple-700">+฿{financials.vatAmount.toLocaleString()}</td>
+                    </tr>
+                    <tr className="border-t border-gray-300 font-bold">
+                      <td colSpan={6} className="py-2 px-2 text-right">ยอดสุทธิรวมทั้งสิ้น (Grand Total):</td>
+                      <td className="py-2 px-2 text-right text-sm text-[#0f5238]">
+                        ฿{financials.grandTotal.toLocaleString()}
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr className="border-t-2 border-gray-300 font-bold">
+                    <td colSpan={6} className="py-2 px-2 text-right">ยอดรวมทั้งสิ้น (ไม่มี VAT):</td>
+                    <td className="py-2 px-2 text-right text-sm text-[#0f5238]">
+                      ฿{financials.grandTotal.toLocaleString()}
+                    </td>
+                  </tr>
+                )}
               </tfoot>
             </table>
           </div>

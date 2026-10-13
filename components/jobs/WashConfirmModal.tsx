@@ -13,6 +13,9 @@ export interface WashConfirmModalProps {
   requesterPosition?: string;
   totalItems: number;
   totalEstimatedCost: number;
+  subtotal?: number;
+  vatType?: 'VAT_7' | 'NO_VAT';
+  vatAmount?: number;
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }
@@ -26,6 +29,9 @@ export function WashConfirmModal({
   requesterPosition,
   totalItems,
   totalEstimatedCost,
+  subtotal,
+  vatType = 'NO_VAT',
+  vatAmount = 0,
   onClose,
   onConfirm,
 }: WashConfirmModalProps) {
@@ -72,8 +78,25 @@ export function WashConfirmModal({
             <span className="text-gray-500">จำนวนรถทั้งหมด:</span>
             <span className="font-bold text-gray-900">{totalItems} คัน</span>
           </div>
+
+          {subtotal !== undefined && vatType === 'VAT_7' && (
+            <>
+              <div className="flex items-center justify-between pb-1 text-gray-600">
+                <span>ยอดรวมค่าบริการ (ก่อนภาษี):</span>
+                <span className="font-semibold text-gray-800">฿{subtotal.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between pb-2 border-b border-gray-200 text-gray-600">
+                <span className="flex items-center gap-1">
+                  <span>ภาษีมูลค่าเพิ่ม:</span>
+                  <span className="text-[10px] px-1 rounded bg-purple-100 text-purple-700 font-semibold">VAT 7%</span>
+                </span>
+                <span className="font-semibold text-purple-700">+฿{vatAmount.toLocaleString()}</span>
+              </div>
+            </>
+          )}
+
           <div className="flex items-center justify-between pt-1">
-            <span className="text-gray-600 font-medium">ยอดรวมค่าบริการโดยประมาณ:</span>
+            <span className="text-gray-600 font-bold">ยอดสุทธิรวมทั้งสิ้น:</span>
             <span className="text-base font-bold" style={{ color: theme.primary }}>
               ฿{totalEstimatedCost.toLocaleString()}
             </span>
