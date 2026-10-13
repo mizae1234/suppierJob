@@ -166,87 +166,105 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
 
       {/* Selected Supplier Card / Trigger */}
       {selectedSupplier ? (
-        <button
-          type="button"
+        <div
           onClick={() => setIsOpen(o => !o)}
-          className={`w-full text-left p-3 rounded-xl border transition-all duration-200 flex items-center justify-between gap-3 ${
+          className={`w-full text-left p-3.5 rounded-xl border transition-all duration-200 cursor-pointer group ${
             isOpen
-              ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20 shadow-sm'
-              : 'border-emerald-700/25 bg-gradient-to-r from-emerald-50/60 via-white to-emerald-50/30 hover:border-[#0f5238] hover:bg-emerald-50/40 hover:shadow-2xs'
+              ? 'border-[#0f5238] bg-emerald-50/40 ring-2 ring-[#0f5238]/20 shadow-md'
+              : 'border-emerald-700/25 bg-gradient-to-br from-emerald-50/50 via-white to-white hover:border-[#0f5238] hover:shadow-xs'
           }`}
+          role="button"
+          tabIndex={0}
+          onKeyDown={e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setIsOpen(o => !o);
+            }
+          }}
           aria-expanded={isOpen}
           aria-haspopup="listbox"
         >
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            {/* Service Icon Badge */}
-            <div className="w-10 h-10 rounded-xl bg-emerald-100/80 text-[#0f5238] flex items-center justify-center shrink-0 border border-emerald-200/60 shadow-2xs">
-              <ServiceIcon className="w-5 h-5" />
+          {/* Top Row: Icon, Code, Full Name & "เปลี่ยน" Button */}
+          <div className="flex items-start justify-between gap-2.5">
+            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#0f5238] flex items-center justify-center shrink-0 border border-emerald-200/60 mt-0.5">
+                <ServiceIcon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {selectedSupplier.code && (
+                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#0f5238] text-white tracking-wider shadow-2xs">
+                      {selectedSupplier.code}
+                    </span>
+                  )}
+                  <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-snug break-words">
+                    {selectedSupplier.name}
+                  </h3>
+                </div>
+              </div>
             </div>
 
-            {/* Supplier Details */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 min-w-0">
-                {selectedSupplier.code && (
-                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#0f5238] text-white tracking-wider">
-                    {selectedSupplier.code}
-                  </span>
-                )}
-                <p className="font-bold text-gray-900 text-xs sm:text-sm truncate">
-                  {selectedSupplier.name}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
-                <span className="flex items-center gap-1 shrink-0">
-                  <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
-                  {selectedSupplier.phone || 'ไม่มีเบอร์โทร'}
-                </span>
-                {selectedWashConfig && (
-                  <>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
-                      <MapPin className="w-2.5 h-2.5" />
-                      {selectedWashConfig.showroomLabel}
-                    </span>
-                    <span
-                      className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${
-                        selectedWashConfig.vatType === 'VAT_7'
-                          ? 'bg-purple-50 text-purple-700 border-purple-200'
-                          : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}
-                    >
-                      {selectedWashConfig.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
-                    </span>
-                  </>
-                )}
-                {selectedSlideConfig && (
-                  <>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
-                      <MapPin className="w-2.5 h-2.5" />
-                      {selectedSlideConfig.showroomLabel || selectedSupplier.showroomLabel || 'บริการรถสไลด์'}
-                    </span>
-                    <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 bg-slate-100 text-slate-600 border-slate-200">
-                      No VAT
-                    </span>
-                  </>
-                )}
-                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-100/70 px-1.5 py-0.2 rounded shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  เลือกอยู่
-                </span>
-              </div>
+            {/* Change Button Pill */}
+            <div className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-gray-200 bg-white text-[11px] font-semibold text-gray-700 shadow-2xs group-hover:border-[#0f5238] group-hover:text-[#0f5238] group-hover:bg-emerald-50/50 transition-all">
+              <span>เปลี่ยน</span>
+              <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#0f5238]" />
             </div>
           </div>
 
-          {/* Change Button Pill */}
-          <div className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-700 shadow-2xs hover:bg-gray-50">
-            <span>เปลี่ยน</span>
-            <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400" />
+          {/* Recommendation Banner (if applicable) */}
+          {(recommendationReason || (recommendedSupplierCode && selectedSupplier.code === recommendedSupplierCode)) && (
+            <div className="mt-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200/80 text-[11px] text-amber-900 font-medium">
+              <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+              <span className="truncate">{recommendationReason || 'แนะนำสำหรับเส้นทางนี้'}</span>
+            </div>
+          )}
+
+          {/* Middle Details: Phone & Showroom Area */}
+          <div className="mt-2.5 pt-2 border-t border-emerald-950/5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-gray-600">
+            <span className="flex items-center gap-1.5 text-gray-700 font-medium">
+              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>{selectedSupplier.phone || 'ไม่มีเบอร์โทร'}</span>
+            </span>
+
+            {selectedWashConfig && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.5 rounded">
+                <MapPin className="w-2.5 h-2.5" />
+                <span>{selectedWashConfig.showroomLabel}</span>
+              </span>
+            )}
+
+            {selectedSlideConfig && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.5 rounded">
+                <MapPin className="w-2.5 h-2.5" />
+                <span>{selectedSlideConfig.showroomLabel || selectedSupplier.showroomLabel || 'บริการรถสไลด์'}</span>
+              </span>
+            )}
           </div>
-        </button>
+
+          {/* Bottom Status Row */}
+          <div className="mt-2.5 flex items-center justify-between gap-2 pt-2 border-t border-dashed border-gray-200">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200 shrink-0">
+                {selectedWashConfig?.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
+              </span>
+              {selectedSlideConfig?.areaDescription && (
+                <span className="text-[10px] text-gray-400 truncate max-w-[160px]" title={selectedSlideConfig.areaDescription}>
+                  {selectedSlideConfig.areaDescription}
+                </span>
+              )}
+            </div>
+
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300/50 shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+              เลือกอยู่
+            </span>
+          </div>
+        </div>
       ) : (
         <button
           type="button"
           onClick={() => setIsOpen(o => !o)}
-          className={`w-full text-left p-3 rounded-xl border transition-all duration-200 flex items-center justify-between gap-3 ${
+          className={`w-full text-left p-3.5 rounded-xl border transition-all duration-200 flex items-center justify-between gap-3 ${
             isOpen
               ? 'border-[#0f5238] bg-[#f4f9f5] ring-2 ring-[#0f5238]/20 shadow-sm'
               : 'border-2 border-dashed border-gray-200 hover:border-[#0f5238] bg-gray-50/70 hover:bg-emerald-50/30'
@@ -255,8 +273,8 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           aria-haspopup="listbox"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-400 flex items-center justify-center shrink-0 border border-gray-200 shadow-2xs">
-              <ServiceIcon className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-gray-100 text-gray-400 flex items-center justify-center shrink-0 border border-gray-200 shadow-2xs">
+              <ServiceIcon className="w-4 h-4" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-gray-700 text-xs sm:text-sm truncate">
