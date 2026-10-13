@@ -15,10 +15,17 @@ async function getUserState(userId: string): Promise<DbState | null> {
   const cached = userStateCache.get(userId);
   if (cached && cached.expires > Date.now()) return cached.state;
 
-  const state = await prisma.user.findUnique({
+  const state = (await prisma.user.findUnique({
     where: { id: userId },
-    select: { isActive: true, role: true, companyId: true, supplierId: true, branchId: true, mustChangePassword: true },
-  });
+    select: {
+      isActive: true,
+      role: true,
+      companyId: true,
+      supplierId: true,
+      branchId: true,
+      mustChangePassword: true,
+    } as any,
+  })) as DbState | null;
   userStateCache.set(userId, { state, expires: Date.now() + CACHE_TTL_MS });
   if (userStateCache.size > 5000) userStateCache.clear();
   return state;
