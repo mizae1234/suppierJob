@@ -2,16 +2,95 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 
 // GET /api/places/search?q=...&lat=..&lng=..
-// ค้นหาสถานที่สำหรับ MapPicker
-// - ถ้าตั้ง GOOGLE_MAPS_API_KEY → ใช้ Google Places API (New) Text Search (แม่นเหมือน Google Maps)
-// - ถ้าไม่ได้ตั้ง หรือ Google error → fallback ไป OpenStreetMap (Nominatim)
-// API key อยู่ฝั่ง server เท่านั้น ไม่หลุดไปที่ browser
+// ค้นหาสถานที่สำหรับ MapPicker:
+// 1. ตรวจสอบพิกัดตรง (13.7597, 100.6437)
+// 2. แกะพิกัดจากลิงก์ Google Maps (maps.app.goo.gl, goo.gl/maps, google.com/maps)
+// 3. Google Places API (New) (ถ้ามี GOOGLE_MAPS_API_KEY)
+// 4. OpenStreetMap Nominatim พร้อมระบบ Progressive Thai Address Relaxation (ตัดเลขที่บ้าน, ชั้น, หมู่, รหัสไปรษณีย์)
+// 5. Google Gemini AI (gemini-3-flash-preview / gemini-flash-latest) เป็น AI Fallback เมื่อคำค้นหายากหรือไม่พบในฐานข้อมูลแผนที่ทั่วไป
 
 export interface PlaceResult {
   lat: number;
   lng: number;
   name: string;
   detail: string;
+  type?: 'map_link' | 'osm' | 'google' | 'gemini';
+}
+
+/**
+ * ติดตาม Redirect ของ Google Maps Short Link (maps.app.goo.gl / goo.gl/maps)
+ * และดึงพิกัด lat, lng จาก URL ปลายทางหรือเนื้อหา HTML
+ */
+async function resolveGoogleMapsUrl(rawUrl: string): Promise<PlaceResult | null> {
+  try {
+    let currentUrl = rawUrl.trim();
+    for (let i = 0; i < 4; i++) {
+      const coordMatch =
+        currentUrl.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+        currentUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+        currentUrl.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+        currentUrl.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+
+      if (coordMatch) {
+        return {
+          lat: parseFloat(coordMatch[1]),
+          lng: parseFloat(coordMatch[2]),
+          name: 'ตำแหน่งจาก Google Maps',
+          detail: `พิกัด ${coordMatch[1]}, ${coordMatch[2]}`,
+          type: 'map_link',
+        };
+      }
+
+      if (!currentUrl.startsWith('http')) break;
+
+      const res = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      });
+
+      const location = res.headers.get('location');
+      if (!location) {
+        const text = await res.text();
+        const bodyMatch =
+          text.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+          text.match(/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/);
+        if (bodyMatch) {
+          return {
+            lat: parseFloat(bodyMatch[1]),
+            lng: parseFloat(bodyMatch[2]),
+            name: 'ตำแหน่งจาก Google Maps',
+            detail: `พิกัด ${bodyMatch[1]}, ${bodyMatch[2]}`,
+            type: 'map_link',
+          };
+        }
+        break;
+      }
+      currentUrl = location.startsWith('http') ? location : new URL(location, currentUrl).toString();
+    }
+  } catch (err) {
+    console.warn('resolveGoogleMapsUrl error:', err);
+  }
+  return null;
+}
+
+/**
+ * ตัด Noise ของที่อยู่ภาษาไทย เช่น เลขที่บ้าน, หมู่, ชั้น, ห้อง, รหัสไปรษณีย์
+ * เพื่อให้ค้นหาบนแผนที่ OpenStreetMap / Nominatim ได้แม่นยำขึ้น
+ */
+function cleanThaiAddress(raw: string): string {
+  return raw
+    .replace(/(?:โทร|tel|contact)[\s.:]*\d[\d\- ]+/gi, ' ')
+    .replace(/\b\d{5}\b/g, ' ') // postal code 5 digits
+    .replace(/\b\d+[\/\-]\d+\b/g, ' ') // house number like 99/9, 52/1
+    .replace(/(?:ชั้น|floor|fl\.)\s*\d+/gi, ' ') // floor
+    .replace(/(?:ห้อง|room)\s*[\w\d\-]+/gi, ' ') // room
+    .replace(/(?:หมู่ที่?|หมู่|ม\.)\s*\d+/gi, ' ') // moo
+    .replace(/เลขที่\s*\d+/gi, ' ')
+    .replace(/ประเทศไทย/gi, ' ')
+    .replace(/[,\-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function searchGoogle(q: string, apiKey: string, lat?: number, lng?: number): Promise<PlaceResult[]> {
@@ -21,7 +100,6 @@ async function searchGoogle(q: string, apiKey: string, lat?: number, lng?: numbe
     regionCode: 'TH',
     maxResultCount: 5,
   };
-  // Bias results toward the reference point (e.g. origin branch) — 50 km radius
   if (Number.isFinite(lat) && Number.isFinite(lng)) {
     body.locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: 50000 } };
   }
@@ -31,7 +109,6 @@ async function searchGoogle(q: string, apiKey: string, lat?: number, lng?: numbe
     headers: {
       'Content-Type': 'application/json',
       'X-Goog-Api-Key': apiKey,
-      // Request only the fields we need (keeps billing on the lowest applicable SKU)
       'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location',
     },
     body: JSON.stringify(body),
@@ -57,30 +134,75 @@ async function searchGoogle(q: string, apiKey: string, lat?: number, lng?: numbe
       lng: p.location!.longitude,
       name: p.displayName?.text || p.formattedAddress || '',
       detail: p.formattedAddress || '',
+      type: 'google',
     }));
 }
 
-async function searchOsm(q: string): Promise<PlaceResult[]> {
+async function fetchNominatim(q: string): Promise<PlaceResult[]> {
+  const cleanQ = q.trim();
+  if (!cleanQ || cleanQ.length < 2) return [];
+
   const res = await fetch(
-    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=th&accept-language=th`,
-    { headers: { 'User-Agent': 'SupplierJobApp/1.0' }, cache: 'no-store' }
+    `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanQ)}&format=json&limit=5&countrycodes=th&accept-language=th`,
+    {
+      headers: { 'User-Agent': 'GoldIntegrate-SupplierJobApp/2.0 (contact@goldintegrate.co.th)' },
+      cache: 'no-store',
+    }
   );
-  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  if (!res.ok) return [];
   const results: { lat: string; lon: string; name?: string; display_name: string }[] = await res.json();
   return results.map(r => ({
     lat: parseFloat(r.lat),
     lng: parseFloat(r.lon),
     name: r.name || r.display_name.split(',')[0],
     detail: r.display_name,
+    type: 'osm',
   }));
 }
 
-async function searchGemini(q: string, apiKey: string, lat?: number, lng?: number): Promise<PlaceResult[]> {
-  const prompt = `You are a Thai geocoding and location search AI.
-User search query: "${q}"
-${Number.isFinite(lat) && Number.isFinite(lng) ? `Near coordinates: ${lat}, ${lng}` : 'In Thailand'}
+/**
+ * ค้นหาแบบหลายขั้นตอน (Progressive Relaxation):
+ * 1) ข้อความเดิม
+ * 2) ข้อความที่ตัด Noise (เลขที่บ้าน, ชั้น, หมู่, รหัสไปรษณีย์)
+ * 3) แยกหา Landmark หรือชื่อถนน/เขต
+ */
+async function searchOsmProgressive(q: string): Promise<PlaceResult[]> {
+  // Pass 1: Original query
+  const res1 = await fetchNominatim(q);
+  if (res1.length > 0) return res1;
 
-Identify up to 3 relevant matching locations in Thailand.
+  // Pass 2: Cleaned Thai address
+  const cleaned = cleanThaiAddress(q);
+  if (cleaned && cleaned !== q) {
+    const res2 = await fetchNominatim(cleaned);
+    if (res2.length > 0) return res2;
+  }
+
+  // Pass 3: Extract tokens (split by comma or spaces)
+  const tokens = (cleaned || q)
+    .split(/[,|\n]+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 3);
+
+  // Try each token, starting from the first (often condo/building/landmark name)
+  for (const token of tokens) {
+    const resToken = await fetchNominatim(token);
+    if (resToken.length > 0) return resToken;
+  }
+
+  return [];
+}
+
+/**
+ * ค้นหาสถานที่ด้วย Google Gemini AI
+ * ใช้เป็น AI Fallback เมื่อ OpenStreetMap ค้นหาไม่พบ หรือคำค้นเป็นภาษาพูด/ชื่อเล่นสถานที่
+ */
+async function searchGemini(q: string, apiKey: string, lat?: number, lng?: number): Promise<PlaceResult[]> {
+  const prompt = `You are an expert Thai geocoding and location search AI.
+User search query: "${q}"
+${Number.isFinite(lat) && Number.isFinite(lng) ? `Near reference coordinates: ${lat}, ${lng}` : 'In Thailand'}
+
+Identify the exact matching landmark, condo, building, road or subdistrict in Thailand.
 Respond in JSON only with this schema:
 {
   "places": [
@@ -93,34 +215,46 @@ Respond in JSON only with this schema:
   ]
 }`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json' },
-      }),
-      cache: 'no-store',
+  const modelsToTry = ['gemini-3-flash-preview', 'gemini-flash-latest'];
+  for (const model of modelsToTry) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseMimeType: 'application/json' },
+          }),
+          signal: AbortSignal.timeout(5000),
+          cache: 'no-store',
+        }
+      );
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) continue;
+
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed.places) && parsed.places.length > 0) {
+        return parsed.places
+          .filter((p: { lat?: number; lng?: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+          .map((p: { lat: number; lng: number; name: string; detail: string }) => ({
+            lat: Number(p.lat),
+            lng: Number(p.lng),
+            name: p.name || q,
+            detail: `${p.detail || 'ระบุตำแหน่งโดย AI'} [Gemini AI]`,
+            type: 'gemini' as const,
+          }));
+      }
+    } catch (e) {
+      console.warn(`Gemini search with ${model} failed, trying next:`, e);
     }
-  );
+  }
 
-  if (!res.ok) throw new Error(`Gemini API ${res.status}: ${await res.text()}`);
-
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) return [];
-
-  const parsed = JSON.parse(text);
-  return (parsed.places || [])
-    .filter((p: { lat?: number; lng?: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
-    .map((p: { lat: number; lng: number; name: string; detail: string }) => ({
-      lat: Number(p.lat),
-      lng: Number(p.lng),
-      name: p.name || q,
-      detail: p.detail || '',
-    }));
+  return [];
 }
 
 export async function GET(request: NextRequest) {
@@ -130,14 +264,41 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get('q') || '').trim();
   if (!q) return NextResponse.json({ provider: 'none', results: [] });
-  if (q.length > 200) return NextResponse.json({ error: 'คำค้นยาวเกินไป' }, { status: 400 });
+  if (q.length > 300) return NextResponse.json({ error: 'คำค้นยาวเกินไป' }, { status: 400 });
 
   const lat = searchParams.get('lat') ? Number(searchParams.get('lat')) : undefined;
   const lng = searchParams.get('lng') ? Number(searchParams.get('lng')) : undefined;
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY;
 
-  // 1. Google Places (if configured)
+  // 1. ตรวจสอบพิกัดตัวเลขตรง ๆ (เช่น "13.7597, 100.6437")
+  const directCoord = q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/);
+  if (directCoord) {
+    return NextResponse.json({
+      provider: 'coordinate',
+      results: [
+        {
+          lat: parseFloat(directCoord[1]),
+          lng: parseFloat(directCoord[2]),
+          name: `พิกัด ${directCoord[1]}, ${directCoord[2]}`,
+          detail: 'ระบุตำแหน่งตามพิกัด GPS โดยตรง',
+          type: 'map_link',
+        },
+      ],
+    });
+  }
+
+  // 2. ตรวจสอบลิงก์ Google Maps (เช่น maps.app.goo.gl, goo.gl/maps, google.com/maps)
+  if (q.includes('maps.app.goo.gl') || q.includes('goo.gl/maps') || q.includes('google.com/maps') || q.includes('maps.google.com')) {
+    const resolved = await resolveGoogleMapsUrl(q);
+    if (resolved) {
+      return NextResponse.json({
+        provider: 'google_url',
+        results: [resolved],
+      });
+    }
+  }
+
+  // 3. Google Places API (ถ้ามี API Key)
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
   if (apiKey) {
     try {
       const results = await searchGoogle(q, apiKey, lat, lng);
@@ -145,28 +306,32 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ provider: 'google', results });
       }
     } catch (error) {
-      console.error('Google Places search failed, falling back:', error);
+      console.warn('Google Places search failed, falling back:', error);
     }
   }
 
-  // 2. Gemini AI Search (if configured)
+  // 4. OpenStreetMap Nominatim แบบ Progressive Relaxation
+  try {
+    const osmResults = await searchOsmProgressive(q);
+    if (osmResults.length > 0) {
+      return NextResponse.json({ provider: 'osm', results: osmResults });
+    }
+  } catch (error) {
+    console.warn('OSM search failed, attempting Gemini AI fallback:', error);
+  }
+
+  // 5. Google Gemini AI Fallback (เมื่อ OpenStreetMap ไม่เจอ หรือข้อความเป็นภาษาพูด/คำอธิบาย)
+  const geminiKey = process.env.GEMINI_API_KEY;
   if (geminiKey) {
     try {
-      const results = await searchGemini(q, geminiKey, lat, lng);
-      if (results.length > 0) {
-        return NextResponse.json({ provider: 'gemini', results });
+      const geminiResults = await searchGemini(q, geminiKey, lat, lng);
+      if (geminiResults.length > 0) {
+        return NextResponse.json({ provider: 'gemini', results: geminiResults });
       }
     } catch (error) {
-      console.error('Gemini place search failed, falling back:', error);
+      console.warn('Gemini search failed:', error);
     }
   }
 
-  // 3. OpenStreetMap Nominatim (Free default)
-  try {
-    const results = await searchOsm(q);
-    return NextResponse.json({ provider: 'osm', results });
-  } catch (error) {
-    console.error('OSM search failed:', error);
-    return NextResponse.json({ error: 'ค้นหาไม่สำเร็จ' }, { status: 502 });
-  }
+  return NextResponse.json({ provider: 'none', results: [] });
 }

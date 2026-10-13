@@ -53,6 +53,125 @@ export const SLIDE_SUPPLIERS: Record<SlideSupplierCode, SlideSupplierInfo> = {
 };
 
 /**
+ * Known default GPS coordinates and official addresses for all branches
+ */
+export interface BranchCoordinates {
+  code: string;
+  name: string;
+  lat: number;
+  lng: number;
+  address: string;
+}
+
+export const BRANCH_DEFAULT_LOCATIONS: Record<string, BranchCoordinates> = {
+  'EV7': {
+    code: 'EV7',
+    name: 'สำนักงานใหญ่ EV7 (พระราม 9)',
+    lat: 13.7563,
+    lng: 100.5648,
+    address: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงบางกปิ เขตห้วยขวาง กรุงเทพฯ 10310',
+  },
+  'GI-AYUTTHAYA': {
+    code: 'GI-AYUTTHAYA',
+    name: 'GI-อยุธยา',
+    lat: 14.3532,
+    lng: 100.5684,
+    address: 'ตำบลหอรัตนไชย อำเภอพระนครศรีอยุธยา จังหวัดพระนครศรีอยุธยา 13000',
+  },
+  'GI-UBON': {
+    code: 'GI-UBON',
+    name: 'GI-อุบลราชธานี',
+    lat: 15.3306,
+    lng: 104.8309,
+    address: '77 หมู่ 26 ถนนชยางกูร ตำบลขามใหญ่ อำเภอเมือง จังหวัดอุบลราชธานี 34000',
+  },
+  'GI-KANJANA': {
+    code: 'GI-KANJANA',
+    name: 'GI-กาญจนาภิเษก',
+    lat: 13.7845,
+    lng: 100.4112,
+    address: 'ถนนกาญจนาภิเษก แขวงบางระมาด เขตตลิ่งชัน กรุงเทพฯ 10170',
+  },
+  'GI-SALAYA': {
+    code: 'GI-SALAYA',
+    name: 'GI-ศาลายา',
+    lat: 13.7998,
+    lng: 100.3245,
+    address: 'ถนนบรมราชชนนี ตำบลศาลายา อำเภอพุทธมณฑล จังหวัดนครปฐม 73170',
+  },
+  'GI-VIPHA': {
+    code: 'GI-VIPHA',
+    name: 'GI-วิภา',
+    lat: 13.8214,
+    lng: 100.5632,
+    address: 'ถนนวิภาวดีรังสิต แขวงลาดยาว เขตจตุจักร กรุงเทพฯ 10900',
+  },
+  'GI-LIABDUAN': {
+    code: 'GI-LIABDUAN',
+    name: 'GI-เลียบด่วน',
+    lat: 13.8054,
+    lng: 100.6234,
+    address: 'ถนนประดิษฐ์มนูธรรม แขวงคลองเจ้าคุณสิงห์ เขตวังทองหลาง กรุงเทพฯ 10310',
+  },
+  'GI-PHIBUN': {
+    code: 'GI-PHIBUN',
+    name: 'GI-พิบูล',
+    lat: 13.8291,
+    lng: 100.5134,
+    address: 'ถนนพิบูลสงคราม ตำบลสวนใหญ่ อำเภอเมืองนนทบุรี จังหวัดนนทบุรี 11000',
+  },
+  'GI-MAHACHAI': {
+    code: 'GI-MAHACHAI',
+    name: 'GI-มหาชัย',
+    lat: 13.5475,
+    lng: 100.2745,
+    address: 'ถนนพระราม 2 ตำบลมหาชัย อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
+  },
+  'GI-SILOM': {
+    code: 'GI-SILOM',
+    name: 'GI-สีลม',
+    lat: 13.7279,
+    lng: 100.5312,
+    address: 'ถนนสีลม แขวงสีลม เขตบางรัก กรุงเทพฯ 10500',
+  },
+  'GI-CHIANGMAI': {
+    code: 'GI-CHIANGMAI',
+    name: 'GI-เชียงใหม่',
+    lat: 18.7883,
+    lng: 98.9853,
+    address: 'ตำบลศรีภูมิ อำเภอเมืองเชียงใหม่ จังหวัดเชียงใหม่ 50200',
+  },
+};
+
+export function getBranchDefaultCoords(branchCodeOrName?: string | null): BranchCoordinates | null {
+  if (!branchCodeOrName) return null;
+  const s = branchCodeOrName.trim();
+  if (BRANCH_DEFAULT_LOCATIONS[s]) return BRANCH_DEFAULT_LOCATIONS[s];
+
+  const lower = s.toLowerCase();
+  for (const [code, loc] of Object.entries(BRANCH_DEFAULT_LOCATIONS)) {
+    if (code.toLowerCase() === lower || loc.name.toLowerCase().includes(lower) || lower.includes(code.toLowerCase())) {
+      return loc;
+    }
+  }
+
+  // Keyword heuristics
+  if (lower.includes('อยุธยา') || lower.includes('ayutthaya') || lower.includes('ayuthaya')) return BRANCH_DEFAULT_LOCATIONS['GI-AYUTTHAYA'];
+  if (lower.includes('อุบล') || lower.includes('ubon')) return BRANCH_DEFAULT_LOCATIONS['GI-UBON'];
+  if (lower.includes('กาญจนา') || lower.includes('kanjana')) return BRANCH_DEFAULT_LOCATIONS['GI-KANJANA'];
+  if (lower.includes('ศาลายา') || lower.includes('salaya')) return BRANCH_DEFAULT_LOCATIONS['GI-SALAYA'];
+  if (lower.includes('วิภา') || lower.includes('vipha')) return BRANCH_DEFAULT_LOCATIONS['GI-VIPHA'];
+  if (lower.includes('เลียบด่วน') || lower.includes('liabduan')) return BRANCH_DEFAULT_LOCATIONS['GI-LIABDUAN'];
+  if (lower.includes('พิบูล') || lower.includes('phibun')) return BRANCH_DEFAULT_LOCATIONS['GI-PHIBUN'];
+  if (lower.includes('มหาชัย') || lower.includes('mahachai')) return BRANCH_DEFAULT_LOCATIONS['GI-MAHACHAI'];
+  if (lower.includes('สีลม') || lower.includes('silom')) return BRANCH_DEFAULT_LOCATIONS['GI-SILOM'];
+  if (lower.includes('เชียงใหม่') || lower.includes('chiangmai')) return BRANCH_DEFAULT_LOCATIONS['GI-CHIANGMAI'];
+  if (lower.includes('ev7') || lower.includes('พระราม 9') || lower.includes('rama 9')) return BRANCH_DEFAULT_LOCATIONS['EV7'];
+
+  return null;
+}
+
+/**
  * PCW Customer Delivery / Custom Pin Mileage Tier Table (36 Tiers)
  */
 export interface PCWTier {

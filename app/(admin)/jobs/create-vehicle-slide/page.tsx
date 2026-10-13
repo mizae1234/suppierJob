@@ -12,6 +12,7 @@ import { haversineDistance } from '@/lib/job-utils';
 import {
   calculateSlideJobCost,
   getRecommendedSlideSupplier,
+  getBranchDefaultCoords,
   SlideCalculationResult,
 } from '@/lib/vehicle-slide-rates';
 import { SlideConfirmModal, SlideSuccessModal, SupplierSelector } from '@/components/jobs';
@@ -192,8 +193,12 @@ export default function CreateVehicleSlidePage() {
     if (originBranchObj?.latitude && originBranchObj?.longitude) {
       return { lat: originBranchObj.latitude, lng: originBranchObj.longitude, name: originBranchObj.name };
     }
+    const fallback = getBranchDefaultCoords(originBranchObj?.code || originBranchObj?.name || selectedOriginBranchId);
+    if (fallback) {
+      return { lat: fallback.lat, lng: fallback.lng, name: originBranchObj?.name || selectedOriginBranchId };
+    }
     return null;
-  }, [originMode, customOrigin, originBranchObj?.latitude, originBranchObj?.longitude, originBranchObj?.name]);
+  }, [originMode, customOrigin, originBranchObj?.latitude, originBranchObj?.longitude, originBranchObj?.name, originBranchObj?.code, selectedOriginBranchId]);
 
   const destPoint = useMemo(() => {
     if (destMode === 'custom') {
@@ -202,8 +207,12 @@ export default function CreateVehicleSlidePage() {
     if (destBranch?.latitude && destBranch?.longitude) {
       return { lat: destBranch.latitude, lng: destBranch.longitude, name: destBranch.name };
     }
+    const fallback = getBranchDefaultCoords(destBranch?.code || destBranch?.name || destBranchId);
+    if (fallback) {
+      return { lat: fallback.lat, lng: fallback.lng, name: destBranch?.name || destBranchId };
+    }
     return null;
-  }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name]);
+  }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name, destBranch?.code, destBranchId]);
 
   // Auto-calculate real road distance whenever pickup or drop-off point changes
   useEffect(() => {
@@ -711,16 +720,27 @@ export default function CreateVehicleSlidePage() {
                     }`}>
                       <MapPin className={`w-3.5 h-3.5 shrink-0 ${originBranchObj?.latitude && originBranchObj?.longitude ? 'text-emerald-600' : 'text-amber-500'}`} />
                       <span className="truncate flex items-center gap-1.5 flex-wrap">
-                        {originBranchObj?.latitude && originBranchObj?.longitude
-                          ? (
+                        {originBranchObj?.latitude && originBranchObj?.longitude ? (
+                          <>
+                            <span className="text-gray-700 font-medium">{originBranchObj.address || 'ปักหมุดแล้ว'}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-mono border border-emerald-200">
+                              GPS: {originBranchObj.latitude.toFixed(5)}, {originBranchObj.longitude.toFixed(5)}
+                            </span>
+                          </>
+                        ) : (() => {
+                          const fb = getBranchDefaultCoords(originBranchObj?.code || originBranchObj?.name || selectedOriginBranchId);
+                          if (fb) {
+                            return (
                               <>
-                                <span className="text-gray-700 font-medium">{originBranchObj.address || 'ปักหมุดแล้ว'}</span>
+                                <span className="text-gray-700 font-medium">{fb.address}</span>
                                 <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-mono border border-emerald-200">
-                                  GPS: {originBranchObj.latitude.toFixed(5)}, {originBranchObj.longitude.toFixed(5)}
+                                  GPS: {fb.lat.toFixed(4)}, {fb.lng.toFixed(4)}
                                 </span>
                               </>
-                            )
-                          : 'สาขานี้ยังไม่มีพิกัด GPS — Supplier จะนำทางได้ไม่แม่น'}
+                            );
+                          }
+                          return 'สาขานี้ยังไม่มีพิกัด GPS — Supplier จะนำทางได้ไม่แม่น';
+                        })()}
                       </span>
                     </div>
                     {canEditBranchPin && originBranchObj && (
@@ -1133,37 +1153,39 @@ export default function CreateVehicleSlidePage() {
           } else {
             setCustomDest(data);
           }
-          // Distance & cost are recalculated by the origin/dest effect
+          if (typeof data.distance === 'number' && data.distance > 0) {
+            setDistance(data.distance);
+          }
         }}
         {...(mapPickerMode === 'branch'
           ? {
               // Edit the branch's permanent location — start from current branch pin
               pointLabel: `ตำแหน่งสาขา ${originBranchObj?.name || ''}`.trim(),
-              originLat: destPoint?.lat ?? originBranchObj?.latitude,
-              originLng: destPoint?.lng ?? originBranchObj?.longitude,
+              originLat: destPoint?.lat ?? originPoint?.lat,
+              originLng: destPoint?.lng ?? originPoint?.lng,
               originName: destPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
               referenceCaption: destPoint ? 'ปลายทาง' : 'ตำแหน่งเดิม',
-              initialLat: originBranchObj?.latitude,
-              initialLng: originBranchObj?.longitude,
+              initialLat: originBranchObj?.latitude ?? originPoint?.lat,
+              initialLng: originBranchObj?.longitude ?? originPoint?.lng,
             }
           : mapPickerMode === 'origin'
           ? {
               // Reference = drop-off if known, otherwise the origin branch
-              originLat: destPoint?.lat ?? originBranchObj?.latitude,
-              originLng: destPoint?.lng ?? originBranchObj?.longitude,
+              originLat: destPoint?.lat ?? originPoint?.lat,
+              originLng: destPoint?.lng ?? originPoint?.lng,
               originName: destPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
               referenceCaption: destPoint ? 'ปลายทาง' : 'สาขาต้นทาง',
               // Start from the existing job pin, or from the branch location so the user just drags it
-              initialLat: customOrigin?.lat ?? originBranchObj?.latitude,
-              initialLng: customOrigin?.lng ?? originBranchObj?.longitude,
+              initialLat: customOrigin?.lat ?? originPoint?.lat,
+              initialLng: customOrigin?.lng ?? originPoint?.lng,
             }
           : {
               originLat: originPoint?.lat,
               originLng: originPoint?.lng,
               originName: originPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
               referenceCaption: originMode === 'custom' && customOrigin ? 'จุดรับรถ' : 'สาขาต้นทาง',
-              initialLat: customDest?.lat,
-              initialLng: customDest?.lng,
+              initialLat: customDest?.lat ?? originPoint?.lat,
+              initialLng: customDest?.lng ?? originPoint?.lng,
             })}
       />
     </div>
