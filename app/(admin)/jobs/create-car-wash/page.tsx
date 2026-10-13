@@ -599,13 +599,18 @@ export default function CreateCarWashPage() {
                       {/* 2. Controls Grid */}
                       <div className="p-4 sm:p-5 flex flex-col gap-4">
                         {/* Row 1: Service Selector, Unit Price, Actual Date */}
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
-                          {/* Service Selector (col-span-12 md:col-span-5) */}
-                          <div className="md:col-span-5">
-                            <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center justify-between">
-                              <span>ประเภทบริการล้างรถ</span>
-                              <span className="text-[10px] text-gray-400 font-normal">ตามสัญญาคู่ค้า</span>
-                            </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-start">
+                          {/* 1. Service Selector (col-span-12 md:col-span-6) */}
+                          <div className="sm:col-span-12 md:col-span-6">
+                            <div className="h-6 flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-semibold text-gray-700">
+                                ประเภทบริการล้างรถ
+                              </label>
+                              <span className="text-[10px] text-gray-400 font-normal">
+                                ตามสัญญาคู่ค้า
+                              </span>
+                            </div>
+
                             <div className="relative">
                               <button
                                 type="button"
@@ -613,16 +618,9 @@ export default function CreateCarWashPage() {
                                 className="w-full h-10 px-3.5 rounded-xl border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-2 cursor-pointer hover:border-gray-300 transition-colors bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238]"
                                 style={{ color: theme.primary }}
                               >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="truncate">
-                                    {selectedSvc?.name || item.washType}
-                                  </span>
-                                  {selectedSvc && (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-normal shrink-0 hidden sm:inline-block">
-                                      {selectedSvc.categoryName}
-                                    </span>
-                                  )}
-                                </div>
+                                <span className="truncate pr-2">
+                                  {selectedSvc?.name || item.washType}
+                                </span>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   <span className="text-xs font-mono font-bold text-[#0f5238]">
                                     {selectedSvc?.priceType === 'RANGE'
@@ -677,24 +675,31 @@ export default function CreateCarWashPage() {
                                 </>
                               )}
                             </div>
+
+                            <div className="h-5 mt-1.5 flex items-center text-[11px] leading-none">
+                              <span className="text-gray-400 truncate">
+                                หมวดหมู่: {selectedSvc?.categoryName || 'มาตรฐาน'}
+                              </span>
+                            </div>
                           </div>
 
-                          {/* Unit Price (col-span-12 sm:col-span-6 md:col-span-4) */}
-                          <div className="sm:col-span-6 md:col-span-4">
-                            <div className="flex items-center justify-between mb-1.5">
-                              <label className="block text-xs font-semibold text-gray-700">
+                          {/* 2. Unit Price (col-span-12 sm:col-span-6 md:col-span-3) */}
+                          <div className="sm:col-span-6 md:col-span-3">
+                            <div className="h-6 flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-semibold text-gray-700">
                                 ราคาต่อคัน (บาท)
                               </label>
                               {item.priceType === 'RANGE' ? (
-                                <span className="text-[10px] text-amber-800 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                <span className="h-4.5 px-1.5 flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 rounded border border-amber-200/80">
                                   ช่วงราคา
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-gray-400 font-medium">
+                                <span className="h-4.5 px-1.5 flex items-center text-[10px] font-medium text-slate-500 bg-slate-100 rounded border border-slate-200/60">
                                   ราคาคงที่
                                 </span>
                               )}
                             </div>
+
                             <div className="relative">
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">฿</span>
                               <input
@@ -706,28 +711,40 @@ export default function CreateCarWashPage() {
                                 className="w-full h-10 pl-7 pr-3 rounded-xl border border-gray-200 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all"
                               />
                             </div>
-                            {item.priceType === 'RANGE' && item.minPrice !== undefined && item.maxPrice !== undefined ? (
-                              <p className="text-[11px] text-amber-700 mt-1 font-medium flex items-center gap-1">
-                                <span>💡 ช่วงแนะนำ:</span>
-                                <span className="font-mono font-bold">฿{item.minPrice} - ฿{item.maxPrice}</span>
-                              </p>
-                            ) : (
-                              <p className="text-[11px] text-gray-400 mt-1">ราคามาตรฐานตามสัญญา</p>
-                            )}
+
+                            <div className="h-5 mt-1.5 flex items-center text-[11px] leading-none">
+                              {item.priceType === 'RANGE' && item.minPrice !== undefined && item.maxPrice !== undefined ? (
+                                <p className="text-amber-700 font-medium flex items-center gap-1 truncate">
+                                  <span>💡 ช่วงแนะนำ:</span>
+                                  <span className="font-mono font-bold">฿{item.minPrice} - ฿{item.maxPrice}</span>
+                                </p>
+                              ) : (
+                                <p className="text-gray-400 truncate">ราคามาตรฐานตามสัญญา</p>
+                              )}
+                            </div>
                           </div>
 
-                          {/* Actual Wash Date (col-span-12 sm:col-span-6 md:col-span-3) */}
+                          {/* 3. Actual Wash Date (col-span-12 sm:col-span-6 md:col-span-3) */}
                           <div className="sm:col-span-6 md:col-span-3">
-                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                              วันปฏิบัติงานจริง
-                            </label>
+                            <div className="h-6 flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-semibold text-gray-700">
+                                วันปฏิบัติงานจริง
+                              </label>
+                              <span className="text-[10px] text-gray-400 font-normal">
+                                ตามรอบส่งมอบ
+                              </span>
+                            </div>
+
                             <input
                               type="date"
                               value={item.actualWashDate}
                               onChange={(e) => updateItemField(item.vin, 'actualWashDate', e.target.value)}
                               className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all"
                             />
-                            <p className="text-[11px] text-gray-400 mt-1">วันที่รถเข้ารับบริการจริง</p>
+
+                            <div className="h-5 mt-1.5 flex items-center text-[11px] leading-none">
+                              <p className="text-gray-400 truncate">วันที่รถเข้ารับบริการจริง</p>
+                            </div>
                           </div>
                         </div>
 
