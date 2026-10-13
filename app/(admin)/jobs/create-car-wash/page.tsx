@@ -546,172 +546,218 @@ export default function CreateCarWashPage() {
                 <p className="text-[11px] text-gray-400">คลิกเลือกรถจากช่องด้านซ้ายเพื่อเพิ่มในรายการสั่งล้าง</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
-                {selectedItems.map((item, idx) => (
-                  <div
-                    key={item.vin}
-                    className="p-4 rounded-xl border border-gray-200 bg-[#fbfdfc] flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs"
-                  >
-                    <div className="flex items-start gap-3 min-w-0">
-                      <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-700 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-bold text-gray-900 text-sm">{item.vin}</span>
-                          {item.licensePlate && (
-                            <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold text-[10px]">
-                              {item.licensePlate}
+              <div className="flex flex-col gap-4">
+                {selectedItems.map((item, idx) => {
+                  const selectedSvc = supplierServices.find(s => s.code === item.washType);
+                  return (
+                    <div
+                      key={item.vin}
+                      className="rounded-2xl border border-gray-200/90 bg-white shadow-xs hover:border-gray-300 transition-all duration-200"
+                    >
+                      {/* 1. Vehicle Header Bar */}
+                      <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-gradient-to-r from-gray-50/90 via-slate-50/50 to-white rounded-t-2xl border-b border-gray-100 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-6 h-6 rounded-full bg-emerald-100 text-[#0f5238] text-xs font-bold flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="font-mono font-bold text-gray-900 text-sm tracking-wide">
+                              {item.vin}
                             </span>
-                          )}
+                            {item.licensePlate && (
+                              <span className="px-2.5 py-0.5 rounded-md bg-white border border-gray-200 text-gray-800 font-semibold text-xs shadow-2xs">
+                                {item.licensePlate}
+                              </span>
+                            )}
+                            <span className="text-gray-500 text-xs font-medium">
+                              • {item.model} <span className="text-gray-400 font-normal">({item.color})</span>
+                            </span>
+                          </div>
                         </div>
-                        <p className="text-gray-500 text-[11px] mt-0.5">
-                          {item.model} ({item.color})
-                        </p>
-                      </div>
-                    </div>
 
-
-                    {/* Form Controls for this VIN */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-start w-full md:w-auto flex-1">
-                      {/* 1. Actual Wash Date */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
-                          วันปฏิบัติงานจริง:
-                        </label>
-                        <input
-                          type="date"
-                          value={item.actualWashDate}
-                          onChange={(e) => updateItemField(item.vin, 'actualWashDate', e.target.value)}
-                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238] bg-white"
-                        />
-                      </div>
-
-                      {/* 2. Wash Service Type (Dynamic per Supplier) */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
-                          ประเภทบริการ:
-                        </label>
-                        <div className="relative">
+                        {/* Subtotal & Delete Action */}
+                        <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                          <div className="text-right">
+                            <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold block leading-none mb-0.5">
+                              รวมคันนี้
+                            </span>
+                            <span className="text-base font-extrabold text-[#0f5238] leading-none">
+                              ฿{(item.unitPrice || 0).toLocaleString()}
+                            </span>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => setOpenWashTypeVin(openWashTypeVin === item.vin ? null : item.vin)}
-                            className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-1 cursor-pointer hover:border-gray-300 transition-colors bg-white"
-                            style={{ color: theme.primary }}
+                            onClick={() => handleToggleVehicle(branchStockVehicles.find(v => v.vin === item.vin)!)}
+                            className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all cursor-pointer"
+                            title="ลบรายการนี้"
                           >
-                            <span className="truncate">
-                              {supplierServices.find(s => s.code === item.washType)?.name || item.washType}
-                            </span>
-                            <ChevronDown className={`w-3 h-3 shrink-0 text-gray-400 transition-transform duration-200 ${openWashTypeVin === item.vin ? 'rotate-180' : ''}`} />
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                          {openWashTypeVin === item.vin && (
-                            <div className="absolute top-full left-0 mt-1 w-72 max-w-[90vw] rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 max-h-64 overflow-y-auto">
-                              {supplierServices.map((svc) => {
-                                const isSelected = item.washType === svc.code;
-                                return (
-                                  <button
-                                    type="button"
-                                    key={svc.code}
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      updateItemField(item.vin, 'washType', svc.code);
-                                      setOpenWashTypeVin(null);
-                                    }}
-                                    className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors cursor-pointer text-left ${
-                                      isSelected
-                                        ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-l-[#0f5238]'
-                                        : 'text-gray-700 hover:bg-gray-50'
-                                    }`}
-                                  >
-                                    <div className="min-w-0 pr-2">
-                                      <p className="truncate font-semibold">{svc.name}</p>
-                                      <span className="text-[10px] text-gray-400 block">{svc.categoryName}</span>
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                      <span className="text-[11px] font-mono font-bold text-[#0f5238]">
-                                        {svc.priceType === 'RANGE' ? `฿${svc.minPrice} - ฿${svc.maxPrice}` : `฿${svc.price}`}
-                                      </span>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
                         </div>
                       </div>
 
-                      {/* 3. Unit Price Input */}
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <label className="block text-[10px] font-bold text-gray-500">
-                            ราคาต่อคัน (บาท):
-                          </label>
-                          {item.priceType === 'RANGE' && (
-                            <span className="text-[9px] text-amber-800 font-semibold bg-amber-50 px-1 rounded border border-amber-200/60">
-                              ช่วงราคา
-                            </span>
-                          )}
+                      {/* 2. Controls Grid */}
+                      <div className="p-4 sm:p-5 flex flex-col gap-4">
+                        {/* Row 1: Service Selector, Unit Price, Actual Date */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+                          {/* Service Selector (col-span-12 md:col-span-5) */}
+                          <div className="md:col-span-5">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center justify-between">
+                              <span>ประเภทบริการล้างรถ</span>
+                              <span className="text-[10px] text-gray-400 font-normal">ตามสัญญาคู่ค้า</span>
+                            </label>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setOpenWashTypeVin(openWashTypeVin === item.vin ? null : item.vin)}
+                                className="w-full h-10 px-3.5 rounded-xl border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-2 cursor-pointer hover:border-gray-300 transition-colors bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238]"
+                                style={{ color: theme.primary }}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="truncate">
+                                    {selectedSvc?.name || item.washType}
+                                  </span>
+                                  {selectedSvc && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-normal shrink-0 hidden sm:inline-block">
+                                      {selectedSvc.categoryName}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-xs font-mono font-bold text-[#0f5238]">
+                                    {selectedSvc?.priceType === 'RANGE'
+                                      ? `฿${selectedSvc.minPrice}-${selectedSvc.maxPrice}`
+                                      : `฿${selectedSvc?.price}`}
+                                  </span>
+                                  <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${openWashTypeVin === item.vin ? 'rotate-180' : ''}`} />
+                                </div>
+                              </button>
+
+                              {openWashTypeVin === item.vin && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={() => setOpenWashTypeVin(null)}
+                                  />
+                                  <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 max-h-72 overflow-y-auto">
+                                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                                      <span>บริการของ {selectedSupplier?.name || 'ซัพพลายเออร์'}</span>
+                                      <span className="text-[10px] text-gray-400 font-normal">({supplierServices.length} บริการ)</span>
+                                    </div>
+                                    {supplierServices.map((svc) => {
+                                      const isSelected = item.washType === svc.code;
+                                      return (
+                                        <button
+                                          type="button"
+                                          key={svc.code}
+                                          onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            updateItemField(item.vin, 'washType', svc.code);
+                                            setOpenWashTypeVin(null);
+                                          }}
+                                          className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors cursor-pointer text-left ${
+                                            isSelected
+                                              ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-l-[#0f5238]'
+                                              : 'text-gray-700 hover:bg-gray-50'
+                                          }`}
+                                        >
+                                          <div className="min-w-0 pr-3">
+                                            <p className="truncate font-semibold">{svc.name}</p>
+                                            <span className="text-[10px] text-gray-400 block mt-0.5">{svc.categoryName}</span>
+                                          </div>
+                                          <div className="shrink-0 text-right">
+                                            <span className="text-xs font-mono font-bold text-[#0f5238] px-2 py-0.5 rounded bg-emerald-50/70 border border-emerald-100">
+                                              {svc.priceType === 'RANGE' ? `฿${svc.minPrice} - ฿${svc.maxPrice}` : `฿${svc.price}`}
+                                            </span>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Unit Price (col-span-12 sm:col-span-6 md:col-span-4) */}
+                          <div className="sm:col-span-6 md:col-span-4">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="block text-xs font-semibold text-gray-700">
+                                ราคาต่อคัน (บาท)
+                              </label>
+                              {item.priceType === 'RANGE' ? (
+                                <span className="text-[10px] text-amber-800 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                                  ช่วงราคา
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-gray-400 font-medium">
+                                  ราคาคงที่
+                                </span>
+                              )}
+                            </div>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">฿</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="any"
+                                value={item.unitPrice}
+                                onChange={(e) => updateItemField(item.vin, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                className="w-full h-10 pl-7 pr-3 rounded-xl border border-gray-200 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all"
+                              />
+                            </div>
+                            {item.priceType === 'RANGE' && item.minPrice !== undefined && item.maxPrice !== undefined ? (
+                              <p className="text-[11px] text-amber-700 mt-1 font-medium flex items-center gap-1">
+                                <span>💡 ช่วงแนะนำ:</span>
+                                <span className="font-mono font-bold">฿{item.minPrice} - ฿{item.maxPrice}</span>
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-gray-400 mt-1">ราคามาตรฐานตามสัญญา</p>
+                            )}
+                          </div>
+
+                          {/* Actual Wash Date (col-span-12 sm:col-span-6 md:col-span-3) */}
+                          <div className="sm:col-span-6 md:col-span-3">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                              วันปฏิบัติงานจริง
+                            </label>
+                            <input
+                              type="date"
+                              value={item.actualWashDate}
+                              onChange={(e) => updateItemField(item.vin, 'actualWashDate', e.target.value)}
+                              className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all"
+                            />
+                            <p className="text-[11px] text-gray-400 mt-1">วันที่รถเข้ารับบริการจริง</p>
+                          </div>
                         </div>
-                        <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">฿</span>
+
+                        {/* Row 2: Remarks (Full width) */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center justify-between">
+                            <span>หมายเหตุ / จุดระวังเฉพาะคัน</span>
+                            <span className="text-[11px] font-normal text-gray-400">ไม่บังคับ</span>
+                          </label>
                           <input
-                            type="number"
-                            min={0}
-                            step="any"
-                            value={item.unitPrice}
-                            onChange={(e) => updateItemField(item.vin, 'unitPrice', parseFloat(e.target.value) || 0)}
-                            className="w-full h-8 pl-6 pr-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-900 focus:ring-1 focus:ring-[#0f5238] bg-white"
+                            type="text"
+                            value={item.remarks}
+                            onChange={(e) => updateItemField(item.vin, 'remarks', e.target.value)}
+                            placeholder={item.washType === 'POLISH_STAINS' ? 'ระบุตำแหน่งรอย เช่น รอยขูดขีดกันชนหน้า, คราบยางมะตอย...' : 'ระบุรายละเอียดเพิ่มเติม หรือจุดที่ต้องการให้เน้นเป็นพิเศษ (ถ้ามี)...'}
+                            className="w-full h-10 px-3.5 rounded-xl border border-gray-200 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all"
                           />
                         </div>
-                        {item.priceType === 'RANGE' && item.minPrice !== undefined && item.maxPrice !== undefined && (
-                          <p className="text-[9px] text-amber-700 mt-0.5 truncate font-medium">
-                            ช่วงราคาแนะนำ: ฿{item.minPrice} - ฿{item.maxPrice}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* 4. Remarks */}
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-500 mb-0.5">
-                          หมายเหตุ / จุดระวัง:
-                        </label>
-                        <input
-                          type="text"
-                          value={item.remarks}
-                          onChange={(e) => updateItemField(item.vin, 'remarks', e.target.value)}
-                          placeholder={item.washType === 'POLISH_STAINS' ? 'ระบุตำแหน่งรอย...' : 'หมายเหตุเพิ่มเติม...'}
-                          className="w-full h-8 px-2 rounded-lg border border-gray-200 text-xs focus:ring-1 focus:ring-[#0f5238] bg-white"
-                        />
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between md:flex-col md:items-end gap-2 shrink-0">
-                      <div className="text-right">
-                        <span className="text-[10px] text-gray-400 block">รวมคันนี้</span>
-                        <span className="font-bold text-[#0f5238] text-sm">
-                          ฿{(item.unitPrice || 0).toLocaleString()}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleVehicle(branchStockVehicles.find(v => v.vin === item.vin)!)}
-                        className="text-red-400 hover:text-red-600 p-1"
-                        title="ลบรายการนี้"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
             {/* Bottom Summary Bar */}
             {selectedItems.length > 0 && (
-              <div className="p-4 sm:p-5 rounded-2xl border border-gray-200 bg-white shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
+              <div className="p-4 sm:p-5 rounded-2xl border border-emerald-900/10 bg-gradient-to-r from-emerald-50/40 via-white to-emerald-50/20 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
                 <div className="flex items-center gap-6 flex-wrap">
                   <div>
-                    <span className="text-xs text-gray-500">ยอดรวมค่าบริการ (Subtotal):</span>
+                    <span className="text-xs text-gray-500 font-medium">ยอดรวมค่าบริการ (Subtotal):</span>
                     <div className="text-lg font-bold text-gray-800">
                       ฿{orderFinancials.subtotal.toLocaleString()}
                     </div>
@@ -720,15 +766,15 @@ export default function CreateCarWashPage() {
                   <div className="h-8 w-px bg-gray-200 hidden sm:block" />
 
                   <div>
-                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                    <span className="text-xs text-gray-500 flex items-center gap-1.5 font-medium">
                       <span>ภาษีมูลค่าเพิ่ม:</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-semibold border ${
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border ${
                         washConfig.vatType === 'VAT_7' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-slate-100 text-slate-600 border-slate-200'
                       }`}>
                         {washConfig.vatType === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
                       </span>
                     </span>
-                    <div className="text-sm font-semibold text-gray-700">
+                    <div className="text-sm font-semibold text-gray-700 mt-0.5">
                       {washConfig.vatType === 'VAT_7' ? `+฿${orderFinancials.vatAmount.toLocaleString()}` : 'ไม่มี VAT (บุคคลธรรมดา)'}
                     </div>
                   </div>
@@ -737,7 +783,7 @@ export default function CreateCarWashPage() {
 
                   <div>
                     <span className="text-xs text-gray-500 font-medium">ยอดสุทธิรวมทั้งสิ้น:</span>
-                    <div className="text-2xl font-bold" style={{ color: theme.primary }}>
+                    <div className="text-2xl font-black" style={{ color: theme.primary }}>
                       ฿{orderFinancials.grandTotal.toLocaleString()}
                     </div>
                   </div>
@@ -746,7 +792,7 @@ export default function CreateCarWashPage() {
                 <div className="flex items-center gap-3">
                   <button
                     type="submit"
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-full text-white text-xs font-bold shadow-md transition-all hover:opacity-90 cursor-pointer"
+                    className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-xs font-bold shadow-md transition-all hover:opacity-90 active:scale-98 cursor-pointer w-full md:w-auto"
                     style={{ backgroundColor: theme.primary }}
                   >
                     <CheckCircle2 className="w-4 h-4" />
