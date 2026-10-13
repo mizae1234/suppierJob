@@ -346,9 +346,16 @@ export async function POST(request: NextRequest) {
       // Compute totalCost incorporating VAT when applicable
       const supplier = await prisma.supplier.findUnique({
         where: { id: supplierId },
-        select: { code: true, name: true },
+        select: {
+          code: true,
+          name: true,
+          vatType: true,
+          vatRate: true,
+          showroomLabel: true,
+          rateItems: { where: { isActive: true } },
+        },
       });
-      const washConfig = getSupplierWashConfig(supplier?.code, supplier?.name);
+      const washConfig = getSupplierWashConfig(supplier?.code, supplier?.name, supplier || undefined);
       const financials = calculateWashOrderFinancials(items, washConfig.vatType);
       const totalCost = typeof estimatedCost === 'number' && estimatedCost > 0 ? estimatedCost : financials.grandTotal;
 

@@ -245,8 +245,51 @@ export const DEFAULT_WASH_CONFIG: SupplierWashConfig = {
 
 /**
  * ดึงการตั้งค่าและตารางราคาของ Supplier ตาม Code หรือ ID
+ * หากส่ง dbSupplier ที่มี rateItems จาก Database มาด้วย จะนำข้อมูลสดจาก DB มาใช้ทันที
  */
-export function getSupplierWashConfig(supplierCodeOrId?: string, supplierName?: string): SupplierWashConfig {
+export function getSupplierWashConfig(
+  supplierCodeOrId?: string,
+  supplierName?: string,
+  dbSupplier?: {
+    code?: string;
+    name?: string;
+    vatType?: string | null;
+    vatRate?: number | null;
+    showroomLabel?: string | null;
+    rateItems?: Array<{
+      serviceCode: string;
+      priceType: string;
+      price: number;
+      minPrice?: number | null;
+      maxPrice?: number | null;
+      isActive?: boolean;
+    }>;
+  }
+): SupplierWashConfig {
+  // หากมี rateItems จากฐานข้อมูล ให้ใช้ข้อมูลจริงจาก Database
+  if (dbSupplier?.rateItems && dbSupplier.rateItems.length > 0) {
+    const activeItems = dbSupplier.rateItems.filter(it => it.isActive !== false);
+    if (activeItems.length > 0) {
+      return {
+        supplierCode: dbSupplier.code || supplierCodeOrId || 'CUSTOM',
+        name: dbSupplier.name || supplierName || 'ซัพพลายเออร์',
+        showrooms: [],
+        showroomLabel: dbSupplier.showroomLabel || '',
+        vatType: (dbSupplier.vatType as VatType) || (SUPPLIER_WASH_RATES[supplierCodeOrId || '']?.vatType) || 'NO_VAT',
+        vatRate: typeof dbSupplier.vatRate === 'number'
+          ? dbSupplier.vatRate
+          : (dbSupplier.vatType === 'VAT_7' ? 0.07 : 0),
+        services: activeItems.map(it => ({
+          serviceCode: it.serviceCode as WashServiceCode,
+          priceType: (it.priceType as 'FIXED' | 'RANGE') || 'FIXED',
+          price: it.price,
+          minPrice: it.minPrice ?? undefined,
+          maxPrice: it.maxPrice ?? undefined,
+        })),
+      };
+    }
+  }
+
   if (!supplierCodeOrId) return DEFAULT_WASH_CONFIG;
   if (SUPPLIER_WASH_RATES[supplierCodeOrId]) {
     return SUPPLIER_WASH_RATES[supplierCodeOrId];

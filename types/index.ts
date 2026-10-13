@@ -52,6 +52,19 @@ export interface Branch {
   };
 }
 
+export interface SupplierRateItem {
+  id: string;
+  supplierId: string;
+  serviceCode: string;
+  priceType: 'FIXED' | 'RANGE';
+  price: number;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Supplier {
   id: string;
   code: string;
@@ -65,7 +78,9 @@ export interface Supplier {
   bankAccount?: string;
   isActive: boolean;
   vatType?: 'VAT_7' | 'NO_VAT';
+  vatRate?: number;
   showroomLabel?: string;
+  rateItems?: SupplierRateItem[];
 }
 
 export interface Vehicle {

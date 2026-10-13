@@ -62,7 +62,7 @@ export default function CreateCarWashPage() {
   // Supplier wash config (Rates, Showrooms, VAT)
   const washConfig = useMemo(() => {
     if (!selectedSupplier) return DEFAULT_WASH_CONFIG;
-    return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name);
+    return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name, selectedSupplier);
   }, [selectedSupplier]);
 
   // Available service options for this supplier

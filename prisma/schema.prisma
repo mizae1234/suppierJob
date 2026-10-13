@@ -70,22 +70,44 @@ model Branch {
 
 // ข้อมูล Supplier คู่ค้า
 model Supplier {
-  id          String    @id @default(uuid())
-  name        String
-  code        String    @unique
-  taxId       String?
-  phone       String?
-  email       String?
-  address     String?
-  services    String    // เช่น "CAR_WASH,VEHICLE_SLIDE"
-  bankName    String?
-  bankAccount String?
-  isActive    Boolean   @default(true)
-  users       User[]
-  jobs        Job[]
-  invoices    Invoice[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String             @id @default(uuid())
+  name          String
+  code          String             @unique
+  taxId         String?
+  phone         String?
+  email         String?
+  address       String?
+  services      String             // เช่น "CAR_WASH,VEHICLE_SLIDE"
+  bankName      String?
+  bankAccount   String?
+  vatType       String             @default("NO_VAT") // VAT_7, NO_VAT
+  vatRate       Float              @default(0.0)      // 0.07, 0.0
+  showroomLabel String?            // สาขาโชว์รูมประจำ เช่น "ศาลายา", "เลียบด่วน รามอินทรา, วิภาวดี"
+  isActive      Boolean            @default(true)
+  users         User[]
+  jobs          Job[]
+  invoices      Invoice[]
+  rateItems     SupplierRateItem[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+// รายการอัตราค่าบริการของ Supplier (Rate Card Template Item)
+model SupplierRateItem {
+  id          String   @id @default(uuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  serviceCode String   // เช่น WASH_NORMAL, WASH_AND_COAT, POLISH_STAINS
+  priceType   String   @default("FIXED") // FIXED, RANGE
+  price       Float    // ราคาหลัก หรือราคาเริ่มต้น
+  minPrice    Float?   // ราคาต่ำสุด (กรณี RANGE)
+  maxPrice    Float?   // ราคาสูงสุด (กรณี RANGE)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([supplierId, serviceCode])
+  @@index([supplierId])
 }
 
 // ข้อมูลรถยนต์ Interface มาจาก External Stock System

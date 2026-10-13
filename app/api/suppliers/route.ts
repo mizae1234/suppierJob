@@ -8,6 +8,12 @@ export async function GET(request: NextRequest) {
   try {
     const suppliers = await prisma.supplier.findMany({
       where: { isActive: true },
+      include: {
+        rateItems: {
+          where: { isActive: true },
+          orderBy: { serviceCode: 'asc' },
+        },
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -32,6 +38,10 @@ export async function GET(request: NextRequest) {
         bankAccount: isOwnerOrAdmin ? s.bankAccount : (s.bankAccount ? '***-*-*****-*' : null),
         taxId: isOwnerOrAdmin ? s.taxId : null,
         isActive: s.isActive,
+        vatType: s.vatType,
+        vatRate: s.vatRate,
+        showroomLabel: s.showroomLabel,
+        rateItems: s.rateItems,
       };
     });
 
