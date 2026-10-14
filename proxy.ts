@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifySessionToken, SESSION_COOKIE } from './lib/session';
 
-const PUBLIC_API = ['/api/auth/login', '/api/auth/logout', '/api/auth/check-user'];
+const PUBLIC_API = [
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/check-user',
+  '/api/openapi.json',
+  '/api/swagger.json',
+  '/api/docs',
+];
 const STATIC_FILE = /\.(png|jpe?g|svg|webp|gif|ico)$/i;
 
 export async function proxy(request: NextRequest) {
