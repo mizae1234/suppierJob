@@ -152,6 +152,17 @@ export async function PATCH(
         });
       }
 
+      // When individual item is approved, restore vehicle status and update branch if vehicle slide
+      if (status === 'APPROVED') {
+        await tx.vehicle.update({
+          where: { vin: item.vin },
+          data: {
+            status: 'AVAILABLE',
+            ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
+          },
+        });
+      }
+
       // 2. Re-fetch all items to check overall job progress
       const allItems = await tx.carWashItem.findMany({
         where: { jobId },

@@ -39,10 +39,20 @@ import {
 } from 'lucide-react';
 
 export const CAR_WASH_REASONS = [
-  { value: 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า', label: '🚗 ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า' },
-  { value: 'ทำความสะอาดรถหลังการซ่อมบำรุง', label: '🔧 ทำความสะอาดรถหลังการซ่อมบำรุง' },
-  { value: 'ดูแลความสะอาดรถตามมาตรฐานบริษัท', label: '🏢 ดูแลความสะอาดรถตามมาตรฐานบริษัท' },
+  { value: 'ก่อนส่งมอบให้ลูกค้า', label: 'ก่อนส่งมอบให้ลูกค้า', icon: '🚗' },
+  { value: 'หลังการซ่อมบำรุง', label: 'หลังการซ่อมบำรุง', icon: '🔧' },
+  { value: 'ตามมาตรฐานบริษัท', label: 'ตามมาตรฐานบริษัท', icon: '🏢' },
 ];
+
+export const getWashReasonItem = (val?: string) => {
+  if (!val) return CAR_WASH_REASONS[0];
+  const direct = CAR_WASH_REASONS.find(r => r.value === val);
+  if (direct) return direct;
+  if (val.includes('ส่งมอบ')) return CAR_WASH_REASONS[0];
+  if (val.includes('ซ่อมบำรุง')) return CAR_WASH_REASONS[1];
+  if (val.includes('มาตรฐาน')) return CAR_WASH_REASONS[2];
+  return { value: val, label: val, icon: '🚗' };
+};
 
 export default function CreateCarWashPage() {
   const router = useRouter();
@@ -64,7 +74,8 @@ export default function CreateCarWashPage() {
   const theme = useTheme();
 
   // Batch wash reason state
-  const [batchReason, setBatchReason] = useState<string>('ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า');
+  const [batchReason, setBatchReason] = useState<string>('ก่อนส่งมอบให้ลูกค้า');
+  const [openBatchReason, setOpenBatchReason] = useState(false);
 
   const handleApplyReasonToAll = (customReasonValue?: string) => {
     if (selectedItems.length === 0) return;
@@ -72,14 +83,15 @@ export default function CreateCarWashPage() {
       ? customReasonValue 
       : batchReason;
 
+    const normalized = getWashReasonItem(valueToUse).value;
+
     setSelectedItems(prev => prev.map(item => ({
       ...item,
-      washReason: valueToUse
+      washReason: normalized
     })));
 
-    const matchedReason = CAR_WASH_REASONS.find(r => r.value === valueToUse);
-    const label = matchedReason ? matchedReason.label : valueToUse;
-    showToast(`✓ Apply เหตุผล "${label}" ให้กับรถทั้ง ${selectedItems.length} คันเรียบร้อยแล้ว`, 'success');
+    const matchedReason = getWashReasonItem(normalized);
+    showToast(`✓ Apply เหตุผล "${matchedReason.icon} ${matchedReason.label}" ให้กับรถทั้ง ${selectedItems.length} คันเรียบร้อยแล้ว`, 'success');
   };
 
   // State & Handler for cancelling busy vehicle order (if not verified by supplier yet)
@@ -176,6 +188,7 @@ export default function CreateCarWashPage() {
   const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
   const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
   const [openWashTypeVin, setOpenWashTypeVin] = useState<string | null>(null);
+  const [openWashReasonVin, setOpenWashReasonVin] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -197,6 +210,7 @@ export default function CreateCarWashPage() {
     if (availableBranches.length > 0 && !availableBranches.find(b => b.id === selectedBranchId)) {
       setSelectedBranchId(availableBranches[0].id);
       setSelectedItems([]);
+      setSelectedSupplierId('');
     }
   }, [availableBranches, selectedBranchId, currentRole]);
 
@@ -272,7 +286,7 @@ export default function CreateCarWashPage() {
         priceType: 'FIXED' as const,
         minPrice: undefined,
         maxPrice: undefined,
-        defaultRemarks: 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า',
+        defaultRemarks: 'ก่อนส่งมอบให้ลูกค้า',
       };
       setSelectedItems(prev => [
         ...prev,
@@ -287,7 +301,7 @@ export default function CreateCarWashPage() {
           priceType: defaultSvc.priceType,
           minPrice: defaultSvc.minPrice,
           maxPrice: defaultSvc.maxPrice,
-          washReason: 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า',
+          washReason: 'ก่อนส่งมอบให้ลูกค้า',
           remarks: '',
         }
       ]);
@@ -342,7 +356,7 @@ export default function CreateCarWashPage() {
         priceType: 'FIXED' as const,
         minPrice: undefined,
         maxPrice: undefined,
-        defaultRemarks: 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า',
+        defaultRemarks: 'ก่อนส่งมอบให้ลูกค้า',
       };
       const toAdd: SelectedWashItem[] = selectableVehicles
         .filter(v => !existingVins.has(v.vin))
@@ -357,7 +371,7 @@ export default function CreateCarWashPage() {
           priceType: defaultSvc.priceType,
           minPrice: defaultSvc.minPrice,
           maxPrice: defaultSvc.maxPrice,
-          washReason: 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า',
+          washReason: 'ก่อนส่งมอบให้ลูกค้า',
           remarks: '',
         }));
       setSelectedItems(prev => [...prev, ...toAdd]);
@@ -678,18 +692,64 @@ export default function CreateCarWashPage() {
 
                 <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                   <div className="relative flex-1 sm:w-72">
-                    <select
-                      value={batchReason}
-                      onChange={(e) => setBatchReason(e.target.value)}
-                      className="w-full h-9 px-3 pr-8 rounded-lg border border-gray-300 text-xs font-semibold text-gray-800 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] appearance-none cursor-pointer"
-                    >
-                      {CAR_WASH_REASONS.map(r => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
-                      ))}
-                    </select>
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </div>
+                    {(() => {
+                      const batchReasonObj = getWashReasonItem(batchReason);
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setOpenBatchReason(o => !o)}
+                            className={`w-full h-9 px-3 rounded-lg border text-xs font-semibold text-left flex items-center justify-between gap-2 cursor-pointer transition-all bg-white shadow-2xs hover:border-gray-300 ${
+                              openBatchReason
+                                ? 'border-[#0f5238] ring-2 ring-emerald-500/20 text-gray-900'
+                                : 'border-gray-300 text-gray-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="text-sm leading-none shrink-0">{batchReasonObj.icon}</span>
+                              <span className="truncate font-semibold">{batchReasonObj.label}</span>
+                            </div>
+                            <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${openBatchReason ? 'rotate-180 text-[#0f5238]' : ''}`} />
+                          </button>
+
+                          {openBatchReason && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setOpenBatchReason(false)}
+                              />
+                              <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 divide-y divide-gray-50">
+                                {CAR_WASH_REASONS.map(r => {
+                                  const isSelected = batchReasonObj.value === r.value;
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={r.value}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setBatchReason(r.value);
+                                        setOpenBatchReason(false);
+                                      }}
+                                      className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors cursor-pointer text-left ${
+                                        isSelected
+                                          ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-l-[#0f5238]'
+                                          : 'text-gray-700 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-sm leading-none shrink-0">{r.icon}</span>
+                                        <span className="truncate">{r.label}</span>
+                                      </div>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-[#0f5238] shrink-0" />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
 
                   <button
@@ -714,10 +774,14 @@ export default function CreateCarWashPage() {
               <div className="flex flex-col gap-4">
                 {selectedItems.map((item, idx) => {
                   const selectedSvc = supplierServices.find(s => s.code === item.washType);
+                  const isDropdownOpen = openWashTypeVin === item.vin || openWashReasonVin === item.vin;
+                  const itemReasonObj = getWashReasonItem(item.washReason);
                   return (
                     <div
                       key={item.vin}
-                      className="rounded-2xl border border-gray-200/90 bg-white shadow-xs hover:border-gray-300 transition-all duration-200"
+                      className={`rounded-2xl border border-gray-200/90 bg-white shadow-xs hover:border-gray-300 transition-all duration-200 ${
+                        isDropdownOpen ? 'relative z-20' : 'relative z-0'
+                      }`}
                     >
                       {/* 1. Vehicle Header Bar */}
                       <div className="px-4 py-3 sm:px-5 sm:py-3.5 bg-gradient-to-r from-gray-50/90 via-slate-50/50 to-white rounded-t-2xl border-b border-gray-100 flex items-center justify-between gap-3">
@@ -774,7 +838,10 @@ export default function CreateCarWashPage() {
                             <div className="relative">
                               <button
                                 type="button"
-                                onClick={() => setOpenWashTypeVin(openWashTypeVin === item.vin ? null : item.vin)}
+                                onClick={() => {
+                                  setOpenWashReasonVin(null);
+                                  setOpenWashTypeVin(openWashTypeVin === item.vin ? null : item.vin);
+                                }}
                                 className="w-full h-10 px-3.5 rounded-xl border border-gray-200 text-xs font-semibold text-left flex items-center justify-between gap-2 cursor-pointer hover:border-gray-300 transition-colors bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238]"
                                 style={{ color: theme.primary }}
                               >
@@ -897,7 +964,7 @@ export default function CreateCarWashPage() {
                             {selectedItems.length > 1 ? (
                               <button
                                 type="button"
-                                onClick={() => handleApplyReasonToAll(item.washReason || 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า')}
+                                onClick={() => handleApplyReasonToAll(itemReasonObj.value)}
                                 className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
                                 title="นำเหตุผลของคันนี้ไปใช้กับทุกคัน"
                               >
@@ -909,24 +976,66 @@ export default function CreateCarWashPage() {
                             )}
                           </label>
                           <div className="relative">
-                            <select
-                              value={
-                                CAR_WASH_REASONS.some(r => r.value === item.washReason)
-                                  ? item.washReason
-                                  : 'ทำความสะอาดรถก่อนส่งมอบให้ลูกค้า'
-                              }
-                              onChange={(e) => updateItemField(item.vin, 'washReason', e.target.value)}
-                              className="w-full h-10 px-3.5 pr-9 rounded-xl border border-gray-200 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all cursor-pointer appearance-none shadow-2xs hover:border-gray-300"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenWashTypeVin(null);
+                                setOpenWashReasonVin(openWashReasonVin === item.vin ? null : item.vin);
+                              }}
+                              className={`w-full h-10 px-3.5 rounded-xl border text-xs font-semibold text-left flex items-center justify-between gap-2 cursor-pointer transition-all bg-white shadow-2xs hover:border-gray-300 ${
+                                openWashReasonVin === item.vin
+                                  ? 'border-[#0f5238] ring-2 ring-emerald-500/20 text-gray-900'
+                                  : 'border-gray-200 text-gray-800'
+                              }`}
                             >
-                              {CAR_WASH_REASONS.map(r => (
-                                <option key={r.value} value={r.value}>
-                                  {r.label}
-                                </option>
-                              ))}
-                            </select>
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                              <ChevronDown className="w-4 h-4" />
-                            </div>
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="text-base leading-none shrink-0">{itemReasonObj.icon}</span>
+                                <span className="truncate font-semibold text-gray-800">{itemReasonObj.label}</span>
+                              </div>
+                              <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${openWashReasonVin === item.vin ? 'rotate-180 text-[#0f5238]' : ''}`} />
+                            </button>
+
+                            {openWashReasonVin === item.vin && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-40"
+                                  onClick={() => setOpenWashReasonVin(null)}
+                                />
+                                <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 divide-y divide-gray-50">
+                                  <div className="px-3.5 py-2 bg-gray-50/90 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                                    <span>เหตุผลการล้าง</span>
+                                    <span className="text-[10px] text-gray-400 font-normal">({CAR_WASH_REASONS.length} ตัวเลือก)</span>
+                                  </div>
+                                  {CAR_WASH_REASONS.map((r) => {
+                                    const isSelected = itemReasonObj.value === r.value;
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={r.value}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          updateItemField(item.vin, 'washReason', r.value);
+                                          setOpenWashReasonVin(null);
+                                        }}
+                                        className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors cursor-pointer text-left ${
+                                          isSelected
+                                            ? 'bg-emerald-50 text-emerald-950 font-bold border-l-3 border-l-[#0f5238]'
+                                            : 'text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <span className="text-base leading-none shrink-0">{r.icon}</span>
+                                          <span className="truncate">{r.label}</span>
+                                        </div>
+                                        {isSelected && (
+                                          <Check className="w-4 h-4 text-[#0f5238] shrink-0" />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
 
