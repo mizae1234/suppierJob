@@ -39,9 +39,9 @@ export async function POST(
     const value = typeof body.value === 'string' ? body.value.trim() : '';
     const photoUrl = typeof body.photoUrl === 'string' ? body.photoUrl : '';
 
-    if (!value) return badRequest('กรุณากรอก VIN 6 ตัวท้าย หรือเลขทะเบียนรถ');
+    if (!value) return badRequest('กรุณากรอก VIN 6 ตัวท้าย');
     if (value.length > 40) return badRequest('ข้อมูลยาวเกินไป');
-    if (!photoUrl.startsWith('data:image/')) return badRequest('กรุณาถ่ายรูปป้าย VIN หรือป้ายทะเบียนเพื่อเป็นหลักฐาน');
+    if (!photoUrl.startsWith('data:image/')) return badRequest('กรุณาถ่ายรูปป้าย VIN เพื่อเป็นหลักฐาน');
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
@@ -110,9 +110,7 @@ export async function POST(
         },
       });
       return badRequest(
-        canUsePlate
-          ? 'VIN หรือเลขทะเบียนไม่ตรงกับรถในใบงาน กรุณาตรวจสอบรถอีกครั้ง'
-          : 'VIN ไม่ตรงกับรถในใบงาน (รถคันนี้ยังไม่มีทะเบียน กรุณาใช้ VIN 6 ตัวท้าย)'
+        'VIN ไม่ตรงกับรถในใบงาน กรุณาตรวจสอบป้าย VIN บริเวณกระจกหน้าหรือเสาประตูอีกครั้ง'
       );
     }
 

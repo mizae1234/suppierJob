@@ -56,7 +56,8 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
   if (!target) return null;
 
   const isSlide = target.type === 'VEHICLE_SLIDE';
-  const hasValue = value.trim().length >= 4;
+  const cleanValue = value.replace(/[^0-9A-Za-z]/g, '');
+  const hasValue = cleanValue.length >= 6;
   const hasPhoto = !!photo;
   const canSubmit = hasValue && hasPhoto && !isSubmitting;
 
@@ -76,7 +77,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
         return;
       }
       showToast(
-        `✅ ยืนยันตัวรถสำเร็จ (${data.method === 'PLATE' ? 'เลขทะเบียน' : 'VIN'}) — เริ่มงานได้เลย`,
+        '✅ ยืนยันตัวรถสำเร็จ (VIN) — เริ่มงานได้เลย',
         'success'
       );
       await onVerified(target);
@@ -154,10 +155,10 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor="verify-vehicle-input" className="text-xs font-bold text-gray-800 flex items-center gap-1">
                 <Hash className="w-3.5 h-3.5 text-gray-400" />
-                <span>VIN 6 ตัวท้าย หรือ เลขทะเบียน</span>
+                <span>VIN 6 ตัวท้าย</span>
                 <span className="text-red-500">*</span>
               </label>
-              <span className="text-[10px] text-gray-400">กรอกอย่างใดอย่างหนึ่ง</span>
+              <span className="text-[10px] text-gray-400">6 หลักสุดท้ายของเลขตัวถัง</span>
             </div>
 
             <div className="relative">
@@ -166,12 +167,12 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
                 type="text"
                 value={value}
                 onChange={(e) => { setValue(e.target.value.toUpperCase()); setError(null); }}
-                placeholder="เช่น 123456 หรือ 1กข 1234"
+                placeholder="เช่น 123456"
                 autoComplete="off"
                 autoCapitalize="characters"
                 spellCheck={false}
-                maxLength={40}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold tracking-wide text-gray-900 placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-2xs"
+                maxLength={17}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold tracking-wide text-gray-900 placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-2xs font-mono"
                 style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
               />
               {value && (
@@ -186,7 +187,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             </div>
 
             <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1 leading-normal">
-              <span>💡 ดูจากป้าย VIN กระจกหน้า/เสาประตู หรือแผ่นป้ายทะเบียน (ป้ายแดงใช้ VIN)</span>
+              <span>💡 ดูจากป้าย VIN บริเวณกระจกหน้า หรือเสาประตูด้านคนขับ</span>
             </p>
           </div>
 
@@ -195,7 +196,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-gray-800 flex items-center gap-1">
                 <Camera className="w-3.5 h-3.5 text-gray-400" />
-                <span>รูปถ่ายป้าย VIN หรือป้ายทะเบียน</span>
+                <span>รูปถ่ายป้าย VIN</span>
                 <span className="text-red-500">*</span>
               </label>
               <span className="text-[10px] text-gray-400">1 รูปเพื่อเป็นหลักฐาน</span>
@@ -278,7 +279,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             ) : !hasValue ? (
               <>
                 <Hash className="w-4 h-4" />
-                <span>กรุณากรอก VIN หรือเลขทะเบียน</span>
+                <span>กรุณากรอก VIN 6 ตัวท้าย</span>
               </>
             ) : !hasPhoto ? (
               <>

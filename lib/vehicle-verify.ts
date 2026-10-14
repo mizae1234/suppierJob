@@ -35,7 +35,6 @@ export function hasUsablePlate(plate?: string | null): boolean {
 /**
  * ตรวจค่าที่ Supplier กรอก เทียบกับรถคันจริง
  * - VIN: ยอมรับ 6 ตัวท้ายขึ้นไป (ต้องเป็นส่วนท้ายของ VIN)
- * - PLATE: ยอมรับ "หมวด+เลข" (มีหรือไม่มีจังหวัดก็ได้)
  */
 export function matchVehicleIdentifier(
   input: string,
@@ -47,14 +46,6 @@ export function matchVehicleIdentifier(
   const vin = normalizeIdentifier(vehicle.vin);
   if (value.length >= VIN_SUFFIX_LENGTH && /^[0-9A-Z]+$/.test(value) && vin.endsWith(value)) {
     return 'VIN';
-  }
-
-  if (vehicle.licensePlate && hasUsablePlate(vehicle.licensePlate)) {
-    const full = normalizeIdentifier(vehicle.licensePlate);
-    const core = plateCore(vehicle.licensePlate);
-    if (value === full || (core && value === normalizeIdentifier(core))) {
-      return 'PLATE';
-    }
   }
 
   return null;
