@@ -16,6 +16,7 @@ export interface WashConfirmModalProps {
   subtotal?: number;
   vatType?: 'VAT_7' | 'NO_VAT';
   vatAmount?: number;
+  carCategory?: 'NEW_CAR' | 'SERVICE';
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }
@@ -32,6 +33,7 @@ export function WashConfirmModal({
   subtotal,
   vatType = 'NO_VAT',
   vatAmount = 0,
+  carCategory = 'NEW_CAR',
   onClose,
   onConfirm,
 }: WashConfirmModalProps) {
@@ -69,6 +71,12 @@ export function WashConfirmModal({
           <div className="flex items-center justify-between pb-2 border-b border-gray-200">
             <span className="text-gray-500">Supplier ผู้ให้บริการ:</span>
             <span className="font-bold text-gray-900">{supplierName || '-'}</span>
+          </div>
+          <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+            <span className="text-gray-500">ประเภทรถ:</span>
+            <span className="font-bold text-gray-900 flex items-center gap-1.5">
+              <span>{carCategory === 'SERVICE' ? '🔧 รถ Service (ศูนย์บริการ)' : '🚗 รถใหม่ (Stock / PDI)'}</span>
+            </span>
           </div>
           <div className="flex items-center justify-between pb-2 border-b border-gray-200">
             <span className="text-gray-500">ผู้สั่งงาน:</span>

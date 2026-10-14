@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
 
     if (jobType === 'CAR_WASH') {
       // ─── Car Wash ─────────────────────
-      const { items, estimatedCost } = body;
+      const { items, estimatedCost, transferReason, carCategory } = body;
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return NextResponse.json({ error: 'กรุณาเลือกรถอย่างน้อย 1 คัน' }, { status: 400 });
@@ -367,6 +367,7 @@ export async function POST(request: NextRequest) {
           companyId,
           branchId,
           supplierId,
+          transferReason: transferReason || (carCategory === 'SERVICE' ? 'รถ Service (ศูนย์บริการ)' : 'รถใหม่ (Stock / PDI)'),
           requestedById: user.id,
           requestedBy: snapshotName,
           requesterPosition: snapshotPosition,

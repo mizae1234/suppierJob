@@ -73,6 +73,9 @@ export default function CreateCarWashPage() {
   const { showToast } = useToast();
   const theme = useTheme();
 
+  // Car category state: 'NEW_CAR' (รถใหม่) vs 'SERVICE' (รถที่มา service)
+  const [carCategory, setCarCategory] = useState<'NEW_CAR' | 'SERVICE'>('NEW_CAR');
+
   // Batch wash reason state
   const [batchReason, setBatchReason] = useState<string>('ก่อนส่งมอบให้ลูกค้า');
   const [openBatchReason, setOpenBatchReason] = useState(false);
@@ -92,6 +95,28 @@ export default function CreateCarWashPage() {
 
     const matchedReason = getWashReasonItem(normalized);
     showToast(`✓ Apply เหตุผล "${matchedReason.icon} ${matchedReason.label}" ให้กับรถทั้ง ${selectedItems.length} คันเรียบร้อยแล้ว`, 'success');
+  };
+
+  // Switch car category (รถใหม่ vs รถที่มา service) & adapt default service/reasons
+  const handleCarCategoryChange = (newCategory: 'NEW_CAR' | 'SERVICE') => {
+    setCarCategory(newCategory);
+    const targetReason = newCategory === 'NEW_CAR' ? 'ก่อนส่งมอบให้ลูกค้า' : 'หลังการซ่อมบำรุง';
+    setBatchReason(targetReason);
+
+    const targetServices = supplierServices.filter(s => s.category === newCategory);
+    const defaultSvc = targetServices[0] || supplierServices[0];
+
+    if (selectedItems.length > 0 && defaultSvc) {
+      setSelectedItems(prev => prev.map(item => ({
+        ...item,
+        washType: defaultSvc.code,
+        unitPrice: defaultSvc.price,
+        priceType: defaultSvc.priceType,
+        minPrice: defaultSvc.minPrice,
+        maxPrice: defaultSvc.maxPrice,
+        washReason: targetReason,
+      })));
+    }
   };
 
   // State & Handler for cancelling busy vehicle order (if not verified by supplier yet)
@@ -179,6 +204,12 @@ export default function CreateCarWashPage() {
       };
     });
   }, [washConfig]);
+
+  // Available service options filtered by selected car category
+  const categoryServices = useMemo(() => {
+    const filtered = supplierServices.filter(s => s.category === carCategory);
+    return filtered.length > 0 ? filtered : supplierServices;
+  }, [supplierServices, carCategory]);
 
   // Auto-fill requester info from logged-in user
   const autoName = authUser?.firstName && authUser?.lastName 
@@ -280,13 +311,13 @@ export default function CreateCarWashPage() {
       showToast(`รถคันนี้มีงานค้างอยู่ (ใบงาน ${vehicle.activeJob.jobNumber}) — สั่งงานซ้ำได้เมื่องานเดิมเสร็จสิ้น`, 'warning');
       return;
     } else {
-      const defaultSvc = supplierServices[0] || {
+      const defaultSvc = categoryServices[0] || supplierServices[0] || {
         code: 'WASH_AND_COAT',
         price: 500,
         priceType: 'FIXED' as const,
         minPrice: undefined,
         maxPrice: undefined,
-        defaultRemarks: 'ก่อนส่งมอบให้ลูกค้า',
+        defaultRemarks: carCategory === 'NEW_CAR' ? 'ก่อนส่งมอบให้ลูกค้า' : 'หลังการซ่อมบำรุง',
       };
       setSelectedItems(prev => [
         ...prev,
@@ -301,7 +332,7 @@ export default function CreateCarWashPage() {
           priceType: defaultSvc.priceType,
           minPrice: defaultSvc.minPrice,
           maxPrice: defaultSvc.maxPrice,
-          washReason: 'ก่อนส่งมอบให้ลูกค้า',
+          washReason: carCategory === 'NEW_CAR' ? 'ก่อนส่งมอบให้ลูกค้า' : 'หลังการซ่อมบำรุง',
           remarks: '',
         }
       ]);
@@ -350,13 +381,13 @@ export default function CreateCarWashPage() {
     } else {
       // Add all missing filtered vehicles to selected items
       const existingVins = new Set(selectedItems.map(it => it.vin));
-      const defaultSvc = supplierServices[0] || {
+      const defaultSvc = categoryServices[0] || supplierServices[0] || {
         code: 'WASH_AND_COAT',
         price: 500,
         priceType: 'FIXED' as const,
         minPrice: undefined,
         maxPrice: undefined,
-        defaultRemarks: 'ก่อนส่งมอบให้ลูกค้า',
+        defaultRemarks: carCategory === 'NEW_CAR' ? 'ก่อนส่งมอบให้ลูกค้า' : 'หลังการซ่อมบำรุง',
       };
       const toAdd: SelectedWashItem[] = selectableVehicles
         .filter(v => !existingVins.has(v.vin))
@@ -371,7 +402,7 @@ export default function CreateCarWashPage() {
           priceType: defaultSvc.priceType,
           minPrice: defaultSvc.minPrice,
           maxPrice: defaultSvc.maxPrice,
-          washReason: 'ก่อนส่งมอบให้ลูกค้า',
+          washReason: carCategory === 'NEW_CAR' ? 'ก่อนส่งมอบให้ลูกค้า' : 'หลังการซ่อมบำรุง',
           remarks: '',
         }));
       setSelectedItems(prev => [...prev, ...toAdd]);
@@ -430,6 +461,8 @@ export default function CreateCarWashPage() {
         requesterPosition,
         requesterPhone,
         estimatedCost: orderFinancials.grandTotal,
+        carCategory,
+        transferReason: carCategory === 'NEW_CAR' ? 'รถใหม่ (Stock / PDI)' : 'รถ Service (ศูนย์บริการ)',
       });
 
       setShowConfirmModal(false);
@@ -484,11 +517,87 @@ export default function CreateCarWashPage() {
             currentBranchName={selectedBranch?.name}
           />
 
-          {/* Step 2: Select VINs from Branch Stock */}
-          <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col gap-3">
+          {/* Step 2: Choose Car Category (รถใหม่ vs รถที่มา Service) */}
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-gray-200/90 shadow-xs flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>2</span>
+                <span>เลือกประเภทรถที่จะล้าง</span>
+              </h2>
+              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                {carCategory === 'NEW_CAR' ? '🚗 รถใหม่' : '🔧 รถ Service'}
+              </span>
+            </div>
+
+            {/* Category 2-Card Selection */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Option 1: รถใหม่ */}
+              <button
+                type="button"
+                onClick={() => handleCarCategoryChange('NEW_CAR')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 relative overflow-hidden ${
+                  carCategory === 'NEW_CAR'
+                    ? 'border-[#0f5238] bg-emerald-50/80 ring-1.5 ring-emerald-500/20 shadow-xs'
+                    : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50/80'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs shadow-2xs">
+                    🚗
+                  </span>
+                  {carCategory === 'NEW_CAR' && (
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#0f5238] text-white flex items-center justify-center shadow-xs">
+                      <Check className="w-2 h-2 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                    <span>รถใหม่</span>
+                    <span className="text-[9px] text-emerald-700 bg-emerald-100/70 font-semibold px-1 py-0.2 rounded">
+                      Stock / PDI
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Option 2: รถ Service */}
+              <button
+                type="button"
+                onClick={() => handleCarCategoryChange('SERVICE')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1 relative overflow-hidden ${
+                  carCategory === 'SERVICE'
+                    ? 'border-[#0f5238] bg-emerald-50/80 ring-1.5 ring-emerald-500/20 shadow-xs'
+                    : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50/80'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center text-xs shadow-2xs">
+                    🔧
+                  </span>
+                  {carCategory === 'SERVICE' && (
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#0f5238] text-white flex items-center justify-center shadow-xs">
+                      <Check className="w-2 h-2 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                    <span>รถ Service</span>
+                    <span className="text-[9px] text-amber-700 bg-amber-100/70 font-semibold px-1 py-0.2 rounded">
+                      ศูนย์บริการ
+                    </span>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Step 3: Select VINs from Branch Stock */}
+          <div className="p-5 rounded-2xl bg-white border shadow-xs flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>3</span>
                 <span>เลือกรถในสต็อกสาขา</span>
               </h2>
               <span className="text-xs text-gray-500">เลือกแล้ว {selectedItems.length} คัน</span>
@@ -659,7 +768,7 @@ export default function CreateCarWashPage() {
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
                 <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>3</span>
+                  <span className="w-6 h-6 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>4</span>
                   <span>รายการและกำหนดวันปฏิบัติงานจริงของแต่ละ VIN</span>
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
@@ -858,49 +967,67 @@ export default function CreateCarWashPage() {
                                 </div>
                               </button>
 
-                              {openWashTypeVin === item.vin && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={() => setOpenWashTypeVin(null)}
-                                  />
-                                  <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 max-h-72 overflow-y-auto">
-                                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                                      <span>บริการของ {selectedSupplier?.name || 'ซัพพลายเออร์'}</span>
-                                      <span className="text-[10px] text-gray-400 font-normal">({supplierServices.length} บริการ)</span>
+                              {openWashTypeVin === item.vin && (() => {
+                                const matchingServices = supplierServices.filter(s => s.category === carCategory);
+                                const otherServices = supplierServices.filter(s => s.category !== carCategory);
+                                const renderServiceBtn = (svc: typeof supplierServices[0]) => {
+                                  const isSelected = item.washType === svc.code;
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={svc.code}
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        updateItemField(item.vin, 'washType', svc.code);
+                                        setOpenWashTypeVin(null);
+                                      }}
+                                      className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors cursor-pointer text-left ${
+                                        isSelected
+                                          ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-l-[#0f5238]'
+                                          : 'text-gray-700 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <div className="min-w-0 pr-3">
+                                        <p className="truncate font-semibold">{svc.name}</p>
+                                        <span className="text-[10px] text-gray-400 block mt-0.5">{svc.categoryName}</span>
+                                      </div>
+                                      <div className="shrink-0 text-right">
+                                        <span className="text-xs font-mono font-bold text-[#0f5238] px-2 py-0.5 rounded bg-emerald-50/70 border border-emerald-100">
+                                          {svc.priceType === 'RANGE' ? `฿${svc.minPrice} - ฿${svc.maxPrice}` : `฿${svc.price}`}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  );
+                                };
+
+                                return (
+                                  <>
+                                    <div
+                                      className="fixed inset-0 z-40"
+                                      onClick={() => setOpenWashTypeVin(null)}
+                                    />
+                                    <div className="absolute top-full left-0 right-0 mt-1.5 rounded-xl bg-white border border-gray-200 shadow-xl overflow-hidden z-50 py-1 max-h-72 overflow-y-auto">
+                                      <div className="px-3 py-1.5 bg-emerald-50/70 border-b border-emerald-100 text-[10px] font-bold text-emerald-900 uppercase tracking-wider flex items-center justify-between">
+                                        <span>{carCategory === 'NEW_CAR' ? '🚗 บริการสำหรับรถใหม่' : '🔧 บริการสำหรับรถ Service'}</span>
+                                        <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-1.5 py-0.2 rounded font-bold">
+                                          {matchingServices.length > 0 ? matchingServices.length : supplierServices.length} บริการ
+                                        </span>
+                                      </div>
+                                      {(matchingServices.length > 0 ? matchingServices : supplierServices).map(renderServiceBtn)}
+
+                                      {matchingServices.length > 0 && otherServices.length > 0 && (
+                                        <>
+                                          <div className="px-3 py-1.5 bg-gray-50 border-y border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between mt-1">
+                                            <span>บริการประเภทอื่นๆ ของ Supplier</span>
+                                            <span className="text-[10px] text-gray-400 font-normal">({otherServices.length})</span>
+                                          </div>
+                                          {otherServices.map(renderServiceBtn)}
+                                        </>
+                                      )}
                                     </div>
-                                    {supplierServices.map((svc) => {
-                                      const isSelected = item.washType === svc.code;
-                                      return (
-                                        <button
-                                          type="button"
-                                          key={svc.code}
-                                          onMouseDown={(e) => {
-                                            e.preventDefault();
-                                            updateItemField(item.vin, 'washType', svc.code);
-                                            setOpenWashTypeVin(null);
-                                          }}
-                                          className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs transition-colors cursor-pointer text-left ${
-                                            isSelected
-                                              ? 'bg-emerald-50 text-emerald-950 font-bold border-l-2 border-l-[#0f5238]'
-                                              : 'text-gray-700 hover:bg-gray-50'
-                                          }`}
-                                        >
-                                          <div className="min-w-0 pr-3">
-                                            <p className="truncate font-semibold">{svc.name}</p>
-                                            <span className="text-[10px] text-gray-400 block mt-0.5">{svc.categoryName}</span>
-                                          </div>
-                                          <div className="shrink-0 text-right">
-                                            <span className="text-xs font-mono font-bold text-[#0f5238] px-2 py-0.5 rounded bg-emerald-50/70 border border-emerald-100">
-                                              {svc.priceType === 'RANGE' ? `฿${svc.minPrice} - ฿${svc.maxPrice}` : `฿${svc.price}`}
-                                            </span>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </>
-                              )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -1126,6 +1253,7 @@ export default function CreateCarWashPage() {
         subtotal={orderFinancials.subtotal}
         vatType={washConfig.vatType}
         vatAmount={orderFinancials.vatAmount}
+        carCategory={carCategory}
         onClose={() => setShowConfirmModal(false)}
         onConfirm={handleConfirmOrder}
       />

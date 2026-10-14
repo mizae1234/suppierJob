@@ -297,6 +297,11 @@ export function JobDetailDrawer({
                           <><Truck className="w-3 h-3" /> Vehicle Slide</>
                         )}
                       </span>
+                      {activeJob.jobType === 'CAR_WASH' && activeJob.transferReason && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                          {activeJob.transferReason.includes('Service') ? '🔧 รถ Service' : '🚗 รถใหม่'}
+                        </span>
+                      )}
                       <span className="text-[10px] text-gray-500 font-medium">
                         {activeJob.jobType === 'CAR_WASH'
                           ? `${activeJob.carWashItems?.length || 0} คัน`

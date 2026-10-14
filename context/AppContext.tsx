@@ -33,6 +33,8 @@ interface CreateCarWashParams {
   requesterPosition?: string;
   requesterPhone?: string;
   estimatedCost?: number;
+  carCategory?: 'NEW_CAR' | 'SERVICE';
+  transferReason?: string;
 }
 
 interface CreateVehicleSlideParams {
@@ -245,6 +247,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           requesterPhone: params.requesterPhone,
           items: params.items,
           estimatedCost: params.estimatedCost,
+          carCategory: params.carCategory,
+          transferReason: params.transferReason || (params.carCategory === 'SERVICE' ? 'รถ Service (ศูนย์บริการ)' : 'รถใหม่ (Stock / PDI)'),
         }),
       });
       const data = await res.json();
