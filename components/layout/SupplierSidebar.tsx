@@ -103,8 +103,8 @@ export const SupplierSidebar: React.FC = () => {
   }, [jobs, activeSupplier, user, isAllSupplier]);
 
   // Group branches by company — only those with jobs
-  const ev7Branches = branches.filter(b => b.code.startsWith('EV7') && supplierBranchIds.has(b.id));
-  const giBranches = branches.filter(b => b.code.startsWith('GI') && supplierBranchIds.has(b.id));
+  const ev7Branches = branches.filter(b => ((b as any).companyCode === 'EV7' || b.code === 'GI06' || b.code.startsWith('EV7')) && supplierBranchIds.has(b.id));
+  const giBranches = branches.filter(b => ((b as any).companyCode === 'GI' || (b.code.startsWith('GI') && b.code !== 'GI06')) && supplierBranchIds.has(b.id));
   const totalRelevantBranches = ev7Branches.length + giBranches.length;
 
   const containerClasses =
@@ -165,7 +165,7 @@ export const SupplierSidebar: React.FC = () => {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-gray-900 truncate">
-                  {currentCompany === 'EV7' || (activeBranch && activeBranch.code.startsWith('EV7'))
+                  {currentCompany === 'EV7' || (activeBranch && ((activeBranch as any).companyCode === 'EV7' || activeBranch.code === 'GI06' || activeBranch.code.startsWith('EV7')))
                     ? 'EV7'
                     : activeBranch
                       ? activeBranch.name

@@ -21,7 +21,7 @@ const COMPANY_DOTS: Record<string, string> = {
 };
 
 const getCompanyCode = (b: BranchWithCompany) =>
-  b.companyCode || (b.code?.startsWith('EV7') ? 'EV7' : 'GI');
+  b.companyCode || (b.code === 'GI06' || b.code?.startsWith('EV7') ? 'EV7' : 'GI');
 
 /**
  * Dropdown เลือกสาขา — สไตล์เดียวกับตัวเลือกบริษัทใน Header

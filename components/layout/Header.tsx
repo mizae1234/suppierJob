@@ -41,16 +41,16 @@ export const Header: React.FC = () => {
   const [isCompanyOpen, setIsCompanyOpen] = useState(false);
 
   const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
-    { value: 'ALL', label: 'ทุกบริษัท', color: '#0f5238', dot: '#52b788' },
-    { value: 'EV7', label: 'EV7', color: '#0f5238', dot: '#2d6a4f' },
-    { value: 'GI', label: 'GI-สำนักงานใหญ่', color: '#0f5238', dot: '#2d6a4f' },
+    { value: 'ALL', label: 'ทุกบริษัท (EV7 & GI)', color: '#0f5238', dot: '#52b788' },
+    { value: 'EV7', label: 'EV7 Co.,Ltd. (GI06)', color: '#0f5238', dot: '#2d6a4f' },
+    { value: 'GI', label: 'GOLD INTEGRATE CO., Ltd. (GI ใหญ่ - ดูทั้งหมด)', color: '#0f5238', dot: '#2d6a4f' },
   ];
   const activeCompanyOption = companyOptions.find(o => o.value === currentCompany) || companyOptions[0];
 
   // Branches filtered by current company if company selected
   const availableBranches = branches.filter(b => {
     if (currentCompany === 'ALL') return true;
-    const compCode = b.code.startsWith('EV7') ? 'EV7' : 'GI';
+    const compCode = (b as typeof b & { companyCode?: string }).companyCode || (b.code === 'GI06' || b.code.startsWith('EV7') ? 'EV7' : 'GI');
     return compCode === currentCompany;
   });
 
@@ -80,11 +80,13 @@ export const Header: React.FC = () => {
 
       {companyOptions.filter(o => o.value !== 'ALL').map((opt) => {
         const isCompanySelected = currentCompany === opt.value;
-        const companyBranches = branches.filter(b => (b as typeof b & { companyCode?: string }).companyCode === opt.value);
+        const companyBranches = branches.filter(b => 
+          (b as typeof b & { companyCode?: string }).companyCode === opt.value && b.code !== 'GI'
+        );
         // EV7 ไม่มีสาขาย่อย; เฉพาะ GI ที่มีสาขาย่อยแยกตาม Hub
         const showSubBranches = opt.value === 'GI';
 
-        // สำหรับ GI: ถ้าเลือกดูสาขาย่อยอยู่ ตัว GI-สำนักงานใหญ่ จะไม่ขึ้น active
+        // สำหรับ GI: ถ้าเลือกดูสาขาย่อยอยู่ ตัว GI ใหญ่ จะไม่ขึ้น active
         const isMainActive = opt.value === 'GI'
           ? isCompanySelected && !currentBranchId
           : isCompanySelected;
@@ -128,6 +130,7 @@ export const Header: React.FC = () => {
                   }`}
                 >
                   <Building className="w-3 h-3 shrink-0 opacity-50" />
+                  <span className="font-semibold text-gray-500 shrink-0">[{branch.code}]</span>
                   <span className="flex-1 text-left truncate">{branch.name}</span>
                   {isBranchActive && (
                     <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />

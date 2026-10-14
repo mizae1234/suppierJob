@@ -924,8 +924,8 @@ export const openApiSpec = {
         type: 'object',
         properties: {
           id: { type: 'string' },
-          code: { type: 'string', example: 'GI-AYUTTHAYA' },
-          name: { type: 'string', example: 'GI-อยุธยา' },
+          code: { type: 'string', example: 'GI11' },
+          name: { type: 'string', example: 'GOLD INTEGRATE AYUTTHAYA CO.,LTD' },
           companyId: { type: 'string' },
           address: { type: 'string' },
           phone: { type: 'string' },

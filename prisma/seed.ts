@@ -10,10 +10,12 @@ async function main() {
   console.log('📦 Creating Companies...');
   const ev7 = await prisma.company.upsert({
     where: { code: 'EV7' },
-    update: {},
+    update: {
+      name: 'EV7 Co.,Ltd.',
+    },
     create: {
       code: 'EV7',
-      name: 'บริษัท อีวี เซเว่น จำกัด (EV7 Co., Ltd.)',
+      name: 'EV7 Co.,Ltd.',
       taxId: '0105565012345',
       address: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 ห้วยขวาง กรุงเทพฯ 10310',
     },
@@ -22,11 +24,11 @@ async function main() {
   const gi = await prisma.company.upsert({
     where: { code: 'GI' },
     update: {
-      name: 'บริษัท โกลด์ อินทิเกรท จำกัด (Gold Integrate)',
+      name: 'GOLD INTEGRATE CO., Ltd.',
     },
     create: {
       code: 'GI',
-      name: 'บริษัท โกลด์ อินทิเกรท จำกัด (Gold Integrate)',
+      name: 'GOLD INTEGRATE CO., Ltd.',
       taxId: '0105564098765',
       address: '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี สมุทรปราการ 10540',
     },
@@ -38,26 +40,30 @@ async function main() {
   console.log('\n🏢 Creating Branches...');
 
   const branchesData = [
-    // EV7 (ไม่มีบริษัทย่อยหรือสาขา)
-    { companyId: ev7.id, code: 'EV7', name: 'EV7', address: 'สำนักงานใหญ่ EV7 ถ.พระราม 9 แขวงบางกะปิ เขตห้วยขวาง กทม.', phone: '02-719-8888', latitude: 13.7563, longitude: 100.5648 },
-    // GI (มีบริษัทย่อย/สาขา)
-    { companyId: gi.id, code: 'GI-KANJANA', name: 'GI-กาญจนาภิเษก' },
-    { companyId: gi.id, code: 'GI-CHIANGMAI', name: 'GI-เชียงใหม่' },
-    { companyId: gi.id, code: 'GI-PHIBUN', name: 'GI-พิบูล' },
-    { companyId: gi.id, code: 'GI-MAHACHAI', name: 'GI-มหาชัย' },
-    { companyId: gi.id, code: 'GI-LIABDUAN', name: 'GI-เลียบด่วน' },
-    { companyId: gi.id, code: 'GI-VIPHA', name: 'GI-วิภา' },
-    { companyId: gi.id, code: 'GI-SALAYA', name: 'GI-ศาลายา' },
-    { companyId: gi.id, code: 'GI-SILOM', name: 'GI-สีลม' },
-    { companyId: gi.id, code: 'GI-AYUTTHAYA', name: 'GI-อยุธยา' },
-    { companyId: gi.id, code: 'GI-UBON', name: 'GI-อุบลราชธานี' },
+    // GI สำนักงานใหญ่ (GI ใหญ่ที่ดูทั้งหมด)
+    { companyId: gi.id, code: 'GI', name: 'GOLD INTEGRATE CO., Ltd.', address: '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี สมุทรปราการ 10540', latitude: 13.6123, longitude: 100.7412 },
+    // GI01 - GI05
+    { companyId: gi.id, code: 'GI01', name: 'GOLD INTEGRATE KANJANAPISEK - BANGKAE CO., LTD.', address: '45/8 ถนนกาญจนาภิเษก แขวงบางแค เขตบางแค กทม.', latitude: 13.7028, longitude: 100.4074 },
+    { companyId: gi.id, code: 'GI02', name: 'GOLD INTEGRATE MINBURI CO., LTD.', address: '120 ถนนสุวินทวงศ์ แขวงมีนบุรี เขตมีนบุรี กทม.', latitude: 13.8164, longitude: 100.7328 },
+    { companyId: gi.id, code: 'GI03', name: 'GOLD INTEGRATE LIABDUANRAMINDRA CO., LTD.', address: '88/1 ถนนประดิษฐ์มนูธรรม แขวงลาดพร้าว เขตลาดพร้าว กทม.', latitude: 13.8052, longitude: 100.6241 },
+    { companyId: gi.id, code: 'GI04', name: 'GOLD INTEGRATE SILOM SOI 9 CO., LTD.', address: '19 ซอยสีลม 9 แขวงสีลม เขตบางรัก กทม.', latitude: 13.7244, longitude: 100.5283 },
+    { companyId: gi.id, code: 'GI05', name: 'GOLD INTEGRATE UBONRATCHATHANI CO., LTD.', address: '345 ถนนชยางกูร ตำบลในเมือง อำเภอเมือง อุบลราชธานี', latitude: 15.2448, longitude: 104.8473 },
+    // GI06 - EV7 Co.,Ltd.
+    { companyId: ev7.id, code: 'GI06', name: 'EV7 Co.,Ltd.', address: 'สำนักงานใหญ่ EV7 ถ.พระราม 9 แขวงบางกะปิ เขตห้วยขวาง กทม.', phone: '02-719-8888', latitude: 13.7563, longitude: 100.5648 },
+    // GI07 - GI12
+    { companyId: gi.id, code: 'GI07', name: 'GOLD INTEGRATE MAHACHAI CO., LTD.', address: '92/3 ถนนเศรษฐกิจ 1 ตำบลท่าทราย อำเภอเมือง สมุทรสาคร', latitude: 13.5658, longitude: 100.2742 },
+    { companyId: gi.id, code: 'GI08', name: 'GOLD INTEGRATE SALAYA CO., LTD.', address: '99/5 หมู่ 2 ถนนศาลายา-นครชัยศรี ตำบลศาลายา อำเภอพุทธมณฑล นครปฐม', latitude: 13.7997, longitude: 100.3235 },
+    { companyId: gi.id, code: 'GI09', name: 'GOLD INTEGRATE VIBHAVADI CO., LTD.', address: '150 ถนนวิภาวดีรังสิต แขวงจอมพล เขตจตุจักร กทม.', latitude: 13.8122, longitude: 100.5614 },
+    { companyId: gi.id, code: 'GI10', name: 'GOLD INTEGRATE PIBULONGKRAM CO., LTD.', address: '78 ถนนพิบูลสงคราม ตำบลสวนใหญ่ อำเภอเมือง นนทบุรี', latitude: 13.8291, longitude: 100.5053 },
+    { companyId: gi.id, code: 'GI11', name: 'GOLD INTEGRATE AYUTTHAYA CO.,LTD', address: '55/9 หมู่ 3 ถนนสายเอเชีย ตำบลคลองสวนพลู อำเภอพระนครศรีอยุธยา พระนครศรีอยุธยา', latitude: 14.3312, longitude: 100.6084 },
+    { companyId: gi.id, code: 'GI12', name: 'GOLD INTEGRATE CHIANGMAI CO.,LTD', address: '123/4 ถนนซุปเปอร์ไฮเวย์ เชียงใหม่-ลำปาง ตำบลช้างเผือก อำเภอเมือง เชียงใหม่', latitude: 18.8055, longitude: 98.9856 },
   ];
 
   const branches: Record<string, { id: string }> = {};
   for (const b of branchesData) {
     const branch = await prisma.branch.upsert({
       where: { companyId_code: { companyId: b.companyId, code: b.code } },
-      update: {},
+      update: { name: b.name, address: b.address, phone: b.phone, latitude: b.latitude, longitude: b.longitude },
       create: b,
     });
     branches[b.code] = branch;
@@ -118,36 +124,36 @@ async function main() {
   console.log('\n🚗 Creating Vehicles...');
 
   const vehiclesData = [
-    // EV7 (ไม่มีสาขาย่อย)
-    { vin: 'LC07C5EB8PA001234', model: 'BYD Atto 3 Extended Range', color: 'Ski White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'SUV', licensePlate: '3ขข-1234 กทม.', mileage: 14200 },
-    { vin: 'LC07C5EB1PA005678', model: 'BYD Dolphin Premium Extended', color: 'Coral Pink', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '4ขค-5678 กทม.', mileage: 8300 },
-    { vin: 'LC07C5EB9PA009012', model: 'BYD Seal AWD Performance', color: 'Aurora White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: '1ขฉ-9012 กทม.', mileage: 5600 },
-    { vin: 'LSJ574892PA003344', model: 'MG4 Electric EV Long Range', color: 'Andes Grey', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '2กง-3344 กทม.', mileage: 18900 },
-    { vin: 'LZW7AE324PA007788', model: 'ORA Good Cat 500 Ultra', color: 'Hamilton White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '5ขฐ-7788 กทม.', mileage: 22100 },
-    { vin: 'LZW7AE329PA004455', model: 'ORA 07 GT Long Range', color: 'Amethyst Purple', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: '3ขต-4455 กทม.', mileage: 4100 },
-    { vin: 'LC07C5EB4PA002233', model: 'BYD Atto 3 Dynamic', color: 'Forest Green', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'SUV', licensePlate: 'ขข-2233 เชียงใหม่', mileage: 16500 },
-    { vin: 'LC07C5EB7PA006699', model: 'BYD Dolphin Standard Range', color: 'Surf Blue', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: 'ขง-6699 เชียงใหม่', mileage: 9800 },
-    // GI — กาญจนาภิเษก
-    { vin: 'LGS4D8618PA001199', model: 'Deepal S07 Smart EV', color: 'Nebula Green', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'SUV', licensePlate: '1ขษ-1199 กทม.', mileage: 7400 },
-    { vin: 'LGS4D8613PA006677', model: 'Deepal L07 Fastback EV', color: 'Lunar Grey', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'Sedan', licensePlate: '4ขส-6677 กทม.', mileage: 11200 },
-    { vin: 'LNN6A5229PA008811', model: 'NETA V-II Smart', color: 'Baby Blue', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'Hatchback', licensePlate: '2ขภ-8811 กทม.', mileage: 26500 },
-    { vin: 'LNN6A5224PA003366', model: 'NETA V-II Explore', color: 'Pearl White', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'Hatchback', licensePlate: '6กท-3366 กทม.', mileage: 31200 },
-    // GI — เชียงใหม่
-    { vin: 'LGS4D8610PA009944', model: 'Deepal S07 Smart EV', color: 'Eclipse Black', companyId: gi.id, currentBranchId: branches['GI-CHIANGMAI'].id, vehicleType: 'SUV', licensePlate: 'กง-9944 เชียงใหม่', mileage: 19800 },
-    { vin: 'LGS4D8615PA005522', model: 'Deepal S07 Max EV', color: 'Glacier White', companyId: gi.id, currentBranchId: branches['GI-CHIANGMAI'].id, vehicleType: 'SUV', licensePlate: 'กจ-5522 เชียงใหม่', mileage: 3200 },
-    { vin: 'LNN6A5227PA007744', model: 'NETA X Mid Range', color: 'Titanium Grey', companyId: gi.id, currentBranchId: branches['GI-CHIANGMAI'].id, vehicleType: 'SUV', licensePlate: 'กฉ-7744 เชียงใหม่', mileage: 15600 },
+    // EV7 (GI06)
+    { vin: 'LC07C5EB8PA001234', model: 'BYD Atto 3 Extended Range', color: 'Ski White', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'SUV', licensePlate: '3ขข-1234 กทม.', mileage: 14200 },
+    { vin: 'LC07C5EB1PA005678', model: 'BYD Dolphin Premium Extended', color: 'Coral Pink', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Hatchback', licensePlate: '4ขค-5678 กทม.', mileage: 8300 },
+    { vin: 'LC07C5EB9PA009012', model: 'BYD Seal AWD Performance', color: 'Aurora White', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Sedan', licensePlate: '1ขฉ-9012 กทม.', mileage: 5600 },
+    { vin: 'LSJ574892PA003344', model: 'MG4 Electric EV Long Range', color: 'Andes Grey', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Hatchback', licensePlate: '2กง-3344 กทม.', mileage: 18900 },
+    { vin: 'LZW7AE324PA007788', model: 'ORA Good Cat 500 Ultra', color: 'Hamilton White', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Hatchback', licensePlate: '5ขฐ-7788 กทม.', mileage: 22100 },
+    { vin: 'LZW7AE329PA004455', model: 'ORA 07 GT Long Range', color: 'Amethyst Purple', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Sedan', licensePlate: '3ขต-4455 กทม.', mileage: 4100 },
+    { vin: 'LC07C5EB4PA002233', model: 'BYD Atto 3 Dynamic', color: 'Forest Green', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'SUV', licensePlate: 'ขข-2233 เชียงใหม่', mileage: 16500 },
+    { vin: 'LC07C5EB7PA006699', model: 'BYD Dolphin Standard Range', color: 'Surf Blue', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Hatchback', licensePlate: 'ขง-6699 เชียงใหม่', mileage: 9800 },
+    // GI — GI01
+    { vin: 'LGS4D8618PA001199', model: 'Deepal S07 Smart EV', color: 'Nebula Green', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'SUV', licensePlate: '1ขษ-1199 กทม.', mileage: 7400 },
+    { vin: 'LGS4D8613PA006677', model: 'Deepal L07 Fastback EV', color: 'Lunar Grey', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'Sedan', licensePlate: '4ขส-6677 กทม.', mileage: 11200 },
+    { vin: 'LNN6A5229PA008811', model: 'NETA V-II Smart', color: 'Baby Blue', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'Hatchback', licensePlate: '2ขภ-8811 กทม.', mileage: 26500 },
+    { vin: 'LNN6A5224PA003366', model: 'NETA V-II Explore', color: 'Pearl White', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'Hatchback', licensePlate: '6กท-3366 กทม.', mileage: 31200 },
+    // GI — GI12
+    { vin: 'LGS4D8610PA009944', model: 'Deepal S07 Smart EV', color: 'Eclipse Black', companyId: gi.id, currentBranchId: branches['GI12'].id, vehicleType: 'SUV', licensePlate: 'กง-9944 เชียงใหม่', mileage: 19800 },
+    { vin: 'LGS4D8615PA005522', model: 'Deepal S07 Max EV', color: 'Glacier White', companyId: gi.id, currentBranchId: branches['GI12'].id, vehicleType: 'SUV', licensePlate: 'กจ-5522 เชียงใหม่', mileage: 3200 },
+    { vin: 'LNN6A5227PA007744', model: 'NETA X Mid Range', color: 'Titanium Grey', companyId: gi.id, currentBranchId: branches['GI12'].id, vehicleType: 'SUV', licensePlate: 'กฉ-7744 เชียงใหม่', mileage: 15600 },
     // EV7 — เพิ่มเติม (5 คัน)
-    { vin: 'LC07C5EB3PA004123', model: 'BYD Sealion 6 DM-i', color: 'Arctic White', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'SUV', licensePlate: '5ขร-4123 กทม.', mileage: 3500 },
-    { vin: 'LZW7AE321PA008899', model: 'ORA Good Cat GT', color: 'Sun Black', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: '2ขล-8899 กทม.', mileage: 12400 },
-    { vin: 'LC07C5EB2PA007711', model: 'BYD Seal Dynamic', color: 'Atlantis Grey', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: '4ขบ-7711 กทม.', mileage: 6800 },
-    { vin: 'LSJ574898PA005566', model: 'MG Cyberster EV', color: 'Inca Yellow', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Sedan', licensePlate: 'ขจ-5566 เชียงใหม่', mileage: 2100 },
-    { vin: 'LC07C5EB6PA003322', model: 'BYD Dolphin Standard Range', color: 'Maldive Purple', companyId: ev7.id, currentBranchId: branches['EV7'].id, vehicleType: 'Hatchback', licensePlate: 'ขฉ-3322 เชียงใหม่', mileage: 15300 },
+    { vin: 'LC07C5EB3PA004123', model: 'BYD Sealion 6 DM-i', color: 'Arctic White', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'SUV', licensePlate: '5ขร-4123 กทม.', mileage: 3500 },
+    { vin: 'LZW7AE321PA008899', model: 'ORA Good Cat GT', color: 'Sun Black', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Hatchback', licensePlate: '2ขล-8899 กทม.', mileage: 12400 },
+    { vin: 'LC07C5EB2PA007711', model: 'BYD Seal Dynamic', color: 'Atlantis Grey', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Sedan', licensePlate: '4ขบ-7711 กทม.', mileage: 6800 },
+    { vin: 'LSJ574898PA005566', model: 'MG Cyberster EV', color: 'Inca Yellow', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Sedan', licensePlate: 'ขจ-5566 เชียงใหม่', mileage: 2100 },
+    { vin: 'LC07C5EB6PA003322', model: 'BYD Dolphin Standard Range', color: 'Maldive Purple', companyId: ev7.id, currentBranchId: branches['GI06'].id, vehicleType: 'Hatchback', licensePlate: 'ขฉ-3322 เชียงใหม่', mileage: 15300 },
     // GI — เพิ่มเติม (5 คัน)
-    { vin: 'LGS4D8617PA002288', model: 'Deepal S07 L EV', color: 'Comet White', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'SUV', licensePlate: '3ขษ-2288 กทม.', mileage: 8900 },
-    { vin: 'LGS4D8612PA004499', model: 'Deepal L07 Sport EV', color: 'Sunset Orange', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'Sedan', licensePlate: '1ขห-4499 กทม.', mileage: 4700 },
-    { vin: 'LNN6A5221PA006633', model: 'NETA X Smart EV', color: 'Glacier Blue', companyId: gi.id, currentBranchId: branches['GI-KANJANA'].id, vehicleType: 'SUV', licensePlate: '5กท-6633 กทม.', mileage: 11200 },
-    { vin: 'LGS4D8616PA008855', model: 'Deepal S07 Max EV', color: 'Space Grey', companyId: gi.id, currentBranchId: branches['GI-CHIANGMAI'].id, vehicleType: 'SUV', licensePlate: 'กน-8855 เชียงใหม่', mileage: 6300 },
-    { vin: 'LNN6A5228PA001144', model: 'NETA V-II Lite', color: 'Sakura Pink', companyId: gi.id, currentBranchId: branches['GI-CHIANGMAI'].id, vehicleType: 'Hatchback', licensePlate: 'กต-1144 เชียงใหม่', mileage: 18700 },
+    { vin: 'LGS4D8617PA002288', model: 'Deepal S07 L EV', color: 'Comet White', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'SUV', licensePlate: '3ขษ-2288 กทม.', mileage: 8900 },
+    { vin: 'LGS4D8612PA004499', model: 'Deepal L07 Sport EV', color: 'Sunset Orange', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'Sedan', licensePlate: '1ขห-4499 กทม.', mileage: 4700 },
+    { vin: 'LNN6A5221PA006633', model: 'NETA X Smart EV', color: 'Glacier Blue', companyId: gi.id, currentBranchId: branches['GI01'].id, vehicleType: 'SUV', licensePlate: '5กท-6633 กทม.', mileage: 11200 },
+    { vin: 'LGS4D8616PA008855', model: 'Deepal S07 Max EV', color: 'Space Grey', companyId: gi.id, currentBranchId: branches['GI12'].id, vehicleType: 'SUV', licensePlate: 'กน-8855 เชียงใหม่', mileage: 6300 },
+    { vin: 'LNN6A5228PA001144', model: 'NETA V-II Lite', color: 'Sakura Pink', companyId: gi.id, currentBranchId: branches['GI12'].id, vehicleType: 'Hatchback', licensePlate: 'กต-1144 เชียงใหม่', mileage: 18700 },
   ];
 
   for (const v of vehiclesData) {
@@ -203,6 +209,19 @@ async function main() {
       supplierId: null as string | null,
     },
     {
+      username: 'branch-gi',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่ GI สำนักงานใหญ่ (GI ใหญ่)',
+      firstName: 'ชูศักดิ์',
+      lastName: 'สิทธิชัย',
+      position: 'ผู้จัดการสำนักงานใหญ่',
+      phone: '02-888-9999',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI'].id,
+      supplierId: null as string | null,
+    },
+    {
       username: 'branch-rm9',
       password: 'branch1234',
       displayName: 'เจ้าหน้าที่สาขาพระราม 9',
@@ -212,7 +231,7 @@ async function main() {
       phone: '085-666-7777',
       role: 'BRANCH',
       companyId: ev7.id,
-      branchId: branches['EV7'].id,
+      branchId: branches['GI06'].id,
       supplierId: null as string | null,
     },
     {
@@ -222,37 +241,17 @@ async function main() {
       position: 'เจ้าหน้าที่สาขา',
       role: 'BRANCH',
       companyId: gi.id,
-      branchId: branches['GI-KANJANA'].id,
+      branchId: branches['GI01'].id,
       supplierId: null as string | null,
     },
     {
-      username: 'branch-chiangmai',
+      username: 'branch-minburi',
       password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขาเชียงใหม่',
+      displayName: 'เจ้าหน้าที่สาขามีนบุรี',
       position: 'เจ้าหน้าที่สาขา',
       role: 'BRANCH',
       companyId: gi.id,
-      branchId: branches['GI-CHIANGMAI'].id,
-      supplierId: null as string | null,
-    },
-    {
-      username: 'branch-phibun',
-      password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขาพิบูล',
-      position: 'เจ้าหน้าที่สาขา',
-      role: 'BRANCH',
-      companyId: gi.id,
-      branchId: branches['GI-PHIBUN'].id,
-      supplierId: null as string | null,
-    },
-    {
-      username: 'branch-mahachai',
-      password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขามหาชัย',
-      position: 'เจ้าหน้าที่สาขา',
-      role: 'BRANCH',
-      companyId: gi.id,
-      branchId: branches['GI-MAHACHAI'].id,
+      branchId: branches['GI02'].id,
       supplierId: null as string | null,
     },
     {
@@ -262,27 +261,7 @@ async function main() {
       position: 'เจ้าหน้าที่สาขา',
       role: 'BRANCH',
       companyId: gi.id,
-      branchId: branches['GI-LIABDUAN'].id,
-      supplierId: null as string | null,
-    },
-    {
-      username: 'branch-vipha',
-      password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขาวิภา',
-      position: 'เจ้าหน้าที่สาขา',
-      role: 'BRANCH',
-      companyId: gi.id,
-      branchId: branches['GI-VIPHA'].id,
-      supplierId: null as string | null,
-    },
-    {
-      username: 'branch-salaya',
-      password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขาศาลายา',
-      position: 'เจ้าหน้าที่สาขา',
-      role: 'BRANCH',
-      companyId: gi.id,
-      branchId: branches['GI-SALAYA'].id,
+      branchId: branches['GI03'].id,
       supplierId: null as string | null,
     },
     {
@@ -292,17 +271,7 @@ async function main() {
       position: 'เจ้าหน้าที่สาขา',
       role: 'BRANCH',
       companyId: gi.id,
-      branchId: branches['GI-SILOM'].id,
-      supplierId: null as string | null,
-    },
-    {
-      username: 'branch-ayutthaya',
-      password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขาอยุธยา',
-      position: 'เจ้าหน้าที่สาขา',
-      role: 'BRANCH',
-      companyId: gi.id,
-      branchId: branches['GI-AYUTTHAYA'].id,
+      branchId: branches['GI04'].id,
       supplierId: null as string | null,
     },
     {
@@ -312,17 +281,77 @@ async function main() {
       position: 'เจ้าหน้าที่สาขา',
       role: 'BRANCH',
       companyId: gi.id,
-      branchId: branches['GI-UBON'].id,
+      branchId: branches['GI05'].id,
       supplierId: null as string | null,
     },
     {
       username: 'branch-ev7',
       password: 'branch1234',
-      displayName: 'เจ้าหน้าที่สาขา EV7',
+      displayName: 'เจ้าหน้าที่ EV7 Co.,Ltd.',
       position: 'เจ้าหน้าที่สาขา',
       role: 'BRANCH',
       companyId: ev7.id,
-      branchId: branches['EV7'].id,
+      branchId: branches['GI06'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-mahachai',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขามหาชัย',
+      position: 'เจ้าหน้าที่สาขา',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI07'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-salaya',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาศาลายา',
+      position: 'เจ้าหน้าที่สาขา',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI08'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-vipha',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาวิภา',
+      position: 'เจ้าหน้าที่สาขา',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI09'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-phibun',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาพิบูล',
+      position: 'เจ้าหน้าที่สาขา',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI10'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-ayutthaya',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาอยุธยา',
+      position: 'เจ้าหน้าที่สาขา',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI11'].id,
+      supplierId: null as string | null,
+    },
+    {
+      username: 'branch-chiangmai',
+      password: 'branch1234',
+      displayName: 'เจ้าหน้าที่สาขาเชียงใหม่',
+      position: 'เจ้าหน้าที่สาขา',
+      role: 'BRANCH',
+      companyId: gi.id,
+      branchId: branches['GI12'].id,
       supplierId: null as string | null,
     },
     {

@@ -105,7 +105,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW001': {
     supplierCode: 'SP-CW001',
     name: 'HI-END CAR WASH & GLASS COATING By นันทิตา xxx',
-    showrooms: ['GI-SALAYA', 'Salaya', 'ศาลายา'],
+    showrooms: ['GI08', 'GI-SALAYA', 'Salaya', 'ศาลายา'],
     showroomLabel: 'ศาลายา',
     vatType: 'NO_VAT',
     vatRate: 0,
@@ -120,7 +120,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW002': {
     supplierCode: 'SP-CW002',
     name: 'CleanDay Carcare By สุพัตรา xxx',
-    showrooms: ['GI-VIPHA', 'GI-PHIBUN', 'Vibhavadi', 'Pibulsongkram', 'วิภาวดี', 'พิบูลสงคราม'],
+    showrooms: ['GI09', 'GI10', 'GI-VIPHA', 'GI-PHIBUN', 'Vibhavadi', 'Pibulsongkram', 'วิภาวดี', 'พิบูลสงคราม'],
     showroomLabel: 'วิภาวดี, พิบูลสงคราม',
     vatType: 'NO_VAT',
     vatRate: 0,
@@ -132,7 +132,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW003': {
     supplierCode: 'SP-CW003',
     name: 'ห้วยคุ้มคาร์แคร์ By ทรงชัย xxx',
-    showrooms: ['GI-UBON', 'Ubon Ratchathani', 'อุบลราชธานี'],
+    showrooms: ['GI05', 'GI-UBON', 'Ubon Ratchathani', 'อุบลราชธานี'],
     showroomLabel: 'อุบลราชธานี',
     vatType: 'NO_VAT',
     vatRate: 0,
@@ -148,7 +148,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW004': {
     supplierCode: 'SP-CW004',
     name: 'ทู ไชน์ คาร์ดีเทลลิ่ง By อรรถวิทย์ xxx',
-    showrooms: ['GI-MAHACHAI', 'Mahachai', 'มหาชัย'],
+    showrooms: ['GI07', 'GI-MAHACHAI', 'Mahachai', 'มหาชัย'],
     showroomLabel: 'มหาชัย',
     vatType: 'NO_VAT',
     vatRate: 0,
@@ -162,7 +162,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW005': {
     supplierCode: 'SP-CW005',
     name: 'บริษัท วอชโมบิล จำกัด',
-    showrooms: ['GI-AYUTTHAYA', 'Ayuthaya', 'อยุธยา'],
+    showrooms: ['GI11', 'GI-AYUTTHAYA', 'Ayuthaya', 'อยุธยา'],
     showroomLabel: 'อยุธยา',
     vatType: 'VAT_7',
     vatRate: 0.07,
@@ -175,7 +175,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW006': {
     supplierCode: 'SP-CW006',
     name: 'บริษัท เอกชลิต จำกัด',
-    showrooms: ['GI-KANJANA', 'Kanchanapisek', 'กาญจนาภิเษก'],
+    showrooms: ['GI01', 'GI-KANJANA', 'Kanchanapisek', 'Bangkae', 'กาญจนาภิเษก', 'บางแค'],
     showroomLabel: 'กาญจนาภิเษก',
     vatType: 'VAT_7',
     vatRate: 0.07,
@@ -188,7 +188,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW007': {
     supplierCode: 'SP-CW007',
     name: 'ห้างหุ้นส่วนจำกัด ออโต้คาร์ 108',
-    showrooms: ['GI-LIABDUAN', 'GI-VIPHA', 'Exp.Ramintra', 'Vibhavadi', 'เลียบด่วน', 'วิภาวดี'],
+    showrooms: ['GI03', 'GI09', 'GI-LIABDUAN', 'GI-VIPHA', 'Exp.Ramintra', 'Vibhavadi', 'เลียบด่วน', 'วิภาวดี'],
     showroomLabel: 'เลียบด่วน รามอินทรา, วิภาวดี',
     vatType: 'VAT_7',
     vatRate: 0.07,
@@ -200,7 +200,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW008': {
     supplierCode: 'SP-CW008',
     name: 'บริษัท ใบ สัย คลีนนิ่ง คาร์ จำกัด',
-    showrooms: ['Min Buri', 'GI-VIPHA', 'Vibhavadi', 'มีนบุรี', 'วิภาวดี'],
+    showrooms: ['GI02', 'GI09', 'Min Buri', 'GI-VIPHA', 'Vibhavadi', 'มีนบุรี', 'วิภาวดี'],
     showroomLabel: 'มีนบุรี, วิภาวดี',
     vatType: 'VAT_7',
     vatRate: 0.07,
@@ -213,7 +213,7 @@ export const SUPPLIER_WASH_RATES: Record<string, SupplierWashConfig> = {
   'SP-CW009': {
     supplierCode: 'SP-CW009',
     name: 'เป็นเอกคาร์แคร์ By เอกสิทธิ์ xxx',
-    showrooms: ['GI-CHIANGMAI', 'Chiangmai', 'เชียงใหม่'],
+    showrooms: ['GI12', 'GI-CHIANGMAI', 'Chiangmai', 'เชียงใหม่'],
     showroomLabel: 'เชียงใหม่',
     vatType: 'NO_VAT',
     vatRate: 0,

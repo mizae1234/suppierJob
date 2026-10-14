@@ -64,79 +64,172 @@ export interface BranchCoordinates {
 }
 
 export const BRANCH_DEFAULT_LOCATIONS: Record<string, BranchCoordinates> = {
-  'EV7': {
-    code: 'EV7',
-    name: 'สำนักงานใหญ่ EV7 (พระราม 9)',
-    lat: 13.7563,
-    lng: 100.5648,
-    address: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงบางกปิ เขตห้วยขวาง กรุงเทพฯ 10310',
+  // New official codes
+  'GI': {
+    code: 'GI',
+    name: 'GOLD INTEGRATE CO., Ltd.',
+    lat: 13.6167,
+    lng: 100.7500,
+    address: '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี สมุทรปราการ 10540',
   },
-  'GI-AYUTTHAYA': {
-    code: 'GI-AYUTTHAYA',
-    name: 'GI-อยุธยา',
-    lat: 14.3532,
-    lng: 100.5684,
-    address: 'ตำบลหอรัตนไชย อำเภอพระนครศรีอยุธยา จังหวัดพระนครศรีอยุธยา 13000',
-  },
-  'GI-UBON': {
-    code: 'GI-UBON',
-    name: 'GI-อุบลราชธานี',
-    lat: 15.3306,
-    lng: 104.8309,
-    address: '77 หมู่ 26 ถนนชยางกูร ตำบลขามใหญ่ อำเภอเมือง จังหวัดอุบลราชธานี 34000',
-  },
-  'GI-KANJANA': {
-    code: 'GI-KANJANA',
-    name: 'GI-กาญจนาภิเษก',
+  'GI01': {
+    code: 'GI01',
+    name: 'GOLD INTEGRATE KANJANAPISEK - BANGKAE CO., LTD.',
     lat: 13.7845,
     lng: 100.4112,
     address: 'ถนนกาญจนาภิเษก แขวงบางระมาด เขตตลิ่งชัน กรุงเทพฯ 10170',
   },
+  'GI02': {
+    code: 'GI02',
+    name: 'GOLD INTEGRATE MINBURI CO., LTD.',
+    lat: 13.8138,
+    lng: 100.7208,
+    address: 'ถนนสุวินทวงศ์ แขวงมีนบุรี เขตมีนบุรี กรุงเทพฯ 10510',
+  },
+  'GI03': {
+    code: 'GI03',
+    name: 'GOLD INTEGRATE LIABDUANRAMINDRA CO., LTD.',
+    lat: 13.8054,
+    lng: 100.6234,
+    address: 'ถนนประดิษฐ์มนูธรรม แขวงคลองเจ้าคุณสิงห์ เขตวังทองหลาง กรุงเทพฯ 10310',
+  },
+  'GI04': {
+    code: 'GI04',
+    name: 'GOLD INTEGRATE SILOM SOI 9 CO., LTD.',
+    lat: 13.7279,
+    lng: 100.5312,
+    address: 'ถนนสีลม แขวงสีลม เขตบางรัก กรุงเทพฯ 10500',
+  },
+  'GI05': {
+    code: 'GI05',
+    name: 'GOLD INTEGRATE UBONRATCHATHANI CO., LTD.',
+    lat: 15.3306,
+    lng: 104.8309,
+    address: '77 หมู่ 26 ถนนชยางกูร ตำบลขามใหญ่ อำเภอเมือง จังหวัดอุบลราชธานี 34000',
+  },
+  'GI06': {
+    code: 'GI06',
+    name: 'EV7 Co.,Ltd.',
+    lat: 13.7563,
+    lng: 100.5648,
+    address: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงบางกปิ เขตห้วยขวาง กรุงเทพฯ 10310',
+  },
+  'GI07': {
+    code: 'GI07',
+    name: 'GOLD INTEGRATE MAHACHAI CO., LTD.',
+    lat: 13.5475,
+    lng: 100.2745,
+    address: 'ถนนพระราม 2 ตำบลมหาชัย อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
+  },
+  'GI08': {
+    code: 'GI08',
+    name: 'GOLD INTEGRATE SALAYA CO., LTD.',
+    lat: 13.7998,
+    lng: 100.3245,
+    address: 'ถนนบรมราชชนนี ตำบลศาลายา อำเภอพุทธมณฑล จังหวัดนครปฐม 73170',
+  },
+  'GI09': {
+    code: 'GI09',
+    name: 'GOLD INTEGRATE VIBHAVADI CO., LTD.',
+    lat: 13.8214,
+    lng: 100.5632,
+    address: 'ถนนวิภาวดีรังสิต แขวงลาดยาว เขตจตุจักร กรุงเทพฯ 10900',
+  },
+  'GI10': {
+    code: 'GI10',
+    name: 'GOLD INTEGRATE PIBULONGKRAM CO., LTD.',
+    lat: 13.8291,
+    lng: 100.5134,
+    address: 'ถนนพิบูลสงคราม ตำบลสวนใหญ่ อำเภอเมืองนนทบุรี จังหวัดนนทบุรี 11000',
+  },
+  'GI11': {
+    code: 'GI11',
+    name: 'GOLD INTEGRATE AYUTTHAYA CO.,LTD',
+    lat: 14.3532,
+    lng: 100.5684,
+    address: 'ตำบลหอรัตนไชย อำเภอพระนครศรีอยุธยา จังหวัดพระนครศรีอยุธยา 13000',
+  },
+  'GI12': {
+    code: 'GI12',
+    name: 'GOLD INTEGRATE CHIANGMAI CO.,LTD',
+    lat: 18.7883,
+    lng: 98.9853,
+    address: 'ตำบลศรีภูมิ อำเภอเมืองเชียงใหม่ จังหวัดเชียงใหม่ 50200',
+  },
+  // Backward compatibility aliases
+  'EV7': {
+    code: 'GI06',
+    name: 'EV7 Co.,Ltd.',
+    lat: 13.7563,
+    lng: 100.5648,
+    address: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงบางกปิ เขตห้วยขวาง กรุงเทพฯ 10310',
+  },
+  'GI-KANJANA': {
+    code: 'GI01',
+    name: 'GOLD INTEGRATE KANJANAPISEK - BANGKAE CO., LTD.',
+    lat: 13.7845,
+    lng: 100.4112,
+    address: 'ถนนกาญจนาภิเษก แขวงบางระมาด เขตตลิ่งชัน กรุงเทพฯ 10170',
+  },
+  'GI-LIABDUAN': {
+    code: 'GI03',
+    name: 'GOLD INTEGRATE LIABDUANRAMINDRA CO., LTD.',
+    lat: 13.8054,
+    lng: 100.6234,
+    address: 'ถนนประดิษฐ์มนูธรรม แขวงคลองเจ้าคุณสิงห์ เขตวังทองหลาง กรุงเทพฯ 10310',
+  },
+  'GI-SILOM': {
+    code: 'GI04',
+    name: 'GOLD INTEGRATE SILOM SOI 9 CO., LTD.',
+    lat: 13.7279,
+    lng: 100.5312,
+    address: 'ถนนสีลม แขวงสีลม เขตบางรัก กรุงเทพฯ 10500',
+  },
+  'GI-UBON': {
+    code: 'GI05',
+    name: 'GOLD INTEGRATE UBONRATCHATHANI CO., LTD.',
+    lat: 15.3306,
+    lng: 104.8309,
+    address: '77 หมู่ 26 ถนนชยางกูร ตำบลขามใหญ่ อำเภอเมือง จังหวัดอุบลราชธานี 34000',
+  },
+  'GI-MAHACHAI': {
+    code: 'GI07',
+    name: 'GOLD INTEGRATE MAHACHAI CO., LTD.',
+    lat: 13.5475,
+    lng: 100.2745,
+    address: 'ถนนพระราม 2 ตำบลมหาชัย อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
+  },
   'GI-SALAYA': {
-    code: 'GI-SALAYA',
-    name: 'GI-ศาลายา',
+    code: 'GI08',
+    name: 'GOLD INTEGRATE SALAYA CO., LTD.',
     lat: 13.7998,
     lng: 100.3245,
     address: 'ถนนบรมราชชนนี ตำบลศาลายา อำเภอพุทธมณฑล จังหวัดนครปฐม 73170',
   },
   'GI-VIPHA': {
-    code: 'GI-VIPHA',
-    name: 'GI-วิภา',
+    code: 'GI09',
+    name: 'GOLD INTEGRATE VIBHAVADI CO., LTD.',
     lat: 13.8214,
     lng: 100.5632,
     address: 'ถนนวิภาวดีรังสิต แขวงลาดยาว เขตจตุจักร กรุงเทพฯ 10900',
   },
-  'GI-LIABDUAN': {
-    code: 'GI-LIABDUAN',
-    name: 'GI-เลียบด่วน',
-    lat: 13.8054,
-    lng: 100.6234,
-    address: 'ถนนประดิษฐ์มนูธรรม แขวงคลองเจ้าคุณสิงห์ เขตวังทองหลาง กรุงเทพฯ 10310',
-  },
   'GI-PHIBUN': {
-    code: 'GI-PHIBUN',
-    name: 'GI-พิบูล',
+    code: 'GI10',
+    name: 'GOLD INTEGRATE PIBULONGKRAM CO., LTD.',
     lat: 13.8291,
     lng: 100.5134,
     address: 'ถนนพิบูลสงคราม ตำบลสวนใหญ่ อำเภอเมืองนนทบุรี จังหวัดนนทบุรี 11000',
   },
-  'GI-MAHACHAI': {
-    code: 'GI-MAHACHAI',
-    name: 'GI-มหาชัย',
-    lat: 13.5475,
-    lng: 100.2745,
-    address: 'ถนนพระราม 2 ตำบลมหาชัย อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
-  },
-  'GI-SILOM': {
-    code: 'GI-SILOM',
-    name: 'GI-สีลม',
-    lat: 13.7279,
-    lng: 100.5312,
-    address: 'ถนนสีลม แขวงสีลม เขตบางรัก กรุงเทพฯ 10500',
+  'GI-AYUTTHAYA': {
+    code: 'GI11',
+    name: 'GOLD INTEGRATE AYUTTHAYA CO.,LTD',
+    lat: 14.3532,
+    lng: 100.5684,
+    address: 'ตำบลหอรัตนไชย อำเภอพระนครศรีอยุธยา จังหวัดพระนครศรีอยุธยา 13000',
   },
   'GI-CHIANGMAI': {
-    code: 'GI-CHIANGMAI',
-    name: 'GI-เชียงใหม่',
+    code: 'GI12',
+    name: 'GOLD INTEGRATE CHIANGMAI CO.,LTD',
     lat: 18.7883,
     lng: 98.9853,
     address: 'ตำบลศรีภูมิ อำเภอเมืองเชียงใหม่ จังหวัดเชียงใหม่ 50200',
@@ -156,17 +249,19 @@ export function getBranchDefaultCoords(branchCodeOrName?: string | null): Branch
   }
 
   // Keyword heuristics
-  if (lower.includes('อยุธยา') || lower.includes('ayutthaya') || lower.includes('ayuthaya')) return BRANCH_DEFAULT_LOCATIONS['GI-AYUTTHAYA'];
-  if (lower.includes('อุบล') || lower.includes('ubon')) return BRANCH_DEFAULT_LOCATIONS['GI-UBON'];
-  if (lower.includes('กาญจนา') || lower.includes('kanjana')) return BRANCH_DEFAULT_LOCATIONS['GI-KANJANA'];
-  if (lower.includes('ศาลายา') || lower.includes('salaya')) return BRANCH_DEFAULT_LOCATIONS['GI-SALAYA'];
-  if (lower.includes('วิภา') || lower.includes('vipha')) return BRANCH_DEFAULT_LOCATIONS['GI-VIPHA'];
-  if (lower.includes('เลียบด่วน') || lower.includes('liabduan')) return BRANCH_DEFAULT_LOCATIONS['GI-LIABDUAN'];
-  if (lower.includes('พิบูล') || lower.includes('phibun')) return BRANCH_DEFAULT_LOCATIONS['GI-PHIBUN'];
-  if (lower.includes('มหาชัย') || lower.includes('mahachai')) return BRANCH_DEFAULT_LOCATIONS['GI-MAHACHAI'];
-  if (lower.includes('สีลม') || lower.includes('silom')) return BRANCH_DEFAULT_LOCATIONS['GI-SILOM'];
-  if (lower.includes('เชียงใหม่') || lower.includes('chiangmai')) return BRANCH_DEFAULT_LOCATIONS['GI-CHIANGMAI'];
-  if (lower.includes('ev7') || lower.includes('พระราม 9') || lower.includes('rama 9')) return BRANCH_DEFAULT_LOCATIONS['EV7'];
+  if (lower.includes('อยุธยา') || lower.includes('ayutthaya') || lower.includes('ayuthaya') || lower.includes('gi11')) return BRANCH_DEFAULT_LOCATIONS['GI11'];
+  if (lower.includes('อุบล') || lower.includes('ubon') || lower.includes('gi05')) return BRANCH_DEFAULT_LOCATIONS['GI05'];
+  if (lower.includes('กาญจนา') || lower.includes('kanjana') || lower.includes('bangkae') || lower.includes('บางแค') || lower.includes('gi01')) return BRANCH_DEFAULT_LOCATIONS['GI01'];
+  if (lower.includes('มีนบุรี') || lower.includes('minburi') || lower.includes('gi02')) return BRANCH_DEFAULT_LOCATIONS['GI02'];
+  if (lower.includes('เลียบด่วน') || lower.includes('liabduan') || lower.includes('ramindra') || lower.includes('รามอินทรา') || lower.includes('gi03')) return BRANCH_DEFAULT_LOCATIONS['GI03'];
+  if (lower.includes('สีลม') || lower.includes('silom') || lower.includes('gi04')) return BRANCH_DEFAULT_LOCATIONS['GI04'];
+  if (lower.includes('ศาลายา') || lower.includes('salaya') || lower.includes('gi08')) return BRANCH_DEFAULT_LOCATIONS['GI08'];
+  if (lower.includes('วิภา') || lower.includes('vipha') || lower.includes('vibhavadi') || lower.includes('gi09')) return BRANCH_DEFAULT_LOCATIONS['GI09'];
+  if (lower.includes('พิบูล') || lower.includes('phibun') || lower.includes('pibul') || lower.includes('gi10')) return BRANCH_DEFAULT_LOCATIONS['GI10'];
+  if (lower.includes('มหาชัย') || lower.includes('mahachai') || lower.includes('gi07')) return BRANCH_DEFAULT_LOCATIONS['GI07'];
+  if (lower.includes('เชียงใหม่') || lower.includes('chiangmai') || lower.includes('gi12')) return BRANCH_DEFAULT_LOCATIONS['GI12'];
+  if (lower.includes('ev7') || lower.includes('พระราม 9') || lower.includes('rama 9') || lower.includes('gi06')) return BRANCH_DEFAULT_LOCATIONS['GI06'];
+  if (lower.includes('gi') || lower.includes('โกลด์') || lower.includes('สำนักงานใหญ่') || lower.includes('bangna') || lower.includes('บางนา')) return BRANCH_DEFAULT_LOCATIONS['GI'];
 
   return null;
 }
