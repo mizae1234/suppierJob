@@ -15,6 +15,8 @@ import {
   AlertCircle,
   Users as UsersIcon,
 } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { CancelJobConfirmModal } from '@/components/jobs';
 
 export interface BranchDetailModalProps {
   branch: Branch;
@@ -99,20 +101,26 @@ export function BranchDetailModal({ branch, onClose, onUpdated, onDeleted, onOpe
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm(`ยืนยันการลบสาขา ${branch.name} (${branch.code}) หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้`)) {
-      return;
-    }
+  const { showToast } = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
     try {
       const res = await fetch(`/api/branches/${branch.id}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || 'ไม่สามารถลบสาขาได้');
+        showToast(err.error || 'ไม่สามารถลบสาขาได้', 'error');
       } else {
+        showToast(`✓ ลบสาขา ${branch.name} เรียบร้อยแล้ว`, 'success');
+        setShowDeleteConfirm(false);
         onDeleted();
       }
     } catch (e) {
-      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -302,7 +310,7 @@ export function BranchDetailModal({ branch, onClose, onUpdated, onDeleted, onOpe
                 {currentRole === 'MASTER' ? (
                   <button
                     type="button"
-                    onClick={handleDelete}
+                    onClick={() => setShowDeleteConfirm(true)}
                     className="flex items-center gap-1 text-red-600 hover:text-red-700 text-xs font-bold transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -388,6 +396,19 @@ export function BranchDetailModal({ branch, onClose, onUpdated, onDeleted, onOpe
           )}
         </div>
       </div>
+
+      {/* Delete Branch Confirmation Modal */}
+      <CancelJobConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleConfirmDelete}
+        isLoading={isDeleting}
+        title="ยืนยันการลบสาขา"
+        subtitle={`คุณกำลังจะดำเนินการลบสาขา ${branch.name}`}
+        jobNumber={branch.code}
+        warningMessage="การลบสาขาจะไม่สามารถย้อนกลับได้ และอาจส่งผลกระทบต่อประวัติการทำงานของสาขานี้"
+        confirmButtonText="ยืนยันลบสาขา"
+      />
     </div>
   );
 }

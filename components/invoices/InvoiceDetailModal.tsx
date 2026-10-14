@@ -461,7 +461,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                           <td className="py-2 px-2 text-right">
                             <span
                               className={`font-mono font-bold ${
-                                isCancelled ? 'line-through text-gray-400' : 'text-gray-900'
+                                isCancelled ? 'text-gray-400' : 'text-gray-900'
                               }`}
                             >
                               ฿{v.unitPrice.toLocaleString()}
@@ -537,7 +537,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                           </span>
                           <span
                             className={`font-mono font-bold ${
-                              isCancelled ? 'line-through text-gray-400' : 'text-gray-900'
+                              isCancelled ? 'text-gray-400' : 'text-gray-900'
                             }`}
                           >
                             {isCancelled ? 'ไม่คิดเงิน' : `฿${v.unitPrice.toLocaleString()}`}

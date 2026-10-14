@@ -15,7 +15,7 @@ import {
   getBranchDefaultCoords,
   SlideCalculationResult,
 } from '@/lib/vehicle-slide-rates';
-import { SlideConfirmModal, SlideSuccessModal, SupplierSelector } from '@/components/jobs';
+import { SlideConfirmModal, SlideSuccessModal, CancelJobConfirmModal, SupplierSelector } from '@/components/jobs';
 import dynamic from 'next/dynamic';
 import { 
   Truck, 
@@ -97,9 +97,10 @@ export default function CreateVehicleSlidePage() {
   }, [availableBranches, selectedOriginBranchId, currentRole]);
 
   // State & Handler for cancelling busy vehicle order (if not verified by supplier yet)
-  const [cancellingVin, setCancellingVin] = useState<string | null>(null);
+  const [vehicleToCancel, setVehicleToCancel] = useState<(typeof vehicles)[0] | null>(null);
+  const [isCancellingBusyJob, setIsCancellingBusyJob] = useState(false);
 
-  const handleCancelBusyVehicle = async (e: React.MouseEvent, vehicle: (typeof vehicles)[0]) => {
+  const handleOpenCancelModal = (e: React.MouseEvent, vehicle: (typeof vehicles)[0]) => {
     e.stopPropagation();
     const busyJob = vehicle.activeJob;
     if (!busyJob) return;
@@ -109,23 +110,29 @@ export default function CreateVehicleSlidePage() {
       return;
     }
 
-    if (!confirm(`ต้องการยกเลิกคำสั่งงาน ${busyJob.jobNumber} สำหรับรถคันนี้ (VIN: ${vehicle.vin}) ใช่หรือไม่?\n\nเมื่อยกเลิกแล้ว รถจะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที`)) {
-      return;
-    }
+    setVehicleToCancel(vehicle);
+  };
 
-    setCancellingVin(vehicle.vin);
+  const handleConfirmCancelBusyJob = async () => {
+    if (!vehicleToCancel) return;
+    const busyJob = vehicleToCancel.activeJob;
+    if (!busyJob) return;
+
+    setIsCancellingBusyJob(true);
     try {
       if (busyJob.itemId) {
         const res = await updateCarWashItemStatus(busyJob.jobId, busyJob.itemId, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
         if (res) {
-          showToast(`✓ ยกเลิกงานรถคัน ${vehicle.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+          showToast(`✓ ยกเลิกงานรถคัน ${vehicleToCancel.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+          setVehicleToCancel(null);
         } else {
           showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
         }
       } else {
         const res = await updateJobStatus(busyJob.jobId, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
         if (res.success) {
-          showToast(`✓ ยกเลิกงานรถคัน ${vehicle.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+          showToast(`✓ ยกเลิกงานรถคัน ${vehicleToCancel.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+          setVehicleToCancel(null);
         } else {
           showToast(res.error || 'ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
         }
@@ -133,7 +140,7 @@ export default function CreateVehicleSlidePage() {
     } catch {
       showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
     } finally {
-      setCancellingVin(null);
+      setIsCancellingBusyJob(false);
     }
   };
 
@@ -640,12 +647,12 @@ export default function CreateVehicleSlidePage() {
                               busyJob.canCancel !== false && !busyJob.verifiedAt ? (
                                 <button
                                   type="button"
-                                  onClick={(e) => handleCancelBusyVehicle(e, v)}
-                                  disabled={cancellingVin === v.vin}
+                                  onClick={(e) => handleOpenCancelModal(e, v)}
+                                  disabled={isCancellingBusyJob && vehicleToCancel?.vin === v.vin}
                                   className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 hover:bg-red-200 text-red-700 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
                                   title="ยกเลิกคำสั่งงานสำหรับรถคันนี้ (เนื่องจาก Supplier ยังไม่ได้ยืนยันตัวรถ)"
                                 >
-                                  {cancellingVin === v.vin ? (
+                                  {isCancellingBusyJob && vehicleToCancel?.vin === v.vin ? (
                                     <Loader2 className="w-2.5 h-2.5 animate-spin" />
                                   ) : (
                                     <X className="w-2.5 h-2.5" />
@@ -1259,6 +1266,20 @@ export default function CreateVehicleSlidePage() {
               initialLat: customDest?.lat ?? originPoint?.lat,
               initialLng: customDest?.lng ?? originPoint?.lng,
             })}
+      />
+
+      {/* Cancel Busy Vehicle Modal */}
+      <CancelJobConfirmModal
+        isOpen={Boolean(vehicleToCancel)}
+        onClose={() => setVehicleToCancel(null)}
+        onConfirm={handleConfirmCancelBusyJob}
+        isLoading={isCancellingBusyJob}
+        jobNumber={vehicleToCancel?.activeJob?.jobNumber}
+        vin={vehicleToCancel?.vin}
+        vehicleModel={vehicleToCancel?.model}
+        vehicleColor={vehicleToCancel?.color}
+        licensePlate={vehicleToCancel?.licensePlate}
+        warningMessage="เมื่อยกเลิกแล้ว รถจะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที"
       />
     </div>
   );

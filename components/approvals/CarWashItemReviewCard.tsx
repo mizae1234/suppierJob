@@ -82,7 +82,7 @@ export function CarWashItemReviewCard({
         </span>
 
         <span className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-white/95 backdrop-blur-md text-[9px] font-black font-mono shadow-xs ${
-          isItemCancelled ? 'text-gray-400 line-through' : 'text-[#0f5238]'
+          isItemCancelled ? 'text-gray-400' : 'text-[#0f5238]'
         }`}>
           ฿{item.unitPrice.toLocaleString()}
         </span>

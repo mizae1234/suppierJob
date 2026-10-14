@@ -445,7 +445,7 @@ function SupplierJobsPageContent() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <span className={`text-sm font-mono ${card.itemStatus === 'CANCELLED' ? 'line-through text-gray-400 text-xs' : 'font-black'}`} style={card.itemStatus !== 'CANCELLED' ? { color: theme.primary } : undefined}>
+            <span className={`text-sm font-mono ${card.itemStatus === 'CANCELLED' ? 'text-gray-400 text-xs' : 'font-black'}`} style={card.itemStatus !== 'CANCELLED' ? { color: theme.primary } : undefined}>
               ฿{card.unitPrice.toLocaleString()}
             </span>
             {card.itemStatus === 'CANCELLED' && (

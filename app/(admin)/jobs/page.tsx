@@ -16,6 +16,7 @@ import {
   DateRangePreset,
   getSlideDirection,
 } from '@/lib/job-utils';
+import { useToast } from '@/components/ui/Toast';
 import {
   JobFilters,
   JobTable,
@@ -54,6 +55,7 @@ function JobsContent() {
     branches,
     vehicles,
   } = useApp();
+  const { showToast } = useToast();
   const theme = useTheme();
 
   // View Mode: Table vs Kanban (default to KANBAN)
@@ -253,7 +255,7 @@ function JobsContent() {
 
     const res = await updateJobStatus(jobId, 'APPROVED', { approvedBy: approvedByLabel || undefined });
     if (res && !res.success) {
-      alert(res.error || 'อนุมัติไม่สำเร็จ');
+      showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
       return;
     }
 

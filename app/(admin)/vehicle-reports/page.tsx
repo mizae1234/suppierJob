@@ -560,7 +560,7 @@ function VehicleAccordion({
                   return (
                     <tr key={r.id} className={`transition-colors ${isCancelled ? 'bg-red-50/30' : 'hover:bg-white'}`}>
                       <td className="py-2.5 px-3 md:px-4">
-                        <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                           {r.jobNumber}
                         </span>
                       </td>
@@ -588,7 +588,7 @@ function VehicleAccordion({
                         </span>
                       </td>
                       <td className="py-2.5 px-3 md:px-4 text-right">
-                        <span className={`font-mono font-bold ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                        <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                           ฿{r.unitPrice.toLocaleString()}
                         </span>
                       </td>

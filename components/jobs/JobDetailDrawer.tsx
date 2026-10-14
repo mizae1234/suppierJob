@@ -8,6 +8,7 @@ import { getSlideDirection, getJobTotalCost } from '@/lib/job-utils';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { STATUS_MAP, SAMPLE_PHOTOS } from './constants';
 import { useToast } from '@/components/ui/Toast';
+import { CancelJobConfirmModal } from './CancelJobConfirmModal';
 import {
   AlertCircle,
   AlertTriangle,
@@ -73,6 +74,13 @@ export function JobDetailDrawer({
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [isCancellingJob, setIsCancellingJob] = useState(false);
   const [cancellingItemId, setCancellingItemId] = useState<string | null>(null);
+  // Cancel Job / Item modal state
+  const [cancelModalState, setCancelModalState] = useState<{
+    isOpen: boolean;
+    type: 'JOB' | 'ITEM';
+    item?: NonNullable<Job['carWashItems']>[0];
+  }>({ isOpen: false, type: 'JOB' });
+  const [showSubstituteModal, setShowSubstituteModal] = useState(false);
 
   const handleCopyText = (text: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -101,7 +109,7 @@ export function JobDetailDrawer({
   const activeJob = jobs.find(j => j.id === job.id) || job;
 
   // Handlers for Admin / Branch cancelling job or single vehicle item
-  const handleCancelEntireJob = async () => {
+  const handleOpenCancelEntireJob = () => {
     if (!activeJob) return;
 
     if (activeJob.verifiedAt || activeJob.carWashItems?.some(i => i.verifiedAt)) {
@@ -109,27 +117,10 @@ export function JobDetailDrawer({
       return;
     }
 
-    if (!confirm(`ต้องการยกเลิกใบงาน ${activeJob.jobNumber} ใช่หรือไม่?\n\nเมื่อยกเลิกแล้ว รถทุกคันในใบงานนี้จะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที`)) {
-      return;
-    }
-
-    setIsCancellingJob(true);
-    try {
-      const res = await updateJobStatus(activeJob.id, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
-      if (res.success) {
-        showToast(`✓ ยกเลิกใบงาน ${activeJob.jobNumber} สำเร็จ — ปลดล็อครถทั้งหมดแล้ว`, 'success');
-        onClose();
-      } else {
-        showToast(res.error || 'ไม่สามารถยกเลิกใบงานได้', 'error');
-      }
-    } catch {
-      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
-    } finally {
-      setIsCancellingJob(false);
-    }
+    setCancelModalState({ isOpen: true, type: 'JOB' });
   };
 
-  const handleCancelSingleItem = async (item: NonNullable<Job['carWashItems']>[0]) => {
+  const handleOpenCancelSingleItem = (item: NonNullable<Job['carWashItems']>[0]) => {
     if (!activeJob) return;
 
     if (item.verifiedAt) {
@@ -137,22 +128,44 @@ export function JobDetailDrawer({
       return;
     }
 
-    if (!confirm(`ต้องการยกเลิกคำสั่งงานสำหรับรถคันนี้ (VIN: ${item.vin}) ใช่หรือไม่?\n\nเมื่อยกเลิกแล้ว รถคันนี้จะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที`)) {
-      return;
-    }
+    setCancelModalState({ isOpen: true, type: 'ITEM', item });
+  };
 
-    setCancellingItemId(item.id);
-    try {
-      const res = await updateCarWashItemStatus(activeJob.id, item.id, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
-      if (res) {
-        showToast(`✓ ยกเลิกงานรถคัน ${item.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
-      } else {
-        showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
+  const handleConfirmCancel = async () => {
+    if (!activeJob) return;
+
+    if (cancelModalState.type === 'JOB') {
+      setIsCancellingJob(true);
+      try {
+        const res = await updateJobStatus(activeJob.id, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
+        if (res.success) {
+          showToast(`✓ ยกเลิกใบงาน ${activeJob.jobNumber} สำเร็จ — ปลดล็อครถทั้งหมดแล้ว`, 'success');
+          setCancelModalState({ isOpen: false, type: 'JOB' });
+          onClose();
+        } else {
+          showToast(res.error || 'ไม่สามารถยกเลิกใบงานได้', 'error');
+        }
+      } catch {
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+      } finally {
+        setIsCancellingJob(false);
       }
-    } catch {
-      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
-    } finally {
-      setCancellingItemId(null);
+    } else if (cancelModalState.type === 'ITEM' && cancelModalState.item) {
+      const item = cancelModalState.item;
+      setCancellingItemId(item.id);
+      try {
+        const res = await updateCarWashItemStatus(activeJob.id, item.id, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
+        if (res) {
+          showToast(`✓ ยกเลิกงานรถคัน ${item.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+          setCancelModalState({ isOpen: false, type: 'ITEM' });
+        } else {
+          showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
+        }
+      } catch {
+        showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+      } finally {
+        setCancellingItemId(null);
+      }
     }
   };
 
@@ -322,12 +335,12 @@ export function JobDetailDrawer({
                         </span>
                         <div className="flex items-baseline justify-end gap-1.5">
                           {isJobCancelled && originalCost > 0 && (
-                            <span className="text-xs text-gray-400 line-through font-mono">
+                            <span className="text-xs text-gray-400 font-mono">
                               ฿{originalCost.toLocaleString()}
                             </span>
                           )}
                           {hasCancelledWash && originalCost > effectiveCost && (
-                            <span className="text-xs text-gray-400 line-through font-mono">
+                            <span className="text-xs text-gray-400 font-mono">
                               ฿{originalCost.toLocaleString()}
                             </span>
                           )}
@@ -513,7 +526,7 @@ export function JobDetailDrawer({
                             {/* VIN + Copy */}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`font-mono font-bold text-[11px] ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.vin}</span>
+                                <span className={`font-mono font-bold text-[11px] ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>{item.vin}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleCopyText(item.vin)}
@@ -522,7 +535,7 @@ export function JobDetailDrawer({
                                   {copiedText === item.vin ? <CheckCheck className="w-3 h-3" style={{ color: theme.iconColor }} /> : <Copy className="w-3 h-3" />}
                                 </button>
                                 {item.licensePlate && (
-                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isCancelled ? 'line-through bg-gray-50 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${isCancelled ? 'bg-gray-50 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
                                     {item.licensePlate}
                                   </span>
                                 )}
@@ -548,7 +561,7 @@ export function JobDetailDrawer({
                                 !isVerified ? (
                                   <button
                                     type="button"
-                                    onClick={() => handleCancelSingleItem(item)}
+                                    onClick={() => handleOpenCancelSingleItem(item)}
                                     disabled={cancellingItemId === item.id}
                                     className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-50 hover:bg-red-100 text-red-700 transition-colors flex items-center gap-1 border border-red-200 cursor-pointer disabled:opacity-50"
                                     title="ยกเลิกคำสั่งสำหรับรถคันนี้ (เนื่องจาก Supplier ยังไม่ยืนยันตัวรถ)"
@@ -570,7 +583,7 @@ export function JobDetailDrawer({
 
                             {/* Price */}
                             <div className="text-right shrink-0">
-                              <span className={`font-mono ${isCancelled ? 'line-through text-gray-400 text-[11px]' : 'font-bold text-[12px]'}`} style={!isCancelled ? { color: theme.textPrimary } : undefined}>
+                              <span className={`font-mono ${isCancelled ? 'text-gray-400 text-[11px]' : 'font-bold text-[12px]'}`} style={!isCancelled ? { color: theme.textPrimary } : undefined}>
                                 ฿{item.unitPrice.toLocaleString()}
                               </span>
                               {isCancelled && (
@@ -602,7 +615,7 @@ export function JobDetailDrawer({
                           </span>
                           <div className="flex items-baseline gap-2">
                             {hasCancelled && (
-                              <span className="text-gray-400 line-through text-[10px] font-mono">
+                              <span className="text-gray-400 text-[10px] font-mono">
                                 ฿{totalOriginal.toLocaleString()}
                               </span>
                             )}
@@ -692,7 +705,7 @@ export function JobDetailDrawer({
                             </div>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`font-mono font-bold text-sm ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                <span className={`font-mono font-bold text-sm ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                                   {activeJob.vin || '-'}
                                 </span>
                                 {activeJob.vin && (
@@ -707,7 +720,7 @@ export function JobDetailDrawer({
                                 )}
                                 {vPlate ? (
                                   <span className={`px-2 py-0.5 rounded-md text-xs font-bold ${
-                                    isCancelled ? 'bg-gray-100 text-gray-400 line-through' : 'bg-white text-gray-800 border border-gray-200 shadow-2xs'
+                                    isCancelled ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-800 border border-gray-200 shadow-2xs'
                                   }`}>
                                     {vPlate}
                                   </span>
@@ -736,7 +749,7 @@ export function JobDetailDrawer({
                             <div className="flex items-baseline gap-1.5">
                               {isCancelled ? (
                                 <>
-                                  <span className="text-gray-400 line-through text-xs font-mono">
+                                  <span className="text-gray-400 text-xs font-mono">
                                     ฿{(activeJob.estimatedCost || 0).toLocaleString()}
                                   </span>
                                   <span className="text-sm font-bold text-red-600 font-mono">฿0</span>
@@ -1354,7 +1367,7 @@ export function JobDetailDrawer({
                                 <React.Fragment key={item.id}>
                                   <tr>
                                     <td className="text-center">{idx + 1}</td>
-                                    <td style={{ fontFamily: 'monospace', fontWeight: 700, textDecoration: isItemCancelled ? 'line-through' : 'none' }}>
+                                    <td style={{ fontFamily: 'monospace', fontWeight: 700, textDecoration: 'none' }}>
                                       {item.vin}
                                     </td>
                                     <td>{item.vehicleModel} {item.vehicleColor ? `(${item.vehicleColor})` : ''}</td>
@@ -1435,7 +1448,7 @@ export function JobDetailDrawer({
                         <tbody>
                           <tr>
                             <td className="text-center">1</td>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 700, textDecoration: isJobCancelled ? 'line-through' : 'none' }}>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 700, textDecoration: 'none' }}>
                               {activeJob.vin || '-'}
                             </td>
                             <td>{vModel} {vColor ? `(${vColor})` : ''}</td>
@@ -1528,7 +1541,7 @@ export function JobDetailDrawer({
                     !(activeJob.carWashItems && activeJob.carWashItems.some(i => i.verifiedAt)) && (
                       <button
                         type="button"
-                        onClick={handleCancelEntireJob}
+                        onClick={handleOpenCancelEntireJob}
                         disabled={isCancellingJob}
                         className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 transition-colors cursor-pointer disabled:opacity-50"
                         title="ยกเลิกคำสั่งงานทั้งหมด (เนื่องจาก Supplier ยังไม่ได้ยืนยันตัวรถ)"
@@ -1587,11 +1600,7 @@ export function JobDetailDrawer({
                         ) : isOrigin ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm(`คุณกำลังจะอนุมัติแทนสาขาปลายทาง (${activeJob.destBranchName || 'ปลายทาง'}) ยืนยันหรือไม่?`)) {
-                                onApprove(activeJob.id);
-                              }
-                            }}
+                            onClick={() => setShowSubstituteModal(true)}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-sky-700 hover:bg-sky-800 shadow-xs transition-colors"
                             title="อนุมัติแทนสาขาปลายทาง"
                           >
@@ -1633,6 +1642,45 @@ export function JobDetailDrawer({
               </div>
             </div>
           </div>
+
+          {/* Cancel Job / Single Item Modal */}
+          <CancelJobConfirmModal
+            isOpen={cancelModalState.isOpen}
+            onClose={() => setCancelModalState({ isOpen: false, type: 'JOB' })}
+            onConfirm={handleConfirmCancel}
+            isLoading={isCancellingJob || Boolean(cancellingItemId)}
+            title={cancelModalState.type === 'JOB' ? 'ยืนยันการยกเลิกใบงาน' : 'ยืนยันการยกเลิกคำสั่งสำหรับรถคันนี้'}
+            subtitle={
+              cancelModalState.type === 'JOB'
+                ? 'การยกเลิกใบงานจะมีผลกับรถทุกคันในใบสั่งงานนี้'
+                : 'การยกเลิกจะมีผลเฉพาะรถคันที่เลือกเท่านั้น'
+            }
+            jobNumber={activeJob.jobNumber}
+            vin={cancelModalState.type === 'ITEM' ? cancelModalState.item?.vin : undefined}
+            vehicleModel={cancelModalState.type === 'ITEM' ? cancelModalState.item?.vehicleModel : undefined}
+            vehicleColor={cancelModalState.type === 'ITEM' ? cancelModalState.item?.vehicleColor : undefined}
+            licensePlate={cancelModalState.type === 'ITEM' ? cancelModalState.item?.licensePlate : undefined}
+            warningMessage={
+              cancelModalState.type === 'JOB'
+                ? 'เมื่อยกเลิกแล้ว รถทุกคันในใบงานนี้จะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที'
+                : 'เมื่อยกเลิกแล้ว รถคันนี้จะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที'
+            }
+          />
+
+          {/* Substitute Approve Modal */}
+          <CancelJobConfirmModal
+            isOpen={showSubstituteModal}
+            onClose={() => setShowSubstituteModal(false)}
+            onConfirm={() => {
+              setShowSubstituteModal(false);
+              onApprove(activeJob.id);
+            }}
+            title="ยืนยันการอนุมัติแทนสาขาปลายทาง"
+            subtitle={`คุณกำลังจะดำเนินการอนุมัติงานแทน ${activeJob.destBranchName || 'สาขาปลายทาง'}`}
+            jobNumber={activeJob.jobNumber}
+            warningMessage="กรุณาตรวจสอบว่าได้รับการประสานงานหรือยืนยันความถูกต้องจากสาขาปลายทางเรียบร้อยแล้ว"
+            confirmButtonText="ยืนยันอนุมัติแทนปลายทาง"
+          />
         </div>
 
   );

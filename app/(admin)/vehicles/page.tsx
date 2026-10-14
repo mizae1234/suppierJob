@@ -345,7 +345,7 @@ export default function VehicleStockPage() {
 
                       return (
                         <div className="text-right">
-                          <span className={`font-bold text-sm ${isCancelled ? 'line-through text-gray-400' : 'text-[#0f5238]'}`}>
+                          <span className={`font-bold text-sm ${isCancelled ? 'text-gray-400' : 'text-[#0f5238]'}`}>
                             ฿{cost.toLocaleString()}
                           </span>
                           {isCancelled && (

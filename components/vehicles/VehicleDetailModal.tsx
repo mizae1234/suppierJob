@@ -173,7 +173,7 @@ export function VehicleDetailModal({
                   <tr key={r.id} className={isCancelled ? 'bg-red-50/30' : ''}>
                     <td className="py-2 px-2 text-gray-500">{idx + 1}</td>
                     <td className="py-2 px-2">
-                      <span className={`font-mono font-bold ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                      <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                         {r.jobNumber}
                       </span>
                     </td>
@@ -192,7 +192,7 @@ export function VehicleDetailModal({
                       </span>
                     </td>
                     <td className="py-2 px-2 text-right">
-                      <span className={`font-mono font-bold ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                      <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
                         ฿{r.unitPrice.toLocaleString()}
                       </span>
                     </td>

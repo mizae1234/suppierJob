@@ -19,6 +19,7 @@ import {
   Smartphone,
   ArrowRight
 } from 'lucide-react';
+import { CancelJobConfirmModal } from '@/components/jobs';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -38,13 +39,13 @@ export default function SettingsPage() {
   } = useApp();
 
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
 
-  const handleReset = () => {
-    if (confirm('คุณต้องการรีเซ็ตข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้นใช่หรือไม่?')) {
-      resetToDefaultData();
-      setResetSuccess(true);
-      setTimeout(() => setResetSuccess(false), 3000);
-    }
+  const handleConfirmReset = () => {
+    resetToDefaultData();
+    setShowResetConfirmModal(false);
+    setResetSuccess(true);
+    setTimeout(() => setResetSuccess(false), 3000);
   };
 
   return (
@@ -226,13 +227,24 @@ DATABASE_URL=&quot;sqlserver://localhost:1433;database=SupplierJobDB;user=sa;pas
         </div>
 
         <button
-          onClick={handleReset}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors shrink-0"
+          onClick={() => setShowResetConfirmModal(true)}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors shrink-0 cursor-pointer"
         >
           <RotateCcw className="w-4 h-4" />
           <span>รีเซ็ตข้อมูลเริ่มต้น</span>
         </button>
       </div>
+
+      {/* Reset Confirmation Modal */}
+      <CancelJobConfirmModal
+        isOpen={showResetConfirmModal}
+        onClose={() => setShowResetConfirmModal(false)}
+        onConfirm={handleConfirmReset}
+        title="ยืนยันการรีเซ็ตข้อมูลระบบ"
+        subtitle="คุณกำลังจะรีเซ็ตข้อมูลระบบทั้งหมดกลับเป็นค่าเริ่มต้น"
+        warningMessage="ข้อมูลตัวอย่างและงานทั้งหมดจะถูกคืนค่ากลับเป็นค่าเริ่มต้น การกระทำนี้ไม่สามารถย้อนกลับได้"
+        confirmButtonText="ยืนยันรีเซ็ตข้อมูล"
+      />
     </div>
   );
 }
