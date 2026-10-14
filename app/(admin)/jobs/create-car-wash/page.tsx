@@ -21,6 +21,7 @@ import {
   Store, 
   Calendar, 
   Check, 
+  CheckCheck,
   Minus,
   Trash2, 
   FileDown, 
@@ -36,6 +37,17 @@ import {
   Truck
 } from 'lucide-react';
 
+export const CAR_WASH_REASONS = [
+  { value: 'รถส่งมอบ', label: '🚗 รถส่งมอบลูกค้า (Delivery)' },
+  { value: 'รถสต็อกรอจำหน่าย', label: '🏢 รถสต็อกรอจำหน่าย / โชว์รูม' },
+  { value: 'รถทดลองขับ', label: '🏎️ รถทดลองขับ (Test Drive)' },
+  { value: 'รถบริการหลังการขาย', label: '🔧 รถบริการหลังการขาย / ตรวจเช็คระยะ' },
+  { value: 'รถย้ายสาขา', label: '🚚 รถย้ายสาขา / ขนย้ายสต็อก' },
+  { value: 'รถใช้งานบริษัท', label: '👔 รถผู้บริหาร / รถใช้งานบริษัท' },
+  { value: 'ล้างทำความสะอาดทั่วไป', label: '✨ ล้างทำความสะอาดทั่วไป' },
+  { value: 'OTHER', label: '📝 อื่นๆ (ระบุเพิ่มเติม...)' },
+];
+
 export default function CreateCarWashPage() {
   const router = useRouter();
   const { 
@@ -50,7 +62,30 @@ export default function CreateCarWashPage() {
     createCarWashJob 
   } = useApp();
   const { user: authUser } = useAuth();
+  const { showToast } = useToast();
   const theme = useTheme();
+
+  // Batch wash reason state
+  const [batchReason, setBatchReason] = useState<string>('รถส่งมอบ');
+  const [batchCustomReason, setBatchCustomReason] = useState<string>('');
+
+  const handleApplyReasonToAll = (customReasonValue?: string) => {
+    if (selectedItems.length === 0) return;
+    const valueToUse = customReasonValue !== undefined 
+      ? customReasonValue 
+      : (batchReason === 'OTHER' 
+          ? (batchCustomReason.trim() ? `อื่นๆ: ${batchCustomReason.trim()}` : 'อื่นๆ') 
+          : batchReason);
+
+    setSelectedItems(prev => prev.map(item => ({
+      ...item,
+      washReason: valueToUse
+    })));
+
+    const matchedReason = CAR_WASH_REASONS.find(r => r.value === valueToUse);
+    const label = matchedReason ? matchedReason.label : valueToUse;
+    showToast(`✓ Apply เหตุผล "${label}" ให้กับรถทั้ง ${selectedItems.length} คันเรียบร้อยแล้ว`, 'success');
+  };
 
   // Wash Suppliers (handles both array and comma-separated string)
   const washSuppliers = useMemo(() => {
@@ -142,6 +177,7 @@ export default function CreateCarWashPage() {
     priceType?: 'FIXED' | 'RANGE';
     minPrice?: number;
     maxPrice?: number;
+    washReason: string;
     remarks: string;
   }
 
@@ -193,7 +229,7 @@ export default function CreateCarWashPage() {
         priceType: 'FIXED' as const,
         minPrice: undefined,
         maxPrice: undefined,
-        defaultRemarks: 'ล้างทำความสะอาดทั่วไป',
+        defaultRemarks: 'รถส่งมอบ',
       };
       setSelectedItems(prev => [
         ...prev,
@@ -208,7 +244,8 @@ export default function CreateCarWashPage() {
           priceType: defaultSvc.priceType,
           minPrice: defaultSvc.minPrice,
           maxPrice: defaultSvc.maxPrice,
-          remarks: defaultSvc.defaultRemarks || '',
+          washReason: 'รถส่งมอบ',
+          remarks: '',
         }
       ]);
     }
@@ -226,9 +263,6 @@ export default function CreateCarWashPage() {
           updated.priceType = matched.priceType;
           updated.minPrice = matched.minPrice;
           updated.maxPrice = matched.maxPrice;
-          if (!updated.remarks || updated.remarks === 'ล้างทำความสะอาดทั่วไป') {
-            updated.remarks = matched.defaultRemarks || '';
-          }
         }
       }
       return updated;
@@ -265,7 +299,7 @@ export default function CreateCarWashPage() {
         priceType: 'FIXED' as const,
         minPrice: undefined,
         maxPrice: undefined,
-        defaultRemarks: 'ล้างทำความสะอาดทั่วไป',
+        defaultRemarks: 'รถส่งมอบ',
       };
       const toAdd: SelectedWashItem[] = selectableVehicles
         .filter(v => !existingVins.has(v.vin))
@@ -280,7 +314,8 @@ export default function CreateCarWashPage() {
           priceType: defaultSvc.priceType,
           minPrice: defaultSvc.minPrice,
           maxPrice: defaultSvc.maxPrice,
-          remarks: defaultSvc.defaultRemarks || '',
+          washReason: 'รถส่งมอบ',
+          remarks: '',
         }));
       setSelectedItems(prev => [...prev, ...toAdd]);
     }
@@ -292,8 +327,6 @@ export default function CreateCarWashPage() {
   }, [selectedItems, washConfig.vatType]);
 
   const totalEstimatedCost = orderFinancials.grandTotal;
-
-  const { showToast } = useToast();
 
   // Form submit - opens alert confirmation modal
   const handleSubmit = (e: React.FormEvent) => {
@@ -321,13 +354,21 @@ export default function CreateCarWashPage() {
         companyCode,
         branchId: selectedBranchId,
         supplierId: selectedSupplierId,
-        items: selectedItems.map(it => ({
-          vin: it.vin,
-          actualWashDate: it.actualWashDate,
-          washType: it.washType,
-          unitPrice: it.unitPrice,
-          remarks: it.remarks,
-        })),
+        items: selectedItems.map(it => {
+          const reasonPart = it.washReason?.trim() || '';
+          const remarkPart = it.remarks?.trim() || '';
+          const combinedRemarks = reasonPart && remarkPart 
+            ? `${reasonPart} • ${remarkPart}` 
+            : (reasonPart || remarkPart);
+
+          return {
+            vin: it.vin,
+            actualWashDate: it.actualWashDate,
+            washType: it.washType,
+            unitPrice: it.unitPrice,
+            remarks: combinedRemarks,
+          };
+        }),
         requestedBy,
         requesterPosition,
         requesterPhone,
@@ -537,7 +578,7 @@ export default function CreateCarWashPage() {
                   <span>รายการและกำหนดวันปฏิบัติงานจริงของแต่ละ VIN</span>
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  ระบุวันที่ล้างจริง ประเภทบริการ และหมายเหตุเฉพาะคัน
+                  ระบุวันที่ล้างจริง ประเภทบริการ เหตุผลการล้าง และหมายเหตุเฉพาะคัน
                 </p>
               </div>
 
@@ -545,6 +586,62 @@ export default function CreateCarWashPage() {
                 รวม {selectedItems.length} คัน
               </span>
             </div>
+
+            {/* Quick Batch Apply Reason Bar */}
+            {selectedItems.length > 0 && (
+              <div className="p-3 sm:px-4 sm:py-3 rounded-xl bg-gradient-to-r from-emerald-50/70 via-slate-50 to-emerald-50/40 border border-emerald-200/70 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <span>Apply เหตุผลให้ทุกคัน</span>
+                      <span className="text-[10px] text-emerald-800 bg-emerald-100/80 font-bold px-1.5 py-0.5 rounded">
+                        {selectedItems.length} คัน
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500">เลือกเหตุผลที่ต้องการ แล้วกดปุ่ม Apply เพื่ออัปเดตรถทุกคันพร้อมกัน</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                  <div className="relative flex-1 sm:w-56">
+                    <select
+                      value={batchReason}
+                      onChange={(e) => setBatchReason(e.target.value)}
+                      className="w-full h-9 px-3 pr-8 rounded-lg border border-gray-300 text-xs font-semibold text-gray-800 bg-white shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] appearance-none cursor-pointer"
+                    >
+                      {CAR_WASH_REASONS.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+
+                  {batchReason === 'OTHER' && (
+                    <input
+                      type="text"
+                      value={batchCustomReason}
+                      onChange={(e) => setBatchCustomReason(e.target.value)}
+                      placeholder="ระบุเหตุผลอื่นๆ..."
+                      className="h-9 px-3 text-xs rounded-lg border border-emerald-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-40"
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyReasonToAll()}
+                    className="h-9 px-3.5 rounded-lg bg-[#0f5238] hover:bg-[#0d452f] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all shrink-0 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    <span>Apply ทั้งหมด</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {selectedItems.length === 0 ? (
               <div className="py-16 text-center text-gray-400 flex flex-col items-center gap-2">
@@ -727,7 +824,73 @@ export default function CreateCarWashPage() {
                           </div>
                         </div>
 
-                        {/* Row 2: Remarks (Full width) */}
+                        {/* Row 2: Wash Reason Dropdown */}
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <span>เหตุผลการล้าง</span>
+                              <span className="text-emerald-700 text-[10px] bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/60 font-medium">
+                                ระบุเหตุผล
+                              </span>
+                            </span>
+                            {selectedItems.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => handleApplyReasonToAll(item.washReason || 'รถส่งมอบ')}
+                                className="text-[11px] font-medium text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                                title="นำเหตุผลของคันนี้ไปใช้กับทุกคัน"
+                              >
+                                <CheckCheck className="w-3.5 h-3.5" />
+                                <span>Apply เหตุผลนี้ให้ทุกคัน</span>
+                              </button>
+                            ) : (
+                              <span className="text-[11px] font-normal text-gray-400">สำหรับแต่ละคัน</span>
+                            )}
+                          </label>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <div className="relative flex-1">
+                              <select
+                                value={
+                                  CAR_WASH_REASONS.some(r => r.value === item.washReason)
+                                    ? item.washReason
+                                    : (item.washReason?.startsWith('อื่นๆ') || item.washReason ? 'OTHER' : 'รถส่งมอบ')
+                                }
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === 'OTHER') {
+                                    updateItemField(item.vin, 'washReason', 'อื่นๆ: ');
+                                  } else {
+                                    updateItemField(item.vin, 'washReason', val);
+                                  }
+                                }}
+                                className="w-full h-10 px-3.5 pr-9 rounded-xl border border-gray-200 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all cursor-pointer appearance-none shadow-2xs hover:border-gray-300"
+                              >
+                                {CAR_WASH_REASONS.map(r => (
+                                  <option key={r.value} value={r.value}>
+                                    {r.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                <ChevronDown className="w-4 h-4" />
+                              </div>
+                            </div>
+
+                            {/* Show custom text input when 'OTHER' or custom text is selected */}
+                            {(item.washReason?.startsWith('อื่นๆ') || (!CAR_WASH_REASONS.some(r => r.value === item.washReason) && Boolean(item.washReason))) && (
+                              <input
+                                type="text"
+                                value={item.washReason.replace(/^อื่นๆ:\s*/, '')}
+                                onChange={(e) => updateItemField(item.vin, 'washReason', `อื่นๆ: ${e.target.value}`)}
+                                placeholder="ระบุเหตุผลการล้างเพิ่มเติม..."
+                                autoFocus
+                                className="w-full sm:w-1/2 h-10 px-3.5 rounded-xl border border-emerald-300 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-emerald-50/20 transition-all shadow-2xs"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Row 3: Remarks / จุดระวังเฉพาะคัน (ไว้ใต้เหตุผล) */}
                         <div>
                           <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center justify-between">
                             <span>หมายเหตุ / จุดระวังเฉพาะคัน</span>
@@ -738,7 +901,7 @@ export default function CreateCarWashPage() {
                             value={item.remarks}
                             onChange={(e) => updateItemField(item.vin, 'remarks', e.target.value)}
                             placeholder={item.washType === 'POLISH_STAINS' ? 'ระบุตำแหน่งรอย เช่น รอยขูดขีดกันชนหน้า, คราบยางมะตอย...' : 'ระบุรายละเอียดเพิ่มเติม หรือจุดที่ต้องการให้เน้นเป็นพิเศษ (ถ้ามี)...'}
-                            className="w-full h-10 px-3.5 rounded-xl border border-gray-200 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all"
+                            className="w-full h-10 px-3.5 rounded-xl border border-gray-200 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] bg-white transition-all shadow-2xs hover:border-gray-300"
                           />
                         </div>
                       </div>

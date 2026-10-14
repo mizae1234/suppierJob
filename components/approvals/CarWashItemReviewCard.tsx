@@ -43,7 +43,7 @@ export function CarWashItemReviewCard({
   const itemEvidences = (job.evidences || []).filter(e => e.vin === item.vin);
   const hero = itemEvidences[0];
   const canReview = isItemCompleted && (job.status === 'WAITING_APPROVAL' || job.status === 'IN_PROGRESS');
-  const remarkLabel = isItemRejected ? 'ตีกลับ' : isItemCancelled ? 'ปฏิเสธ' : 'หมายเหตุ';
+  const remarkLabel = isItemRejected ? 'ตีกลับ' : isItemCancelled ? 'ปฏิเสธ' : (isCarWash ? 'เหตุผลการล้าง' : 'หมายเหตุ');
 
   return (
     <div
