@@ -4,9 +4,8 @@ import { requireAuth } from '@/lib/auth';
 import { uploadBase64Evidence } from '@/lib/s3';
 import { rateLimit } from '@/lib/rate-limit';
 import { logAuditFromUser } from '@/lib/audit-log';
-import { matchVehicleIdentifier, hasUsablePlate } from '@/lib/vehicle-verify';
 
-const MAX_ATTEMPTS = 10;
+const MAX_ATTEMPTS = 20;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 
 function badRequest(error: string, status = 400) {
@@ -14,11 +13,10 @@ function badRequest(error: string, status = 400) {
 }
 
 /**
- * POST: Supplier ยืนยันตัวรถก่อนเริ่มงาน
- * body: { itemId?: string, value: string, photoUrl: string (data:image/...) }
+ * POST: Supplier ยืนยันตัวรถก่อนเริ่มงานด้วยรูปถ่าย
+ * body: { itemId?: string, photoUrl: string (data:image/...) }
  * - itemId มี → ยืนยันรายคัน (CarWashItem)
  * - itemId ไม่มี → ยืนยันระดับใบงาน (Vehicle Slide)
- * ระบบตรวจค่าฝั่ง server เท่านั้น และไม่ส่งค่าที่ถูกต้องกลับไป
  */
 export async function POST(
   request: NextRequest,
@@ -36,12 +34,9 @@ export async function POST(
     const { id: jobId } = await params;
     const body = await request.json();
     const itemId = typeof body.itemId === 'string' && body.itemId ? body.itemId : null;
-    const value = typeof body.value === 'string' ? body.value.trim() : '';
     const photoUrl = typeof body.photoUrl === 'string' ? body.photoUrl : '';
 
-    if (!value) return badRequest('กรุณากรอก VIN 6 ตัวท้าย');
-    if (value.length > 40) return badRequest('ข้อมูลยาวเกินไป');
-    if (!photoUrl.startsWith('data:image/')) return badRequest('กรุณาถ่ายรูปป้าย VIN เพื่อเป็นหลักฐาน');
+    if (!photoUrl.startsWith('data:image/')) return badRequest('กรุณาถ่ายรูปยืนยันตัวรถเพื่อเป็นหลักฐาน');
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
@@ -71,46 +66,15 @@ export async function POST(
       return NextResponse.json({ success: true, alreadyVerified: true, verifiedAt: alreadyVerified.toISOString() });
     }
 
-    const candidates = item
-      ? [{ vin: item.vin, licensePlate: item.vehicle.licensePlate }]
-      : [
-          ...(job.vehicle ? [{ vin: job.vehicle.vin, licensePlate: job.vehicle.licensePlate }] : []),
-          ...job.carWashItems.map(i => ({ vin: i.vin, licensePlate: i.vehicle.licensePlate })),
-        ];
-    if (candidates.length === 0) return badRequest('ใบงานนี้ไม่มีข้อมูลรถให้ยืนยัน');
+    const matchedVin = item ? item.vin : (job.vehicle?.vin || job.carWashItems[0]?.vin || job.vin || '');
+    if (!matchedVin) return badRequest('ใบงานนี้ไม่มีข้อมูลรถให้ยืนยัน');
 
-    // ─── Brute-force guard ──
+    // ─── Rate limit guard ──
     const limit = rateLimit(`verify:${user.id}:${itemId || jobId}`, MAX_ATTEMPTS, ATTEMPT_WINDOW_MS);
     if (!limit.allowed) {
       return NextResponse.json(
-        { error: `กรอกผิดหลายครั้งเกินไป กรุณารอ ${Math.ceil(limit.retryAfterSec / 60)} นาที แล้วลองใหม่` },
+        { error: `ทำรายการบ่อยเกินไป กรุณารอ ${Math.ceil(limit.retryAfterSec / 60)} นาที แล้วลองใหม่` },
         { status: 429, headers: { 'Retry-After': String(limit.retryAfterSec) } }
-      );
-    }
-
-    let method: 'VIN' | 'PLATE' | null = null;
-    let matchedVin = '';
-    for (const c of candidates) {
-      const m = matchVehicleIdentifier(value, c);
-      if (m) { method = m; matchedVin = c.vin; break; }
-    }
-
-    if (!method) {
-      const canUsePlate = candidates.some(c => hasUsablePlate(c.licensePlate));
-      await prisma.jobActivity.create({
-        data: {
-          jobId,
-          action: 'VERIFY_FAILED',
-          actor: user.displayName || user.username,
-          actorRole: user.role,
-          itemId: item?.id,
-          vin: item?.vin || job.vin,
-          description: `ยืนยันตัวรถไม่สำเร็จ — ข้อมูลที่กรอกไม่ตรงกับรถในใบงาน`,
-          metadata: JSON.stringify({ input: value.slice(0, 40) }),
-        },
-      });
-      return badRequest(
-        'VIN ไม่ตรงกับรถในใบงาน กรุณาตรวจสอบป้าย VIN บริเวณกระจกหน้าหรือเสาประตูอีกครั้ง'
       );
     }
 
@@ -130,7 +94,6 @@ export async function POST(
     }
 
     const actorName = user.displayName || user.username;
-    const methodLabel = method === 'VIN' ? 'VIN 6 ตัวท้าย' : 'เลขทะเบียน';
     const now = new Date();
 
     await prisma.$transaction(async (tx) => {
@@ -139,7 +102,7 @@ export async function POST(
           jobId,
           vin: matchedVin,
           photoUrl: uploadedUrl,
-          caption: `ยืนยันตัวรถด้วย${methodLabel}`,
+          caption: 'ถ่ายรูปยืนยันตัวรถก่อนเริ่มงาน',
           evidenceType: 'VERIFY',
         },
       });
@@ -147,7 +110,7 @@ export async function POST(
       if (item) {
         await tx.carWashItem.update({
           where: { id: item.id },
-          data: { verifiedAt: now, verifiedBy: actorName, verifyMethod: method },
+          data: { verifiedAt: now, verifiedBy: actorName, verifyMethod: 'PHOTO' },
         });
       } else {
         await tx.job.update({
@@ -164,8 +127,8 @@ export async function POST(
           actorRole: user.role,
           itemId: item?.id,
           vin: matchedVin,
-          description: `Supplier ยืนยันตัวรถ ${matchedVin} ด้วย${methodLabel} พร้อมรูปถ่าย — เริ่มงานได้`,
-          metadata: JSON.stringify({ method }),
+          description: `Supplier ถ่ายรูปยืนยันตัวรถ ${matchedVin} — เริ่มงานได้`,
+          metadata: JSON.stringify({ method: 'PHOTO' }),
         },
       });
     });
@@ -174,14 +137,15 @@ export async function POST(
       action: 'VERIFY_VEHICLE',
       entityType: item ? 'CarWashItem' : 'Job',
       entityId: item?.id || jobId,
-      description: `ยืนยันตัวรถ ${matchedVin} ด้วย${methodLabel} ในใบงาน ${job.jobNumber}`,
-      metadata: { jobId, jobNumber: job.jobNumber, vin: matchedVin, method },
+      description: `ยืนยันตัวรถ ${matchedVin} ด้วยรูปถ่าย ในใบงาน ${job.jobNumber}`,
+      metadata: { jobId, jobNumber: job.jobNumber, vin: matchedVin, method: 'PHOTO' },
       request,
     });
 
-    return NextResponse.json({ success: true, method, verifiedAt: now.toISOString() });
+    return NextResponse.json({ success: true, method: 'PHOTO', verifiedAt: now.toISOString() });
   } catch (error) {
     console.error('POST /api/jobs/[id]/verify error:', error);
     return badRequest('ไม่สามารถยืนยันตัวรถได้ กรุณาลองใหม่', 500);
   }
 }
+

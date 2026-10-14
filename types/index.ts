@@ -97,7 +97,14 @@ export interface Vehicle {
   mileage?: number;
   status: 'AVAILABLE' | 'IN_TRANSIT' | 'IN_WASH' | 'MAINTENANCE';
   /** Unfinished job currently holding this car (null = free to order) */
-  activeJob?: { jobId: string; jobNumber: string; jobType: string } | null;
+  activeJob?: { 
+    jobId: string; 
+    jobNumber: string; 
+    jobType: string;
+    itemId?: string;
+    verifiedAt?: string | null;
+    canCancel?: boolean;
+  } | null;
 }
 
 export interface CarWashItem {

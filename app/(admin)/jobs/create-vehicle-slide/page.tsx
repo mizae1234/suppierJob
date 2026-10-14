@@ -40,7 +40,8 @@ import {
   Check,
   Minus,
   Lock,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 
 // Dynamic import to avoid SSR issues with Leaflet
@@ -59,6 +60,8 @@ export default function CreateVehicleSlidePage() {
     vehicles, 
     createVehicleSlideJob,
     refreshData,
+    updateJobStatus,
+    updateCarWashItemStatus,
   } = useApp();
   const { user: authUser } = useAuth();
 
@@ -92,6 +95,47 @@ export default function CreateVehicleSlidePage() {
       setSelectedVins([]);
     }
   }, [availableBranches, selectedOriginBranchId, currentRole]);
+
+  // State & Handler for cancelling busy vehicle order (if not verified by supplier yet)
+  const [cancellingVin, setCancellingVin] = useState<string | null>(null);
+
+  const handleCancelBusyVehicle = async (e: React.MouseEvent, vehicle: (typeof vehicles)[0]) => {
+    e.stopPropagation();
+    const busyJob = vehicle.activeJob;
+    if (!busyJob) return;
+
+    if (busyJob.verifiedAt) {
+      showToast('ไม่สามารถยกเลิกได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว', 'error');
+      return;
+    }
+
+    if (!confirm(`ต้องการยกเลิกคำสั่งงาน ${busyJob.jobNumber} สำหรับรถคันนี้ (VIN: ${vehicle.vin}) ใช่หรือไม่?\n\nเมื่อยกเลิกแล้ว รถจะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที`)) {
+      return;
+    }
+
+    setCancellingVin(vehicle.vin);
+    try {
+      if (busyJob.itemId) {
+        const res = await updateCarWashItemStatus(busyJob.jobId, busyJob.itemId, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
+        if (res) {
+          showToast(`✓ ยกเลิกงานรถคัน ${vehicle.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+        } else {
+          showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
+        }
+      } else {
+        const res = await updateJobStatus(busyJob.jobId, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
+        if (res.success) {
+          showToast(`✓ ยกเลิกงานรถคัน ${vehicle.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+        } else {
+          showToast(res.error || 'ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
+        }
+      }
+    } catch {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    } finally {
+      setCancellingVin(null);
+    }
+  };
 
   // Vehicles at selected origin branch (busy cars are listed but locked — see activeJob)
   const branchStockVehicles = useMemo(() => {
@@ -573,19 +617,47 @@ export default function CreateVehicleSlidePage() {
 
                         {/* Status tag */}
                         {busyJob ? (
-                          <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/90 border border-amber-200/80 text-amber-800 text-[10px] font-medium flex-wrap">
-                            {isWash ? (
-                              <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
-                            ) : (
-                              <Truck className="w-3 h-3 text-sky-600 shrink-0" />
+                          <div className="mt-2 flex items-center justify-between gap-1.5 flex-wrap">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/90 border border-amber-200/80 text-amber-800 text-[10px] font-medium flex-wrap">
+                              {isWash ? (
+                                <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
+                              ) : (
+                                <Truck className="w-3 h-3 text-sky-600 shrink-0" />
+                              )}
+                              <span className="font-semibold">
+                                ติดงาน{isWash ? 'ล้างรถ' : 'รถสไลด์'}
+                              </span>
+                              <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-200 text-amber-900 text-[10px]">
+                                {busyJob.jobNumber}
+                              </span>
+                              <span className="text-gray-400 text-[9px]">
+                                {busyJob.verifiedAt ? '(ยืนยันตัวรถแล้ว)' : '(รอดำเนินการ)'}
+                              </span>
+                            </div>
+
+                            {/* Cancel button if unverified and admin/master/branch */}
+                            {currentRole !== 'SUPPLIER' && (
+                              busyJob.canCancel !== false && !busyJob.verifiedAt ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleCancelBusyVehicle(e, v)}
+                                  disabled={cancellingVin === v.vin}
+                                  className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 hover:bg-red-200 text-red-700 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                                  title="ยกเลิกคำสั่งงานสำหรับรถคันนี้ (เนื่องจาก Supplier ยังไม่ได้ยืนยันตัวรถ)"
+                                >
+                                  {cancellingVin === v.vin ? (
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                  ) : (
+                                    <X className="w-2.5 h-2.5" />
+                                  )}
+                                  <span>ยกเลิกงานคันนี้</span>
+                                </button>
+                              ) : (
+                                <span className="text-[9px] text-gray-400 italic ml-auto" title="Supplier ถ่ายรูปยืนยันตัวรถแล้ว ไม่สามารถยกเลิกได้">
+                                  เริ่มงานแล้ว
+                                </span>
+                              )
                             )}
-                            <span className="font-semibold">
-                              ติดงาน{isWash ? 'ล้างรถ' : 'รถสไลด์'}
-                            </span>
-                            <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-200 text-amber-900 text-[10px]">
-                              {busyJob.jobNumber}
-                            </span>
-                            <span className="text-gray-400 text-[9px]">(รอดำเนินการ)</span>
                           </div>
                         ) : (
                           <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">

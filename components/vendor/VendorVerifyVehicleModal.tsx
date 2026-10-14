@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Car, Hash } from 'lucide-react';
+import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Car } from 'lucide-react';
 import { WorkModalTarget } from './types';
 import { useTheme } from '@/hooks/useTheme';
 import { useToast } from '@/components/ui/Toast';
@@ -15,17 +15,14 @@ export interface VendorVerifyVehicleModalProps {
 }
 
 /**
- * ขั้นตอนแรกก่อนเริ่มงาน — Supplier ต้องยืนยันว่าอยู่หน้ารถคันที่ถูกต้อง
- * 1) กรอก VIN 6 ตัวท้าย หรือ เลขทะเบียน (ตรวจฝั่ง server เท่านั้น)
- * 2) ถ่ายรูปป้าย VIN / ป้ายทะเบียน เก็บเป็นหลักฐาน (evidenceType = VERIFY)
- * Modal นี้จงใจไม่แสดง VIN / ทะเบียน เพื่อให้ต้องอ่านจากตัวรถจริง
+ * ขั้นตอนแรกก่อนเริ่มงาน — Supplier ต้องถ่ายรูปยืนยันว่าอยู่หน้ารถคันที่ถูกต้อง
+ * ถ่ายรูปตัวรถ / ป้าย VIN / ป้ายทะเบียน เก็บเป็นหลักฐาน (evidenceType = VERIFY)
  */
 export function VendorVerifyVehicleModal({ target, onClose, onVerified }: VendorVerifyVehicleModalProps) {
   const theme = useTheme();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [value, setValue] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,10 +53,8 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
   if (!target) return null;
 
   const isSlide = target.type === 'VEHICLE_SLIDE';
-  const cleanValue = value.replace(/[^0-9A-Za-z]/g, '');
-  const hasValue = cleanValue.length >= 6;
-  const hasPhoto = !!photo;
-  const canSubmit = hasValue && hasPhoto && !isSubmitting;
+  const hasPhoto = Boolean(photo);
+  const canSubmit = hasPhoto && !isSubmitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -69,17 +64,14 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
       const res = await fetch(`/api/jobs/${target.jobId}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId: target.itemId, value: value.trim(), photoUrl: photo }),
+        body: JSON.stringify({ itemId: target.itemId, photoUrl: photo }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
         setError(data.error || 'ยืนยันตัวรถไม่สำเร็จ กรุณาลองใหม่');
         return;
       }
-      showToast(
-        '✅ ยืนยันตัวรถสำเร็จ (VIN) — เริ่มงานได้เลย',
-        'success'
-      );
+      showToast('✅ ยืนยันตัวรถสำเร็จ — เริ่มงานได้เลย', 'success');
       await onVerified(target);
     } catch {
       setError('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่');
@@ -105,10 +97,10 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
                 <div className="flex items-center gap-2 mb-0.5">
                   <h3 className="text-base font-bold text-gray-900 tracking-tight">ยืนยันตัวรถก่อนเริ่มงาน</h3>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
-                    ขั้นตอน 1/2
+                    ถ่ายรูปยืนยัน
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">ตรวจสอบความถูกต้องของรถก่อนเริ่มทำงาน</p>
+                <p className="text-xs text-gray-500">ถ่ายรูปตัวรถเพื่อยืนยันและเริ่มงาน</p>
               </div>
             </div>
             <button
@@ -120,24 +112,34 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             </button>
           </div>
 
-          {/* Vehicle Info Summary Box — Clean & balanced */}
-          <div className="p-3 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
-              <div className="w-9 h-9 rounded-xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center shrink-0 text-emerald-800">
-                <Car className="w-4 h-4" />
+          {/* Vehicle Info Summary Box */}
+          <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
+              <div className="w-10 h-10 rounded-xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center shrink-0 text-emerald-800">
+                <Car className="w-5 h-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                   <span className="text-sm font-bold text-gray-900 truncate">
                     {target.vehicleModel || (isSlide ? 'รถสไลด์ขนส่ง' : 'รถยนต์')}
                   </span>
+                  {target.vehicleColor && (
+                    <span className="text-xs text-gray-500 font-medium">· {target.vehicleColor}</span>
+                  )}
                   <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-[#0f5238] shrink-0">
                     {target.serviceLabel}
                   </span>
                 </div>
-                <p className="text-[11px] text-gray-500 truncate">
-                  {target.vehicleColor ? `${target.vehicleColor} • ` : ''}
-                  <span className="font-mono text-gray-600 font-semibold">#{target.jobNumber}</span>
+                <div className="flex items-center gap-2 text-[11px] font-mono flex-wrap">
+                  <span className="text-gray-900 font-bold">VIN: {target.vin}</span>
+                  {target.licensePlate && (
+                    <span className="px-1.5 py-0.5 bg-white rounded border border-gray-200 text-gray-800 font-bold text-[10px]">
+                      {target.licensePlate}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1 truncate">
+                  <span className="font-semibold text-gray-600">#{target.jobNumber}</span>
                   {target.branchName ? ` • ${target.branchName}` : ''}
                 </p>
               </div>
@@ -148,55 +150,13 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
           </div>
         </div>
 
-        {/* Form Body */}
+        {/* Form Body - Only Photo Upload */}
         <div className="p-4 sm:p-5 flex flex-col gap-4">
-          {/* Step 1: Identifier Input */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="verify-vehicle-input" className="text-xs font-bold text-gray-800 flex items-center gap-1">
-                <Hash className="w-3.5 h-3.5 text-gray-400" />
-                <span>VIN 6 ตัวท้าย</span>
-                <span className="text-red-500">*</span>
-              </label>
-              <span className="text-[10px] text-gray-400">6 หลักสุดท้ายของเลขตัวถัง</span>
-            </div>
-
-            <div className="relative">
-              <input
-                id="verify-vehicle-input"
-                type="text"
-                value={value}
-                onChange={(e) => { setValue(e.target.value.toUpperCase()); setError(null); }}
-                placeholder="เช่น 123456"
-                autoComplete="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                maxLength={17}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold tracking-wide text-gray-900 placeholder:text-gray-400 placeholder:font-normal placeholder:tracking-normal focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-2xs font-mono"
-                style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
-              />
-              {value && (
-                <button
-                  type="button"
-                  onClick={() => setValue('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1 leading-normal">
-              <span>💡 ดูจากป้าย VIN บริเวณกระจกหน้า หรือเสาประตูด้านคนขับ</span>
-            </p>
-          </div>
-
-          {/* Step 2: Photo Upload */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-800 flex items-center gap-1">
                 <Camera className="w-3.5 h-3.5 text-gray-400" />
-                <span>รูปถ่ายป้าย VIN</span>
+                <span>ถ่ายรูปตัวรถ / ป้ายทะเบียน</span>
                 <span className="text-red-500">*</span>
               </label>
               <span className="text-[10px] text-gray-400">1 รูปเพื่อเป็นหลักฐาน</span>
@@ -207,46 +167,51 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             {photo ? (
               <div className="relative rounded-2xl overflow-hidden border border-gray-200 shadow-2xs group">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo} alt="รูปยืนยันตัวรถ" className="w-full max-h-48 object-cover" />
+                <img src={photo} alt="รูปยืนยันตัวรถ" className="w-full max-h-56 object-cover" />
                 <div className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold flex items-center gap-1">
-                  <span>✓ แนบรูปเรียบร้อย</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>รูปพร้อมส่ง</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPhoto(null)}
-                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-red-600 transition-colors cursor-pointer shadow-sm"
+                  className="absolute top-2 right-2 p-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white shadow-xs transition-colors cursor-pointer"
                   title="ลบรูปและถ่ายใหม่"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => openPicker(true)}
-                  className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/70 text-emerald-800 transition-all cursor-pointer active:scale-[0.98] shadow-2xs"
+                  className="flex items-center justify-center gap-2.5 p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/70 text-emerald-800 transition-all cursor-pointer active:scale-[0.98] shadow-2xs"
                 >
-                  <Camera className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <Camera className="w-5 h-5 text-emerald-700 shrink-0" />
                   <div className="text-left">
-                    <p className="text-xs font-bold leading-tight">ถ่ายรูป</p>
-                    <p className="text-[10px] text-emerald-600/80">เปิดกล้อง</p>
+                    <p className="text-sm font-bold leading-tight">ถ่ายรูป</p>
+                    <p className="text-[11px] text-emerald-600/80">เปิดกล้อง</p>
                   </div>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => openPicker(false)}
-                  className="flex items-center justify-center gap-2.5 p-3 rounded-xl border border-gray-200 bg-gray-50/70 hover:bg-gray-100 text-gray-700 transition-all cursor-pointer active:scale-[0.98] shadow-2xs"
+                  className="flex items-center justify-center gap-2.5 p-4 rounded-xl border border-gray-200 bg-gray-50/70 hover:bg-gray-100 text-gray-700 transition-all cursor-pointer active:scale-[0.98] shadow-2xs"
                 >
-                  <ImagePlus className="w-4 h-4 text-gray-500 shrink-0" />
+                  <ImagePlus className="w-5 h-5 text-gray-500 shrink-0" />
                   <div className="text-left">
-                    <p className="text-xs font-bold leading-tight">เลือกรูป</p>
-                    <p className="text-[10px] text-gray-400">จากอัลบั้ม</p>
+                    <p className="text-sm font-bold leading-tight">เลือกรูป</p>
+                    <p className="text-[11px] text-gray-400">จากอัลบั้ม</p>
                   </div>
                 </button>
               </div>
             )}
+
+            <p className="text-[11px] text-gray-500 mt-2 flex items-center gap-1 leading-normal">
+              <span>💡 ถ่ายรูปตัวรถ หรือป้ายทะเบียน/ป้าย VIN เพื่อยืนยันว่าอยู่หน้ารถคันที่ถูกต้อง</span>
+            </p>
           </div>
 
           {/* Error Message */}
@@ -274,17 +239,12 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
             {isSubmitting ? (
               <>
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>กำลังตรวจสอบข้อมูล...</span>
-              </>
-            ) : !hasValue ? (
-              <>
-                <Hash className="w-4 h-4" />
-                <span>กรุณากรอก VIN 6 ตัวท้าย</span>
+                <span>กำลังบันทึกข้อมูล...</span>
               </>
             ) : !hasPhoto ? (
               <>
                 <Camera className="w-4 h-4" />
-                <span>กรุณาถ่ายรูปหรือแนบรูปป้าย</span>
+                <span>กรุณาถ่ายรูปเพื่อยืนยันตัวรถ</span>
               </>
             ) : (
               <>

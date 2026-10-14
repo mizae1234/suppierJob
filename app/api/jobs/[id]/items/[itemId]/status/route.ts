@@ -111,12 +111,26 @@ export async function PATCH(
       );
     }
 
-    // Only cars the supplier has submitted can be approved
-    if (status === 'APPROVED' && item.status !== 'COMPLETED') {
-      return NextResponse.json(
-        { error: 'อนุมัติได้เฉพาะรถที่ Supplier ส่งงานแล้วเท่านั้น' },
-        { status: 400 }
-      );
+    // Cancellation guard: Can only cancel if Supplier hasn't photo-verified the car yet
+    if (status === 'CANCELLED') {
+      if (item.status === 'CANCELLED') {
+        return NextResponse.json(
+          { error: 'รายการนี้ถูกยกเลิกไปแล้ว' },
+          { status: 400 }
+        );
+      }
+      if (item.status === 'APPROVED') {
+        return NextResponse.json(
+          { error: 'รถคันนี้ผ่านการตรวจรับแล้ว ไม่สามารถแก้ไขได้' },
+          { status: 400 }
+        );
+      }
+      if (item.verifiedAt && user.role !== 'MASTER') {
+        return NextResponse.json(
+          { error: 'ไม่สามารถยกเลิกรายการนี้ได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว' },
+          { status: 400 }
+        );
+      }
     }
 
     // ─── Atomic Update with Transaction ──────────────
@@ -129,6 +143,14 @@ export async function PATCH(
           remarks: remarks || item.remarks,
         },
       });
+
+      // When item is cancelled, immediately restore vehicle status to AVAILABLE
+      if (status === 'CANCELLED') {
+        await tx.vehicle.update({
+          where: { vin: item.vin },
+          data: { status: 'AVAILABLE' },
+        });
+      }
 
       // 2. Re-fetch all items to check overall job progress
       const allItems = await tx.carWashItem.findMany({
@@ -264,7 +286,9 @@ export async function PATCH(
         COMPLETED: `Supplier ส่งงานรถคัน ${item.vin} เรียบร้อย (${doneCount}/${totalCount})`,
         APPROVED: `สาขาอนุมัติรถคัน ${item.vin} (อนุมัติแล้ว ${approvedCount}/${totalCount - cancelledCount})`,
         REJECTED: `สาขาตีกลับรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
-        CANCELLED: `Supplier ปฏิเสธรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''} (ปฏิเสธ ${cancelledCount}/${totalCount})`,
+        CANCELLED: user.role === 'SUPPLIER'
+          ? `Supplier ปฏิเสธรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''} (ปฏิเสธ ${cancelledCount}/${totalCount})`
+          : `ยกเลิกคำสั่งงานรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
         PENDING: `รีเซ็ตสถานะรถคัน ${item.vin} กลับเป็นรอดำเนินการ`,
       };
 

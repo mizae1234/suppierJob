@@ -100,11 +100,26 @@ export async function PATCH(
       }
     }
 
-    if (status === 'CANCELLED' && job.status === 'CANCELLED') {
-      return NextResponse.json(
-        { error: 'งานนี้ถูกยกเลิกไปแล้ว' },
-        { status: 400 }
-      );
+    if (status === 'CANCELLED') {
+      if (job.status === 'CANCELLED') {
+        return NextResponse.json(
+          { error: 'งานนี้ถูกยกเลิกไปแล้ว' },
+          { status: 400 }
+        );
+      }
+      if (['APPROVED', 'INVOICED'].includes(job.status)) {
+        return NextResponse.json(
+          { error: 'งานนี้ผ่านการตรวจรับแล้ว ไม่สามารถยกเลิกได้' },
+          { status: 400 }
+        );
+      }
+      const hasVerified = Boolean(job.verifiedAt || job.carWashItems?.some((i: any) => i.verifiedAt));
+      if (hasVerified && user.role !== 'MASTER') {
+        return NextResponse.json(
+          { error: 'ไม่สามารถยกเลิกใบงานได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว' },
+          { status: 400 }
+        );
+      }
     }
 
     // ─── Atomic Update with Transaction ──────────────
@@ -184,29 +199,24 @@ export async function PATCH(
         updateData.rejectReason = rejectReason || (user.role === 'SUPPLIER' ? 'Supplier ปฏิเสธงาน' : 'ยกเลิกคำสั่งงาน');
         updateData.actualCost = 0;
 
-        // Reset vehicle status back to AVAILABLE
-        if (job.jobType === 'VEHICLE_SLIDE') {
-          const slideVins = job.carWashItems && job.carWashItems.length > 0
-            ? job.carWashItems.map(c => c.vin)
-            : (job.vin ? [job.vin] : []);
+        // Reset vehicle status back to AVAILABLE and update all items to CANCELLED
+        const allVins = job.carWashItems && job.carWashItems.length > 0
+          ? job.carWashItems.map(c => c.vin)
+          : (job.vin ? [job.vin] : []);
 
-          if (slideVins.length > 0) {
-            await tx.vehicle.updateMany({
-              where: { vin: { in: slideVins } },
-              data: { status: 'AVAILABLE' },
-            });
-          }
-          if (job.carWashItems && job.carWashItems.length > 0) {
-            await tx.carWashItem.updateMany({
-              where: { jobId: job.id },
-              data: { status: 'CANCELLED' },
-            });
-          }
-        } else if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
-          const vins = job.carWashItems.map(c => c.vin);
+        if (allVins.length > 0) {
           await tx.vehicle.updateMany({
-            where: { vin: { in: vins } },
+            where: { vin: { in: allVins } },
             data: { status: 'AVAILABLE' },
+          });
+        }
+        if (job.carWashItems && job.carWashItems.length > 0) {
+          await tx.carWashItem.updateMany({
+            where: { jobId: job.id },
+            data: { 
+              status: 'CANCELLED',
+              remarks: rejectReason ? `ยกเลิก: ${rejectReason}` : 'ยกเลิกคำสั่งงาน'
+            },
           });
         }
       }

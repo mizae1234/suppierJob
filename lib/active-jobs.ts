@@ -18,6 +18,9 @@ export interface ActiveJobRef {
   jobId: string;
   jobNumber: string;
   jobType: string;
+  itemId?: string;
+  verifiedAt?: string | null;
+  canCancel?: boolean;
 }
 
 /**
@@ -34,11 +37,24 @@ export async function getActiveJobsByVin(vins?: string[]): Promise<Map<string, A
       status: { in: ACTIVE_ITEM_STATUSES },
       job: { status: { notIn: CLOSED_JOB_STATUSES } },
     },
-    select: { vin: true, job: { select: { id: true, jobNumber: true, jobType: true } } },
+    select: { 
+      id: true,
+      vin: true, 
+      verifiedAt: true,
+      job: { select: { id: true, jobNumber: true, jobType: true, verifiedAt: true } } 
+    },
   });
   for (const it of items) {
     if (!result.has(it.vin)) {
-      result.set(it.vin, { jobId: it.job.id, jobNumber: it.job.jobNumber, jobType: it.job.jobType });
+      const isVerified = Boolean(it.verifiedAt || it.job.verifiedAt);
+      result.set(it.vin, { 
+        jobId: it.job.id, 
+        jobNumber: it.job.jobNumber, 
+        jobType: it.job.jobType,
+        itemId: it.id,
+        verifiedAt: it.verifiedAt ? it.verifiedAt.toISOString() : null,
+        canCancel: !isVerified,
+      });
     }
   }
 
@@ -50,11 +66,18 @@ export async function getActiveJobsByVin(vins?: string[]): Promise<Map<string, A
       status: { notIn: CLOSED_JOB_STATUSES },
       carWashItems: { none: {} },
     },
-    select: { id: true, jobNumber: true, jobType: true, vin: true },
+    select: { id: true, jobNumber: true, jobType: true, vin: true, verifiedAt: true },
   });
   for (const j of legacy) {
     if (j.vin && !result.has(j.vin)) {
-      result.set(j.vin, { jobId: j.id, jobNumber: j.jobNumber, jobType: j.jobType });
+      const isVerified = Boolean(j.verifiedAt);
+      result.set(j.vin, { 
+        jobId: j.id, 
+        jobNumber: j.jobNumber, 
+        jobType: j.jobType,
+        verifiedAt: j.verifiedAt ? j.verifiedAt.toISOString() : null,
+        canCancel: !isVerified,
+      });
     }
   }
 

@@ -7,6 +7,7 @@ import { Job } from '@/types';
 import { getSlideDirection, getJobTotalCost } from '@/lib/job-utils';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { STATUS_MAP, SAMPLE_PHOTOS } from './constants';
+import { useToast } from '@/components/ui/Toast';
 import {
   AlertCircle,
   AlertTriangle,
@@ -22,6 +23,7 @@ import {
   Clock,
   Copy,
   ImageIcon,
+  Loader2,
   MapPin,
   Phone,
   Printer,
@@ -65,9 +67,12 @@ export function JobDetailDrawer({
   onCompleteJob,
   onPreviewPhoto,
 }: JobDetailDrawerProps) {
-  const { currentRole, activeBranch, currentBranchId, currentCompany, vehicles } = useApp();
+  const { currentRole, activeBranch, currentBranchId, currentCompany, vehicles, jobs, updateJobStatus, updateCarWashItemStatus } = useApp();
+  const { showToast } = useToast();
   const theme = useTheme();
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [isCancellingJob, setIsCancellingJob] = useState(false);
+  const [cancellingItemId, setCancellingItemId] = useState<string | null>(null);
 
   const handleCopyText = (text: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -93,7 +98,63 @@ export function JobDetailDrawer({
   }, [job, hasPrevJob, hasNextJob, onPrevJob, onNextJob, onClose]);
 
   if (!job) return null;
-  const activeJob = job;
+  const activeJob = jobs.find(j => j.id === job.id) || job;
+
+  // Handlers for Admin / Branch cancelling job or single vehicle item
+  const handleCancelEntireJob = async () => {
+    if (!activeJob) return;
+
+    if (activeJob.verifiedAt || activeJob.carWashItems?.some(i => i.verifiedAt)) {
+      showToast('ไม่สามารถยกเลิกใบงานได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว', 'error');
+      return;
+    }
+
+    if (!confirm(`ต้องการยกเลิกใบงาน ${activeJob.jobNumber} ใช่หรือไม่?\n\nเมื่อยกเลิกแล้ว รถทุกคันในใบงานนี้จะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที`)) {
+      return;
+    }
+
+    setIsCancellingJob(true);
+    try {
+      const res = await updateJobStatus(activeJob.id, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
+      if (res.success) {
+        showToast(`✓ ยกเลิกใบงาน ${activeJob.jobNumber} สำเร็จ — ปลดล็อครถทั้งหมดแล้ว`, 'success');
+        onClose();
+      } else {
+        showToast(res.error || 'ไม่สามารถยกเลิกใบงานได้', 'error');
+      }
+    } catch {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    } finally {
+      setIsCancellingJob(false);
+    }
+  };
+
+  const handleCancelSingleItem = async (item: NonNullable<Job['carWashItems']>[0]) => {
+    if (!activeJob) return;
+
+    if (item.verifiedAt) {
+      showToast('ไม่สามารถยกเลิกได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว', 'error');
+      return;
+    }
+
+    if (!confirm(`ต้องการยกเลิกคำสั่งงานสำหรับรถคันนี้ (VIN: ${item.vin}) ใช่หรือไม่?\n\nเมื่อยกเลิกแล้ว รถคันนี้จะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที`)) {
+      return;
+    }
+
+    setCancellingItemId(item.id);
+    try {
+      const res = await updateCarWashItemStatus(activeJob.id, item.id, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
+      if (res) {
+        showToast(`✓ ยกเลิกงานรถคัน ${item.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+      } else {
+        showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
+      }
+    } catch {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    } finally {
+      setCancellingItemId(null);
+    }
+  };
 
   return (
         <div className="fixed inset-0 z-50 overflow-hidden">
@@ -444,6 +505,8 @@ export function JobDetailDrawer({
                         };
                         const s = statusCfg[item.status] || statusCfg.PENDING;
                         const isCancelled = item.status === 'CANCELLED';
+                        const isVerified = Boolean(item.verifiedAt);
+                        const canCancelItem = currentRole !== 'SUPPLIER' && activeJob.status !== 'CANCELLED' && !['CANCELLED', 'APPROVED'].includes(item.status);
 
                         return (
                           <div key={item.id} className={`px-3 py-2.5 flex items-center gap-3 text-xs transition-colors ${isCancelled ? 'bg-red-50/25' : 'hover:bg-gray-50/50'}`}>
@@ -469,10 +532,41 @@ export function JobDetailDrawer({
                               </p>
                             </div>
 
-                            {/* Status Badge */}
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap" style={{ color: s.color, backgroundColor: s.bg }}>
-                              {s.label}
-                            </span>
+                            {/* Status Badge & Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap" style={{ color: s.color, backgroundColor: s.bg }}>
+                                {s.label}
+                              </span>
+
+                              {isVerified && !isCancelled && (
+                                <span className="text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded font-medium whitespace-nowrap" title="Supplier ถ่ายรูปยืนยันตัวรถแล้ว ไม่สามารถยกเลิกได้">
+                                  ✓ ยืนยันแล้ว
+                                </span>
+                              )}
+
+                              {canCancelItem && (
+                                !isVerified ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelSingleItem(item)}
+                                    disabled={cancellingItemId === item.id}
+                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-50 hover:bg-red-100 text-red-700 transition-colors flex items-center gap-1 border border-red-200 cursor-pointer disabled:opacity-50"
+                                    title="ยกเลิกคำสั่งสำหรับรถคันนี้ (เนื่องจาก Supplier ยังไม่ยืนยันตัวรถ)"
+                                  >
+                                    {cancellingItemId === item.id ? (
+                                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                    ) : (
+                                      <X className="w-2.5 h-2.5" />
+                                    )}
+                                    <span>ยกเลิก</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[9px] text-gray-400 italic" title="Supplier ถ่ายรูปยืนยันตัวรถแล้ว">
+                                    เริ่มงานแล้ว
+                                  </span>
+                                )
+                              )}
+                            </div>
 
                             {/* Price */}
                             <div className="text-right shrink-0">
@@ -1417,14 +1511,37 @@ export function JobDetailDrawer({
                 </div>
               </div>
               <div className="px-6 py-4 border-t border-gray-100 bg-white/95 backdrop-blur-md sticky bottom-0 z-20 flex items-center justify-between shrink-0 shadow-xs">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-700 transition-colors"
-                >
-                  <Printer className="w-4 h-4 text-gray-500" />
-                  <span>พิมพ์ใบสั่งงาน</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-700 transition-colors"
+                  >
+                    <Printer className="w-4 h-4 text-gray-500" />
+                    <span>พิมพ์ใบสั่งงาน</span>
+                  </button>
+
+                  {/* Admin/Branch cancel entire job button if unverified */}
+                  {currentRole !== 'SUPPLIER' &&
+                    !['APPROVED', 'INVOICED', 'CANCELLED'].includes(activeJob.status) &&
+                    !activeJob.verifiedAt &&
+                    !(activeJob.carWashItems && activeJob.carWashItems.some(i => i.verifiedAt)) && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEntireJob}
+                        disabled={isCancellingJob}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 transition-colors cursor-pointer disabled:opacity-50"
+                        title="ยกเลิกคำสั่งงานทั้งหมด (เนื่องจาก Supplier ยังไม่ได้ยืนยันตัวรถ)"
+                      >
+                        {isCancellingJob ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <XCircle className="w-3.5 h-3.5" />
+                        )}
+                        <span>ยกเลิกใบงาน</span>
+                      </button>
+                    )}
+                </div>
 
                 <div className="flex items-center gap-2">
                   {/* Contextual actions */}
