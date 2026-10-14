@@ -28,6 +28,10 @@ interface CreateCarWashParams {
     washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH' | string;
     unitPrice: number;
     remarks?: string;
+    model?: string;
+    color?: string;
+    licensePlate?: string;
+    isCustomServiceVehicle?: boolean;
   }>;
   requestedBy: string;
   requesterPosition?: string;

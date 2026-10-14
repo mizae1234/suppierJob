@@ -15,30 +15,43 @@ export async function GET(request: NextRequest) {
     const branchId = searchParams.get('branchId');
     const status = searchParams.get('status');
     const limitParam = searchParams.get('limit');
+    const q = searchParams.get('q');
+    const scope = searchParams.get('scope');
 
     // Build filter
     const where: Prisma.VehicleWhereInput = {};
 
     // Enforce Tenant Isolation
     if (user.role === 'BRANCH') {
-      if (user.companyId) where.companyId = user.companyId;
-      if (user.branchId) where.currentBranchId = user.branchId;
+      if (scope !== 'all') {
+        if (user.companyId) where.companyId = user.companyId;
+        if (user.branchId) where.currentBranchId = user.branchId;
+      }
     } else if (user.role === 'ADMIN') {
       if (user.companyId) {
         where.companyId = user.companyId;
       } else if (companyId) {
         where.companyId = companyId;
       }
-      if (branchId) where.currentBranchId = branchId;
+      if (branchId && scope !== 'all') where.currentBranchId = branchId;
     } else if (user.role === 'MASTER') {
       if (companyId) where.companyId = companyId;
-      if (branchId) where.currentBranchId = branchId;
+      if (branchId && scope !== 'all') where.currentBranchId = branchId;
     } else if (user.role === 'SUPPLIER') {
       // Supplier เห็นเฉพาะรถที่อยู่ในงานของตัวเองเท่านั้น
       const ownSupplierId = user.supplierId || 'none';
       where.OR = [
         { jobs: { some: { supplierId: ownSupplierId } } },
         { carWashItems: { some: { job: { supplierId: ownSupplierId } } } },
+      ];
+    }
+
+    if (q) {
+      const term = q.trim();
+      where.OR = [
+        { vin: { contains: term } },
+        { licensePlate: { contains: term } },
+        { model: { contains: term } },
       ];
     }
 

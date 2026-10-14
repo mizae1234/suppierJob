@@ -359,6 +359,27 @@ export async function POST(request: NextRequest) {
       const financials = calculateWashOrderFinancials(items, washConfig.vatType);
       const totalCost = typeof estimatedCost === 'number' && estimatedCost > 0 ? estimatedCost : financials.grandTotal;
 
+      // Ensure all vehicles exist in Vehicle table (e.g. customer service vehicles not previously in branch stock)
+      for (const it of items) {
+        if (it.vin) {
+          const existing = await prisma.vehicle.findUnique({ where: { vin: it.vin } });
+          if (!existing) {
+            await prisma.vehicle.create({
+              data: {
+                vin: it.vin,
+                model: it.model || 'รถลูกค้า Service',
+                color: it.color || '-',
+                licensePlate: it.licensePlate || null,
+                companyId,
+                currentBranchId: branchId,
+                vehicleType: 'CUSTOMER_SERVICE',
+                status: 'IN_WASH',
+              },
+            });
+          }
+        }
+      }
+
       const job = await prisma.job.create({
         data: {
           jobNumber,
