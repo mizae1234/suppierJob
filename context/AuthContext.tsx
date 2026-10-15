@@ -72,8 +72,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!user && !isLoginPage) {
       router.replace('/login');
-    } else if (user?.mustChangePassword) {
-      // บังคับเปลี่ยนรหัสผ่านก่อนใช้งานหน้าอื่น
+    } else if (user?.mustChangePassword && user.role !== 'SUPPLIER') {
+      // บังคับเปลี่ยนรหัสผ่านก่อนใช้งานหน้าอื่น (ยกเว้น SUPPLIER)
       if (!isChangePasswordPage) router.replace('/change-password');
     } else if (user && (isLoginPage || isChangePasswordPage)) {
       // Redirect based on role after login

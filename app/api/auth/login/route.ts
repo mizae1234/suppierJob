@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       branchCode: user.branch?.code || null,
       supplierId: user.supplierId,
       supplierName: user.supplier?.name || null,
-      mustChangePassword: user.mustChangePassword,
+      mustChangePassword: user.role === 'SUPPLIER' ? false : user.mustChangePassword,
     };
 
     // Set cryptographically signed session cookie

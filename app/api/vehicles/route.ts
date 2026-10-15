@@ -48,11 +48,30 @@ export async function GET(request: NextRequest) {
 
     if (q) {
       const term = q.trim();
-      where.OR = [
-        { vin: { contains: term } },
-        { licensePlate: { contains: term } },
-        { model: { contains: term } },
-      ];
+      const compactTerm = term.replace(/\s+/g, '');
+      const searchTerms = [term];
+      if (compactTerm && compactTerm !== term) {
+        searchTerms.push(compactTerm);
+      }
+
+      const orConditions: Prisma.VehicleWhereInput[] = [];
+      for (const t of searchTerms) {
+        orConditions.push(
+          { vin: { contains: t } },
+          { licensePlate: { contains: t } },
+          { model: { contains: t } }
+        );
+      }
+
+      if (where.OR) {
+        where.AND = [
+          { OR: where.OR },
+          { OR: orConditions },
+        ];
+        delete where.OR;
+      } else {
+        where.OR = orConditions;
+      }
     }
 
     if (status) where.status = status;

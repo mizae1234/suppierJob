@@ -58,7 +58,7 @@ export async function getSessionUser(request: NextRequest): Promise<SessionUser 
   ) {
     return null;
   }
-  return { ...user, mustChangePassword: state.mustChangePassword };
+  return { ...user, mustChangePassword: user.role === 'SUPPLIER' ? false : state.mustChangePassword };
 }
 
 type AuthResult =
@@ -67,7 +67,7 @@ type AuthResult =
 
 /**
  * Ensures user is authenticated and optionally checks role authorization.
- * Users flagged mustChangePassword are blocked until they change it.
+ * Users flagged mustChangePassword are blocked until they change it (exempt for SUPPLIER).
  */
 export async function requireAuth(
   request: NextRequest,
@@ -83,7 +83,7 @@ export async function requireAuth(
     };
   }
 
-  if (user.mustChangePassword) {
+  if (user.mustChangePassword && user.role !== 'SUPPLIER') {
     return {
       response: NextResponse.json(
         { error: 'กรุณาเปลี่ยนรหัสผ่านก่อนใช้งาน', code: 'MUST_CHANGE_PASSWORD' },

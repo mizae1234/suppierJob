@@ -251,24 +251,80 @@ export default function CreateCarWashPage() {
     return vehicles.filter(v => v.currentBranchId === selectedBranchId);
   }, [vehicles, selectedBranchId]);
 
+  // VIN & License Plate search tags
+  const [searchTags, setSearchTags] = useState<string[]>([]);
+
+  // Global vehicles search from server across all branches (when carCategory === 'SERVICE')
+  const [globalServerVehicles, setGlobalServerVehicles] = useState<(typeof vehicles)>([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
+
+  useEffect(() => {
+    if (carCategory !== 'SERVICE' || searchTags.length === 0) {
+      setGlobalServerVehicles([]);
+      return;
+    }
+
+    let isCurrent = true;
+    const latestTerm = searchTags[searchTags.length - 1]?.trim();
+    if (!latestTerm) return;
+
+    setIsSearchingGlobal(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/vehicles?q=${encodeURIComponent(latestTerm)}&scope=all`);
+        const data = await res.json();
+        if (isCurrent && data.vehicles) {
+          setGlobalServerVehicles(data.vehicles);
+        }
+      } catch (err) {
+        console.error('Error fetching global vehicles:', err);
+      } finally {
+        if (isCurrent) setIsSearchingGlobal(false);
+      }
+    }, 200);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [carCategory, searchTags]);
+
   // Available vehicles based on carCategory:
   // - NEW_CAR: only vehicles currently in stock at selected branch
-  // - SERVICE: prioritize branch vehicles, then other vehicles across entire system (Approach 2)
+  // - SERVICE: prioritize branch vehicles, then global search results across entire company/system (Approach 2)
   const availableVehicles = useMemo(() => {
     if (carCategory === 'NEW_CAR') {
       return branchStockVehicles;
     }
-    const branchVins = new Set(branchStockVehicles.map(v => v.vin));
-    const otherVehicles = vehicles.filter(v => !branchVins.has(v.vin));
-    return [...branchStockVehicles, ...otherVehicles];
-  }, [carCategory, branchStockVehicles, vehicles]);
+    const seenVins = new Set<string>();
+    const combined: (typeof vehicles) = [];
 
-  // VIN & License Plate search tags
-  const [searchTags, setSearchTags] = useState<string[]>([]);
+    // 1. Branch vehicles first
+    for (const v of branchStockVehicles) {
+      seenVins.add(v.vin);
+      combined.push(v);
+    }
+    // 2. Global server search results
+    for (const v of globalServerVehicles) {
+      if (!seenVins.has(v.vin)) {
+        seenVins.add(v.vin);
+        combined.push(v);
+      }
+    }
+    // 3. Other vehicles preloaded
+    for (const v of vehicles) {
+      if (!seenVins.has(v.vin)) {
+        seenVins.add(v.vin);
+        combined.push(v);
+      }
+    }
+    return combined;
+  }, [carCategory, branchStockVehicles, globalServerVehicles, vehicles]);
 
   // Add Custom Service Vehicle Modal state
   const [showAddServiceModal, setShowAddServiceModal] = useState(false);
   const [addServiceInitialTerm, setAddServiceInitialTerm] = useState('');
+  const [quickPlateInput, setQuickPlateInput] = useState('');
 
   // Selected vehicle items list
   interface SelectedWashItem {
@@ -366,19 +422,22 @@ export default function CreateCarWashPage() {
   // Add custom service vehicle (not in stock - Approach 3)
   const handleAddCustomServiceVehicle = (data: {
     licensePlate: string;
-    model: string;
-    color: string;
+    model?: string;
+    color?: string;
     vin?: string;
     roNumber?: string;
   }) => {
     const cleanPlate = data.licensePlate.trim();
-    const cleanModel = data.model.trim();
+    const cleanModel = (data.model || '').trim() || 'รถลูกค้า Service';
     const cleanPlateCore = cleanPlate.replace(/[^0-9A-Za-z\u0E00-\u0E7F]/g, '');
     const generatedVin = data.vin ? data.vin.trim().toUpperCase() : `SVC-${cleanPlateCore || 'CAR'}-${Date.now().toString().slice(-4)}`;
 
-    const exists = selectedItems.some(it => it.vin === generatedVin);
+    const exists = selectedItems.some(it => 
+      it.vin === generatedVin || 
+      (it.licensePlate && cleanPlate && it.licensePlate.replace(/\s+/g, '') === cleanPlate.replace(/\s+/g, ''))
+    );
     if (exists) {
-      showToast(`รถคันนี้ (${data.licensePlate || generatedVin}) อยู่ในรายการสั่งล้างแล้ว`, 'warning');
+      showToast(`รถทะเบียน "${cleanPlate || generatedVin}" อยู่ในรายการสั่งล้างแล้ว`, 'warning');
       return;
     }
 
@@ -410,6 +469,21 @@ export default function CreateCarWashPage() {
 
     setSelectedItems(prev => [newItem, ...prev]);
     showToast(`✓ เพิ่มรถ Service (${cleanPlate || cleanModel}) ลงในรายการเรียบร้อยแล้ว`, 'success');
+  };
+
+  // Quick Add by License Plate from inline card input
+  const handleQuickAddPlate = () => {
+    const plate = quickPlateInput.trim();
+    if (!plate) {
+      showToast('กรุณาระบุเลขทะเบียนรถ', 'warning');
+      return;
+    }
+    handleAddCustomServiceVehicle({
+      licensePlate: plate,
+      model: 'รถลูกค้า Service',
+      color: 'ไม่ระบุสี',
+    });
+    setQuickPlateInput('');
   };
 
   // Update item field
@@ -695,7 +769,7 @@ export default function CreateCarWashPage() {
                   <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">
                     {carCategory === 'NEW_CAR' 
                       ? 'รถในสต็อกของสาขาที่เลือก' 
-                      : 'ค้นหาในระบบ หรือกรอกข้อมูลรถลูกค้า'}
+                      : 'ค้นหาทะเบียนในระบบ หรือกรอกเพียงเลขทะเบียน'}
                   </p>
                 </div>
               </div>
@@ -708,37 +782,63 @@ export default function CreateCarWashPage() {
               </div>
             </div>
 
-            {/* When SERVICE: Elegant Quick-Add Customer Vehicle Card */}
+            {/* When SERVICE: Quick Direct License Plate Add Card */}
             {carCategory === 'SERVICE' && (
-              <div className="p-3 rounded-xl border border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50/90 via-white to-emerald-50/40 flex items-center justify-between gap-3 shadow-2xs">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-lg bg-[#0f5238] text-white flex items-center justify-center shadow-xs shrink-0">
-                    <Plus className="w-4 h-4 stroke-[3]" />
+              <div className="p-3.5 rounded-2xl border border-dashed border-emerald-300 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 shadow-2xs flex flex-col gap-2.5">
+                {/* Row 1: Title & Badge */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-5 h-5 rounded-lg bg-[#0f5238] text-white flex items-center justify-center shadow-xs shrink-0">
+                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    </span>
+                    <span className="text-xs font-bold text-gray-900 truncate">
+                      รถลูกค้านอกสต็อก
+                    </span>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-gray-900 leading-tight flex items-center gap-1.5">
-                      <span>รถลูกค้านอกสต็อก</span>
-                      <span className="text-[9px] font-semibold text-amber-700 bg-amber-100/90 px-1.5 py-0.2 rounded">
-                        ไม่มี VIN
-                      </span>
-                    </p>
-                    <p className="text-[10px] text-gray-500 leading-tight mt-0.5 truncate">
-                      ระบุทะเบียนและรุ่นเพื่อสั่งล้างได้ทันที
-                    </p>
-                  </div>
+                  <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-200/60 shrink-0 whitespace-nowrap">
+                    กรอกแค่ทะเบียน
+                  </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAddServiceInitialTerm(searchTags[0] || '');
-                    setShowAddServiceModal(true);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-[#0f5238] hover:bg-[#0c402b] text-white text-xs font-bold shadow-xs hover:shadow transition-all shrink-0 flex items-center gap-1 cursor-pointer active:scale-95"
-                >
-                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>กรอกข้อมูลรถ</span>
-                </button>
+                {/* Row 2: Input & Submit Button */}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={quickPlateInput}
+                    onChange={e => setQuickPlateInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleQuickAddPlate();
+                      }
+                    }}
+                    placeholder="พิมพ์ทะเบียน เช่น 1กข 1234"
+                    className="flex-1 min-w-0 h-8.5 px-3 rounded-xl border border-gray-300 text-xs font-bold text-gray-900 bg-white placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-[#0f5238] shadow-2xs transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleQuickAddPlate}
+                    className="h-8.5 px-3 rounded-xl bg-[#0f5238] hover:bg-[#0c402b] text-white text-xs font-bold shrink-0 shadow-xs hover:shadow flex items-center gap-1 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>เพิ่ม</span>
+                  </button>
+                </div>
+
+                {/* Row 3: Subtitle / Extra fields link */}
+                <div className="flex items-center justify-between text-[10px] text-gray-400 px-0.5">
+                  <span>กด Enter หรือคลิกเพิ่มเพื่อส่งล้างทันที</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddServiceInitialTerm(quickPlateInput.trim() || searchTags[0] || '');
+                      setShowAddServiceModal(true);
+                    }}
+                    className="text-emerald-700 hover:text-emerald-900 font-semibold underline underline-offset-2 cursor-pointer shrink-0"
+                  >
+                    ระบุรุ่น/สีเพิ่ม
+                  </button>
+                </div>
               </div>
             )}
 
@@ -751,13 +851,21 @@ export default function CreateCarWashPage() {
               </div>
             )}
 
-            {/* VIN search — Tag-based */}
-            <TagSearch
-              tags={searchTags}
-              onTagsChange={setSearchTags}
-              placeholder={carCategory === 'NEW_CAR' ? "ค้นหาทะเบียน, VIN หรือรุ่น..." : "ค้นหาทะเบียน, VIN ทั่วทั้งระบบ..."}
-              accentColor={theme.primary}
-            />
+            {/* VIN & License search — Tag-based */}
+            <div className="flex flex-col gap-1">
+              <TagSearch
+                tags={searchTags}
+                onTagsChange={setSearchTags}
+                placeholder={carCategory === 'NEW_CAR' ? "ค้นหาทะเบียน, VIN หรือรุ่น..." : "ค้นหาทะเบียนรถทั่วทั้งระบบ..."}
+                accentColor={theme.primary}
+              />
+              {isSearchingGlobal && (
+                <div className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-700 px-1 pt-0.5 animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                  <span>กำลังค้นหาทะเบียนทั่วทั้งระบบ...</span>
+                </div>
+              )}
+            </div>
 
             {/* Select All Bar */}
             {filteredVehicles.length > 0 && (
@@ -795,19 +903,21 @@ export default function CreateCarWashPage() {
             {/* Vehicles List */}
             <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
               {filteredVehicles.length === 0 ? (
-                <div className="py-8 px-4 text-center text-xs text-gray-400 flex flex-col items-center gap-2.5 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
-                    <Car className="w-5 h-5" />
+                <div className="py-7 px-4 text-center text-xs text-gray-500 flex flex-col items-center gap-2.5 bg-gray-50/60 rounded-xl border border-dashed border-gray-200">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-100 flex items-center justify-center text-base shadow-2xs">
+                    🚗
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-gray-700">
+                    <p className="text-xs font-bold text-gray-900">
                       {carCategory === 'SERVICE'
-                        ? 'ไม่พบข้อมูลรถในระบบตามคำค้นหา'
+                        ? searchTags.length > 0
+                          ? `ไม่พบประวัติทะเบียน "${searchTags.join(', ')}" ในระบบ`
+                          : 'ไม่พบข้อมูลรถในระบบตามคำค้นหา'
                         : 'ไม่มีรถในสต็อกสาขานี้ หรือไม่ตรงกับการค้นหา'}
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
+                    <p className="text-[11px] text-gray-500 mt-0.5">
                       {carCategory === 'SERVICE'
-                        ? 'คุณสามารถกรอกข้อมูลรถลูกค้าเพื่อเพิ่มในรายการสั่งล้างได้ทันที'
+                        ? 'สามารถคลิกเพิ่มเป็นรถลูกค้า Service ได้ทันทีโดยกรอกเพียงทะเบียน'
                         : 'ลองเปลี่ยนคำค้นหา หรือเลือกสาขาอื่น'}
                     </p>
                   </div>
@@ -815,16 +925,25 @@ export default function CreateCarWashPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setAddServiceInitialTerm(searchTags[0] || '');
-                        setShowAddServiceModal(true);
+                        if (searchTags.length > 0) {
+                          handleAddCustomServiceVehicle({
+                            licensePlate: searchTags[searchTags.length - 1],
+                            model: 'รถลูกค้า Service',
+                            color: 'ไม่ระบุสี',
+                          });
+                          setSearchTags([]);
+                        } else {
+                          setAddServiceInitialTerm('');
+                          setShowAddServiceModal(true);
+                        }
                       }}
-                      className="mt-1 px-3.5 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0c402b] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95"
+                      className="mt-0.5 px-4 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0c402b] text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm hover:shadow cursor-pointer active:scale-95"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>
                         {searchTags.length > 0
-                          ? `เพิ่ม "${searchTags.join(', ')}" เป็นรถลูกค้าทันที`
-                          : 'กรอกข้อมูลรถลูกค้านอกสต็อก'}
+                          ? `+ เพิ่มทะเบียน "${searchTags[searchTags.length - 1]}" เข้ารายการทันที`
+                          : '+ ระบุทะเบียนรถลูกค้านอกสต็อก'}
                       </span>
                     </button>
                   )}

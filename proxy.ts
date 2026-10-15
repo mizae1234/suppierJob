@@ -33,7 +33,7 @@ export async function proxy(request: NextRequest) {
   // 2. Login page
   if (pathname === '/login') {
     if (user) {
-      if (user.mustChangePassword) return NextResponse.redirect(new URL('/change-password', request.url));
+      if (user.mustChangePassword && user.role !== 'SUPPLIER') return NextResponse.redirect(new URL('/change-password', request.url));
       return NextResponse.redirect(new URL(user.role === 'SUPPLIER' ? '/vendor' : '/', request.url));
     }
     return NextResponse.next();
@@ -57,9 +57,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 5. Forced password change
+  // 5. Forced password change (exempt for SUPPLIER)
   if (pathname === '/change-password') return NextResponse.next();
-  if (user.mustChangePassword) {
+  if (user.mustChangePassword && user.role !== 'SUPPLIER') {
     return NextResponse.redirect(new URL('/change-password', request.url));
   }
 

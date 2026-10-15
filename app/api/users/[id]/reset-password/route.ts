@@ -39,8 +39,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     await prisma.user.update({
       where: { id },
-      // รหัสผ่านที่ MASTER ตั้งให้เป็นรหัสชั่วคราว → บังคับให้ผู้ใช้เปลี่ยนเองตอน login
-      data: { password: hashedPassword, mustChangePassword: true },
+      // รหัสผ่านที่ MASTER ตั้งให้เป็นรหัสชั่วคราว → ยกเว้น SUPPLIER ที่ไม่ต้องบังคับเปลี่ยน
+      data: { password: hashedPassword, mustChangePassword: existingUser.role === 'SUPPLIER' ? false : true },
     });
     invalidateUserSession(id);
 
