@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Branch, Company } from '@/types';
 import {
   Building2,
@@ -9,6 +9,7 @@ import {
   Plus,
   AlertCircle,
 } from 'lucide-react';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 export interface CreateBranchModalProps {
   companies: Company[];
@@ -18,6 +19,15 @@ export interface CreateBranchModalProps {
 
 export function CreateBranchModal({ companies, onClose, onCreated }: CreateBranchModalProps) {
   const [companyId, setCompanyId] = useState(companies[0]?.id || '');
+
+  const companyOptions: DropdownOption[] = useMemo(() => [
+    ...companies.map(c => ({
+      value: c.id,
+      label: `${c.name} (${c.code})`,
+      dot: c.code === 'EV7' ? '#2d6a4f' : '#3b82f6',
+      icon: Building2,
+    })),
+  ], [companies]);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -99,17 +109,15 @@ export function CreateBranchModal({ companies, onClose, onCreated }: CreateBranc
             <label className="block text-xs font-bold text-gray-700 mb-1">
               สังกัดบริษัท: *
             </label>
-            <select
+            <CustomDropdown
               value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full h-10 px-3 rounded-xl bg-gray-50 border border-gray-200 text-xs font-medium text-gray-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
-            >
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.code})
-                </option>
-              ))}
-            </select>
+              onChange={setCompanyId}
+              options={companyOptions}
+              icon={Building2}
+              dropdownWidth="w-full"
+              placeholder="เลือกบริษัท"
+              buttonClassName="bg-gray-50"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">

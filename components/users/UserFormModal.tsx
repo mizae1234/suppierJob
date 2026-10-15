@@ -14,6 +14,7 @@ import {
   Shield,
   RotateCw,
 } from 'lucide-react';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 function generatePassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$';
@@ -101,6 +102,36 @@ export function UserFormModal({
     const comp = companies.find(c => c.id === formData.companyId);
     return comp?.branches || [];
   }, [formData.companyId, companies]);
+
+  const companyOptions: DropdownOption[] = useMemo(() => [
+    { value: '', label: 'เลือกบริษัท' },
+    ...companies.map(c => ({
+      value: c.id,
+      label: `${c.code} — ${c.name}`,
+      dot: c.code === 'EV7' ? '#2d6a4f' : '#3b82f6',
+      icon: Building2,
+    })),
+  ], [companies]);
+
+  const branchOptions: DropdownOption[] = useMemo(() => [
+    { value: '', label: 'เลือกสาขา' },
+    ...modalBranches.map(b => ({
+      value: b.id,
+      label: `${b.code} — ${b.name}`,
+      icon: MapPin,
+      dot: '#10b981',
+    })),
+  ], [modalBranches]);
+
+  const supplierOptions: DropdownOption[] = useMemo(() => [
+    { value: '', label: 'เลือก Supplier' },
+    ...suppliers.map(s => ({
+      value: s.id,
+      label: `${s.code} — ${s.name}`,
+      icon: Truck,
+      dot: '#f59e0b',
+    })),
+  ], [suppliers]);
 
   if (!isOpen && !editingUser) return null;
 
@@ -367,10 +398,9 @@ export function UserFormModal({
                 <label className="block text-xs font-bold text-gray-700 mb-1">
                   สังกัดบริษัท <span className="text-red-500">*</span>
                 </label>
-                <select
+                <CustomDropdown
                   value={formData.companyId}
-                  onChange={e => {
-                    const newCompId = e.target.value;
+                  onChange={(newCompId) => {
                     const comp = companies.find(c => c.id === newCompId);
                     setFormData(prev => ({
                       ...prev,
@@ -378,15 +408,12 @@ export function UserFormModal({
                       branchId: comp?.branches[0]?.id || '',
                     }));
                   }}
-                  className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-hidden cursor-pointer"
-                >
-                  <option value="">เลือกบริษัท</option>
-                  {companies.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-                </select>
+                  options={companyOptions}
+                  icon={Building2}
+                  dropdownWidth="w-full"
+                  placeholder="เลือกบริษัท"
+                  buttonClassName="bg-white"
+                />
               </div>
 
               {formData.role === 'BRANCH' && (
@@ -394,18 +421,16 @@ export function UserFormModal({
                   <label className="block text-xs font-bold text-gray-700 mb-1">
                     สังกัดสาขา <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <CustomDropdown
                     value={formData.branchId}
-                    onChange={e => setFormData(prev => ({ ...prev, branchId: e.target.value }))}
-                    className="w-full px-3 py-2 text-xs bg-white border border-gray-200 rounded-xl focus:outline-hidden cursor-pointer"
-                  >
-                    <option value="">เลือกสาขา</option>
-                    {modalBranches.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.code} — {b.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(branchId) => setFormData(prev => ({ ...prev, branchId }))}
+                    options={branchOptions}
+                    icon={MapPin}
+                    dropdownWidth="w-full"
+                    placeholder="เลือกสาขา"
+                    buttonClassName="bg-white"
+                    disabled={modalBranches.length === 0}
+                  />
                   {modalBranches.length === 0 && (
                     <span className="text-[10px] text-amber-600 mt-1 block">
                       บริษัทนี้ยังไม่มีข้อมูลสาขา
@@ -422,18 +447,15 @@ export function UserFormModal({
               <label className="block text-xs font-bold text-amber-900 mb-1">
                 สังกัดคู่ค้า Supplier <span className="text-red-500">*</span>
               </label>
-              <select
+              <CustomDropdown
                 value={formData.supplierId}
-                onChange={e => setFormData(prev => ({ ...prev, supplierId: e.target.value }))}
-                className="w-full px-3 py-2 text-xs bg-white border border-amber-200 rounded-xl focus:outline-hidden cursor-pointer"
-              >
-                <option value="">เลือก Supplier</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.code} — {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(supplierId) => setFormData(prev => ({ ...prev, supplierId }))}
+                options={supplierOptions}
+                icon={Truck}
+                dropdownWidth="w-full"
+                placeholder="เลือก Supplier"
+                buttonClassName="bg-white border-amber-200"
+              />
             </div>
           )}
 

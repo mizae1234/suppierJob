@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Car } from 'lucide-react';
+import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Car, Truck, Navigation } from 'lucide-react';
 import { WorkModalTarget } from './types';
 import { useTheme } from '@/hooks/useTheme';
 import { useToast } from '@/components/ui/Toast';
@@ -80,74 +80,144 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
     }
   };
 
+  const originName = target.originName
+    || target.job?.customOriginAddress 
+    || target.job?.originBranchName 
+    || target.job?.branchName 
+    || target.branchName 
+    || 'จุดรับรถต้นทาง';
+
+  const destName = target.destName
+    || target.job?.customDestAddress 
+    || target.job?.destBranchName 
+    || 'จุดส่งมอบปลายทาง';
+
+  const distance = target.distance ?? target.job?.distance;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-gray-100 flex flex-col">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl max-w-md w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-gray-100 flex flex-col">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-gray-100 shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3 min-w-0">
+        <div className="p-3.5 sm:p-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className="w-10 h-10 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-xs"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0 shadow-2xs"
                 style={{ backgroundColor: theme.primary }}
               >
-                <ScanLine className="w-5 h-5" />
+                <ScanLine className="w-4 h-4" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <h3 className="text-base font-bold text-gray-900 tracking-tight">ยืนยันตัวรถก่อนเริ่มงาน</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                  <h3 className="text-sm font-bold text-gray-900 tracking-tight">ยืนยันตัวรถก่อนเริ่มงาน</h3>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
                     ถ่ายรูปยืนยัน
                   </span>
                 </div>
-                <p className="text-xs text-gray-500">ถ่ายรูปตัวรถเพื่อยืนยันและเริ่มงาน</p>
+                <p className="text-[11px] text-gray-500">ถ่ายรูปตัวรถเพื่อยืนยันและเริ่มงาน</p>
               </div>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer shrink-0 ml-1"
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer shrink-0 ml-1"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Vehicle Info Summary Box */}
-          <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
-              <div className="w-10 h-10 rounded-xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center shrink-0 text-emerald-800">
-                <Car className="w-5 h-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                  <span className="text-sm font-bold text-gray-900 truncate">
-                    {target.vehicleModel || (isSlide ? 'รถสไลด์ขนส่ง' : 'รถยนต์')}
-                  </span>
-                  {target.vehicleColor && (
-                    <span className="text-xs text-gray-500 font-medium">· {target.vehicleColor}</span>
-                  )}
-                  <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-[#0f5238] shrink-0">
-                    {target.serviceLabel}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] font-mono flex-wrap">
-                  <span className="text-gray-900 font-bold">VIN: {target.vin}</span>
-                  {target.licensePlate && (
-                    <span className="px-1.5 py-0.5 bg-white rounded border border-gray-200 text-gray-800 font-bold text-[10px]">
-                      {target.licensePlate}
+          {/* Vehicle Info Summary Box (Compact & Clean) */}
+          {isSlide ? (
+            <div className="rounded-xl border border-emerald-950/10 bg-[#fbfdfc] overflow-hidden shadow-2xs text-xs">
+              {/* Top Row: Type Badge, Job Number, Price, Vehicle info */}
+              <div className="p-2.5 bg-white border-b border-gray-100 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#0f5238] text-white shrink-0">
+                      <Truck className="w-3 h-3" />
+                      <span>สไลด์ขนส่ง</span>
                     </span>
+                    <span className="font-mono text-[11px] font-bold text-gray-700 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                      #{target.jobNumber}
+                    </span>
+                  </div>
+
+                  <span className="text-sm font-black text-[#0f5238] font-mono shrink-0">
+                    ฿{target.unitPrice.toLocaleString()}
+                  </span>
+                </div>
+
+                {/* Vehicle specifications inline */}
+                <div className="flex items-center gap-1.5 text-[11px] text-gray-600 flex-wrap">
+                  <span className="font-bold text-gray-900">{target.vehicleModel || 'รถยนต์'}</span>
+                  {target.vehicleColor && <span>· สี{target.vehicleColor}</span>}
+                  <span className="text-gray-300">•</span>
+                  <span className="font-mono text-gray-700">VIN: {target.vin}</span>
+                  {target.licensePlate && (
+                    <>
+                      <span className="text-gray-300">•</span>
+                      <span className="font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/70 text-[10px]">
+                        {target.licensePlate}
+                      </span>
+                    </>
                   )}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1 truncate">
-                  <span className="font-semibold text-gray-600">#{target.jobNumber}</span>
-                  {target.branchName ? ` • ${target.branchName}` : ''}
-                </p>
+              </div>
+
+              {/* Bottom: Compact Route Flow */}
+              <div className="px-2.5 py-2 bg-[#f8faf9] flex flex-col gap-1 text-[11px]">
+                <div className="flex items-start gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1 shrink-0" />
+                  <span className="text-gray-400 shrink-0 font-medium text-[10px]">ต้นทาง:</span>
+                  <span className="font-medium text-gray-800 leading-snug break-words">{originName}</span>
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1 shrink-0" />
+                  <span className="text-gray-400 shrink-0 font-medium text-[10px]">ปลายทาง:</span>
+                  <span className="font-medium text-gray-800 leading-snug break-words">
+                    {destName}
+                    {distance ? (
+                      <span className="ml-1.5 font-mono text-[10px] text-emerald-800 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded border border-emerald-200/70">
+                        {distance} กม.
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
               </div>
             </div>
-            <span className="text-sm font-black text-[#0f5238] font-mono shrink-0">
-              ฿{target.unitPrice.toLocaleString()}
-            </span>
-          </div>
+          ) : (
+            <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 shadow-2xs flex items-center justify-center shrink-0 text-emerald-800">
+                  <Car className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <span className="text-xs font-bold text-gray-900 truncate">
+                      {target.vehicleModel || 'รถยนต์'}
+                    </span>
+                    {target.vehicleColor && (
+                      <span className="text-[11px] text-gray-500">· {target.vehicleColor}</span>
+                    )}
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-[#0f5238] shrink-0">
+                      {target.serviceLabel}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-600 flex-wrap">
+                    <span>VIN: {target.vin}</span>
+                    {target.licensePlate && (
+                      <span className="px-1 bg-white rounded border border-gray-200 font-bold text-gray-800">
+                        {target.licensePlate}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs font-black text-[#0f5238] font-mono shrink-0">
+                ฿{target.unitPrice.toLocaleString()}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Form Body - Only Photo Upload */}

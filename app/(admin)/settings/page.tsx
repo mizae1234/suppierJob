@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -20,6 +20,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { CancelJobConfirmModal } from '@/components/jobs';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -40,6 +41,22 @@ export default function SettingsPage() {
 
   const [resetSuccess, setResetSuccess] = useState(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+
+  const companyOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทุกบริษัท (All)', icon: Building2 },
+    { value: 'EV7', label: 'EV7 (บริษัท อีวี เซเว่น จำกัด)', dot: '#2d6a4f' },
+    { value: 'GI', label: 'GI (บริษัท โกลด์ อินทิเกรท จำกัด / Gold Integrate)', dot: '#3b82f6' },
+  ], []);
+
+  const branchOptions: DropdownOption[] = useMemo(() => [
+    ...branches.map(b => ({
+      value: b.id,
+      label: b.name,
+      sublabel: b.code ? `รหัสสาขา: ${b.code}` : undefined,
+      dot: b.code.startsWith('EV7') || b.code === 'GI06' ? '#2d6a4f' : '#3b82f6',
+      icon: Store,
+    })),
+  ], [branches]);
 
   const handleConfirmReset = () => {
     resetToDefaultData();
@@ -155,30 +172,28 @@ DATABASE_URL=&quot;sqlserver://localhost:1433;database=SupplierJobDB;user=sa;pas
             <label className="block font-semibold text-gray-700 mb-1">
               สังกัดบริษัทที่ดำเนินงาน:
             </label>
-            <select
+            <CustomDropdown
               value={currentCompany}
-              onChange={(e) => setCurrentCompany(e.target.value as any)}
-              className="w-full h-10 px-3 rounded-xl border border-gray-200 font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-            >
-              <option value="ALL">ทุกบริษัท (All)</option>
-              <option value="EV7">EV7 (บริษัท อีวี เซเว่น จำกัด)</option>
-              <option value="GI">GI (บริษัท โกลด์ อินทิเกรท จำกัด / Gold Integrate)</option>
-            </select>
+              onChange={(val) => setCurrentCompany(val as any)}
+              options={companyOptions}
+              icon={Building2}
+              dropdownWidth="w-full"
+              placeholder="ทุกบริษัท"
+            />
           </div>
 
           <div>
             <label className="block font-semibold text-gray-700 mb-1">
               สาขาปัจจุบัน (สำหรับ Role สาขา):
             </label>
-            <select
+            <CustomDropdown
               value={currentBranchId}
-              onChange={(e) => setCurrentBranchId(e.target.value)}
-              className="w-full h-10 px-3 rounded-xl border border-gray-200 font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-            >
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+              onChange={setCurrentBranchId}
+              options={branchOptions}
+              icon={Store}
+              dropdownWidth="w-full"
+              placeholder="เลือกสาขา"
+            />
           </div>
         </div>
       </div>

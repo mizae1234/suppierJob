@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 import {
   Shield,
   Search,
@@ -136,10 +137,22 @@ export default function AuditLogsPage() {
     fetchLogs();
   };
 
-  const actionOptions = Object.entries(ACTION_CONFIG).map(([key, val]) => ({
-    value: key,
-    label: val.label,
-  }));
+  const actionDropdownOptions: DropdownOption[] = useMemo(() => [
+    { value: '', label: 'ทั้งหมด', icon: Filter },
+    ...Object.entries(ACTION_CONFIG).map(([key, val]) => ({
+      value: key,
+      label: val.label,
+      icon: val.icon as any,
+    })),
+  ], []);
+
+  const roleDropdownOptions: DropdownOption[] = useMemo(() => [
+    { value: '', label: 'ทั้งหมด', icon: Shield },
+    { value: 'MASTER', label: 'Master (สูงสุด)', dot: '#8b5cf6', badge: 'Master', badgeClass: 'bg-violet-100 text-violet-700' },
+    { value: 'ADMIN', label: 'Admin (บริษัท)', dot: '#3b82f6', badge: 'Admin', badgeClass: 'bg-blue-100 text-blue-700' },
+    { value: 'BRANCH', label: 'Branch (สาขา)', dot: '#f59e0b', badge: 'Branch', badgeClass: 'bg-amber-100 text-amber-700' },
+    { value: 'SUPPLIER', label: 'Supplier (คู่ค้า)', dot: '#10b981', badge: 'Supplier', badgeClass: 'bg-emerald-100 text-emerald-700' },
+  ], []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -198,30 +211,25 @@ export default function AuditLogsPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">ประเภท Action</label>
-              <select
+              <CustomDropdown
                 value={filterAction}
-                onChange={e => { setFilterAction(e.target.value); setPage(1); }}
-                className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs bg-white"
-              >
-                <option value="">ทั้งหมด</option>
-                {actionOptions.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+                onChange={v => { setFilterAction(v); setPage(1); }}
+                options={actionDropdownOptions}
+                icon={Filter}
+                dropdownWidth="w-full sm:w-[240px]"
+                placeholder="ทั้งหมด"
+              />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Role</label>
-              <select
+              <CustomDropdown
                 value={filterRole}
-                onChange={e => { setFilterRole(e.target.value); setPage(1); }}
-                className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs bg-white"
-              >
-                <option value="">ทั้งหมด</option>
-                <option value="MASTER">Master</option>
-                <option value="ADMIN">Admin</option>
-                <option value="BRANCH">Branch</option>
-                <option value="SUPPLIER">Supplier</option>
-              </select>
+                onChange={v => { setFilterRole(v); setPage(1); }}
+                options={roleDropdownOptions}
+                icon={Shield}
+                dropdownWidth="w-full sm:w-[220px]"
+                placeholder="ทั้งหมด"
+              />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">จากวันที่</label>

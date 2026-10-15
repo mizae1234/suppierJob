@@ -38,6 +38,7 @@ import {
   type CompanyData,
   type SupplierData,
 } from '@/components/users';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 export default function UserManagementPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -54,6 +55,30 @@ export default function UserManagementPage() {
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [companyFilter, setCompanyFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  const roleOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทุกบทบาท (Role)', icon: Shield },
+    { value: 'MASTER', label: 'Master (สูงสุด)', dot: '#ef4444', badge: 'สูงสุด', badgeClass: 'bg-red-50 text-red-700' },
+    { value: 'ADMIN', label: 'Admin (บริษัท)', dot: '#3b82f6', badge: 'บริษัท', badgeClass: 'bg-blue-50 text-blue-700' },
+    { value: 'BRANCH', label: 'Branch (สาขา)', dot: '#10b981', badge: 'สาขา', badgeClass: 'bg-emerald-50 text-[#0f5238]' },
+    { value: 'SUPPLIER', label: 'Supplier (คู่ค้า)', dot: '#f59e0b', badge: 'คู่ค้า', badgeClass: 'bg-amber-50 text-amber-700' },
+  ], []);
+
+  const companyOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทุกสังกัดบริษัท', icon: Building2 },
+    ...companies.map(c => ({
+      value: c.id,
+      label: c.name,
+      sublabel: `รหัส: ${c.code}`,
+      dot: c.code === 'EV7' ? '#2d6a4f' : '#3b82f6',
+    })),
+  ], [companies]);
+
+  const statusOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทุกสถานะ', icon: Users },
+    { value: 'ACTIVE', label: 'ใช้งานอยู่ (Active)', dot: '#10b981', badge: 'ใช้งาน', badgeClass: 'bg-emerald-50 text-[#0f5238]' },
+    { value: 'INACTIVE', label: 'ระงับใช้งาน (Inactive)', dot: '#ef4444', badge: 'ระงับ', badgeClass: 'bg-red-50 text-red-700' },
+  ], []);
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -356,42 +381,40 @@ export default function UserManagementPage() {
         {/* Dropdowns */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Role Filter */}
-          <select
-            value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
-            className="px-3 py-2 text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-hidden cursor-pointer"
-          >
-            <option value="ALL">ทุกบทบาท (Role)</option>
-            <option value="MASTER">Master (สูงสุด)</option>
-            <option value="ADMIN">Admin (บริษัท)</option>
-            <option value="BRANCH">Branch (สาขา)</option>
-            <option value="SUPPLIER">Supplier (คู่ค้า)</option>
-          </select>
+          <div className="w-full sm:w-[190px]">
+            <CustomDropdown
+              value={roleFilter}
+              onChange={setRoleFilter}
+              options={roleOptions}
+              icon={Shield}
+              dropdownWidth="w-full sm:w-[220px]"
+              placeholder="ทุกบทบาท (Role)"
+            />
+          </div>
 
           {/* Company Filter */}
-          <select
-            value={companyFilter}
-            onChange={e => setCompanyFilter(e.target.value)}
-            className="px-3 py-2 text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-hidden cursor-pointer"
-          >
-            <option value="ALL">ทุกสังกัดบริษัท</option>
-            {companies.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.code} — {c.name}
-              </option>
-            ))}
-          </select>
+          <div className="w-full sm:w-[220px]">
+            <CustomDropdown
+              value={companyFilter}
+              onChange={setCompanyFilter}
+              options={companyOptions}
+              icon={Building2}
+              dropdownWidth="w-full sm:w-[280px]"
+              placeholder="ทุกสังกัดบริษัท"
+            />
+          </div>
 
           {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-xs font-semibold bg-gray-50 border border-gray-200 rounded-xl text-gray-700 focus:outline-hidden cursor-pointer"
-          >
-            <option value="ALL">ทุกสถานะ</option>
-            <option value="ACTIVE">🟢 ใช้งานอยู่</option>
-            <option value="INACTIVE">🔴 ระงับใช้งาน</option>
-          </select>
+          <div className="w-full sm:w-[180px]">
+            <CustomDropdown
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={statusOptions}
+              icon={Users}
+              dropdownWidth="w-full sm:w-[200px]"
+              placeholder="ทุกสถานะ"
+            />
+          </div>
         </div>
       </div>
 

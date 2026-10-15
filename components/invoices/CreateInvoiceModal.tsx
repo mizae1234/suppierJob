@@ -4,7 +4,8 @@ import React, { useState, useMemo } from 'react';
 import { Job, CompanyCode, Supplier, Invoice } from '@/types';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { formatThaiDate } from '@/lib/date-utils';
-import { Receipt, AlertCircle, X, Check, Sparkles, Truck } from 'lucide-react';
+import { Receipt, AlertCircle, X, Check, Sparkles, Truck, Building2 } from 'lucide-react';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 export interface CreateInvoiceModalProps {
   isOpen: boolean;
@@ -44,6 +45,16 @@ export function CreateInvoiceModal({
   const [invoiceNotes, setInvoiceNotes] = useState<string>('วางบิลรอบงวดประจำเดือน');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const invoiceSupplierOptions: DropdownOption[] = useMemo(() => [
+    ...suppliers.map(s => ({
+      value: s.id,
+      label: s.name,
+      sublabel: `รหัส: ${s.code}`,
+      dot: '#10b981',
+      icon: Building2,
+    })),
+  ], [suppliers]);
 
   // Eligible jobs for invoice creation:
   // Must be APPROVED, matching company, matching supplier, and NOT yet invoiced
@@ -178,19 +189,19 @@ export function CreateInvoiceModal({
               <label className="block text-xs font-semibold text-gray-700 mb-1">
                 2. Supplier ผู้ออกใบแจ้งหนี้:
               </label>
-              <select
+              <CustomDropdown
                 value={invoiceSupplierId}
-                onChange={(e) => {
-                  setInvoiceSupplierId(e.target.value);
+                onChange={(val) => {
+                  setInvoiceSupplierId(val);
                   setSelectedJobIds([]);
                 }}
+                options={invoiceSupplierOptions}
+                icon={Building2}
+                dropdownWidth="w-full"
+                placeholder="เลือก Supplier"
                 disabled={currentRole === 'SUPPLIER'}
-                className="w-full h-10 px-3 rounded-xl border border-gray-200 font-semibold focus:ring-2 focus:ring-[#0f5238] outline-none"
-              >
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+                buttonClassName="bg-white font-semibold"
+              />
             </div>
           </div>
 

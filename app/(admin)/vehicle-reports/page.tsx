@@ -6,6 +6,7 @@ import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { Job, CompanyCode, CarWashItem } from '@/types';
 import { VehicleDetailModal, VehicleRecord } from '@/components/vehicles';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 import {
   Car,
   FileText,
@@ -147,6 +148,45 @@ export default function VehicleReportsPage() {
     allRecords.forEach(r => { if (r.invoiceNumber) set.add(r.invoiceNumber); });
     return Array.from(set).sort();
   }, [allRecords]);
+
+  const serviceOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทั้งหมด', icon: Sparkles },
+    { value: 'STANDARD', label: 'ล้างปกติ (Standard)', dot: '#3b82f6' },
+    { value: 'DEEP_CLEAN', label: 'ล้างพิเศษ (Deep Clean)', dot: '#8b5cf6' },
+    { value: 'POLISH', label: 'ขัดเคลือบ (Polish)', dot: '#ec4899' },
+    { value: 'VEHICLE_SLIDE', label: 'รถสไลด์ (Slide)', dot: '#f59e0b', icon: Truck },
+  ], []);
+
+  const statusOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทั้งหมด', icon: Filter },
+    { value: 'PENDING', label: 'รอดำเนินการ', dot: '#d97706', badge: 'รอทำ', badgeClass: 'bg-amber-50 text-amber-700' },
+    { value: 'COMPLETED', label: 'ส่งงานแล้ว', dot: '#059669', badge: 'ส่งแล้ว', badgeClass: 'bg-emerald-50 text-emerald-700' },
+    { value: 'APPROVED', label: 'อนุมัติแล้ว', dot: '#059669', badge: 'อนุมัติ', badgeClass: 'bg-emerald-50 text-[#0f5238]' },
+    { value: 'INVOICED', label: 'วางบิลแล้ว', dot: '#6b7280', badge: 'วางบิล', badgeClass: 'bg-gray-100 text-gray-700' },
+    { value: 'REJECTED', label: 'ตีกลับ', dot: '#dc2626', badge: 'ตีกลับ', badgeClass: 'bg-red-50 text-red-700' },
+    { value: 'CANCELLED', label: 'ยกเลิก', dot: '#ef4444', badge: 'ยกเลิก', badgeClass: 'bg-red-50 text-red-700' },
+  ], []);
+
+  const supplierOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทั้งหมด', icon: Building2 },
+    ...suppliers.map(s => ({
+      value: s.name,
+      label: s.name,
+      sublabel: `รหัส: ${s.code}`,
+      dot: '#3b82f6',
+    })),
+  ], [suppliers]);
+
+  const invoiceOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทั้งหมด', icon: Receipt },
+    { value: 'NO_INVOICE', label: 'ยังไม่วางบิล', dot: '#f59e0b' },
+    ...invoiceNumbers.map(inv => ({
+      value: inv,
+      label: inv,
+      dot: '#10b981',
+      icon: Receipt,
+    })),
+  ], [invoiceNumbers]);
 
   // ─── Apply filters ───
   const filteredRecords = useMemo(() => {
@@ -353,63 +393,50 @@ export default function VehicleReportsPage() {
 
         {/* Advanced filters */}
         {showFilters && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-2xl bg-white border border-gray-100 shadow-xs animate-fade-in">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 rounded-2xl bg-white border border-gray-100 shadow-xs animate-fade-in">
             <div>
               <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">ประเภทบริการ</label>
-              <select
+              <CustomDropdown
                 value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238]/20 outline-none"
-              >
-                <option value="ALL">ทั้งหมด</option>
-                <option value="STANDARD">ล้างปกติ (Standard)</option>
-                <option value="DEEP_CLEAN">ล้างพิเศษ (Deep Clean)</option>
-                <option value="POLISH">ขัดเคลือบ (Polish)</option>
-                <option value="VEHICLE_SLIDE">รถสไลด์ (Slide)</option>
-              </select>
+                onChange={setServiceFilter}
+                options={serviceOptions}
+                icon={Sparkles}
+                dropdownWidth="w-full"
+                placeholder="ทั้งหมด"
+              />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">สถานะ</label>
-              <select
+              <CustomDropdown
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238]/20 outline-none"
-              >
-                <option value="ALL">ทั้งหมด</option>
-                <option value="PENDING">รอดำเนินการ</option>
-                <option value="COMPLETED">ส่งงานแล้ว</option>
-                <option value="APPROVED">อนุมัติแล้ว</option>
-                <option value="INVOICED">วางบิลแล้ว</option>
-                <option value="REJECTED">ตีกลับ</option>
-                <option value="CANCELLED">ยกเลิก</option>
-              </select>
+                onChange={setStatusFilter}
+                options={statusOptions}
+                icon={Filter}
+                dropdownWidth="w-full"
+                placeholder="ทั้งหมด"
+              />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Supplier</label>
-              <select
+              <CustomDropdown
                 value={supplierFilter}
-                onChange={(e) => setSupplierFilter(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238]/20 outline-none"
-              >
-                <option value="ALL">ทั้งหมด</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.name}>{s.name}</option>
-                ))}
-              </select>
+                onChange={setSupplierFilter}
+                options={supplierOptions}
+                icon={Building2}
+                dropdownWidth="w-full"
+                placeholder="ทั้งหมด"
+              />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-gray-500 uppercase mb-1">เลข Invoice</label>
-              <select
+              <CustomDropdown
                 value={invoiceFilter}
-                onChange={(e) => setInvoiceFilter(e.target.value)}
-                className="w-full h-9 px-3 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238]/20 outline-none"
-              >
-                <option value="ALL">ทั้งหมด</option>
-                <option value="NO_INVOICE">ยังไม่วางบิล</option>
-                {invoiceNumbers.map(inv => (
-                  <option key={inv} value={inv}>{inv}</option>
-                ))}
-              </select>
+                onChange={setInvoiceFilter}
+                options={invoiceOptions}
+                icon={Receipt}
+                dropdownWidth="w-full"
+                placeholder="ทั้งหมด"
+              />
             </div>
           </div>
         )}

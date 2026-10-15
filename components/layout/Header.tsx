@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +18,7 @@ import {
   Smartphone,
   LogOut
 } from 'lucide-react';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 
 export const Header: React.FC = () => {
@@ -39,6 +40,15 @@ export const Header: React.FC = () => {
   } = useApp();
 
   const [isCompanyOpen, setIsCompanyOpen] = useState(false);
+
+  const headerSupplierOptions: DropdownOption[] = useMemo(() => [
+    ...suppliers.map(s => ({
+      value: s.id,
+      label: s.name,
+      sublabel: `รหัส: ${s.code}`,
+      dot: '#10b981',
+    })),
+  ], [suppliers]);
 
   const companyOptions: { value: 'ALL' | 'EV7' | 'GI'; label: string; color: string; dot: string }[] = [
     { value: 'ALL', label: 'ทุกบริษัท (EV7 & GI)', color: '#0f5238', dot: '#52b788' },
@@ -279,24 +289,16 @@ export const Header: React.FC = () => {
 
         {/* Supplier Selector Dropdown (When Role is SUPPLIER) */}
         {currentRole === 'SUPPLIER' && (
-          <div className="relative">
-            <select
+          <div className="w-[170px] sm:w-[200px]">
+            <CustomDropdown
               value={currentSupplierId}
-              onChange={(e) => setCurrentSupplierId(e.target.value)}
-              className="text-xs font-semibold py-1.5 pl-3 pr-7 rounded-full border appearance-none cursor-pointer focus:outline-none transition-colors duration-300"
-              style={{
-                backgroundColor: theme.bgFooter,
-                color: theme.textPrimary,
-                borderColor: `${theme.primary}33`,
-              }}
-            >
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300" style={{ color: theme.iconColor }} />
+              onChange={setCurrentSupplierId}
+              options={headerSupplierOptions}
+              align="right"
+              dropdownWidth="w-[230px]"
+              placeholder="เลือก Supplier"
+              buttonClassName="!h-8 !py-1 text-xs"
+            />
           </div>
         )}
 

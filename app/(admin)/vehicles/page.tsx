@@ -21,9 +21,12 @@ import {
   RefreshCw,
   Eye,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Building2,
+  Filter
 } from 'lucide-react';
 import VehicleImportModal from '@/components/vehicles/VehicleImportModal';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 export default function VehicleStockPage() {
   const { 
@@ -54,6 +57,43 @@ export default function VehicleStockPage() {
   const [vinSlideLogs, setVinSlideLogs] = useState<VehicleSlideLog[]>([]);
   const [loadingVinSlideLogs, setLoadingVinSlideLogs] = useState<boolean>(false);
   const [modalTab, setModalTab] = useState<'JOBS' | 'SLIDE_LOGS'>('JOBS');
+
+  // ─── Custom Dropdown Options ───
+  const branchOptions: DropdownOption[] = useMemo(() => {
+    const allOption: DropdownOption = {
+      value: 'ALL',
+      label: `ทุกสาขา ${currentCompany === 'GI' ? '(GI Hubs)' : ''}`,
+      icon: Building2,
+    };
+
+    const branchList: DropdownOption[] = branches
+      .filter(b => currentCompany === 'ALL' || b.code.startsWith(currentCompany))
+      .map(b => ({
+        value: b.id,
+        label: b.name,
+        sublabel: b.code ? `รหัสสาขา: ${b.code}` : undefined,
+        dot: b.code.startsWith('EV7') || b.code === 'GI06' ? '#2d6a4f' : '#3b82f6',
+      }));
+
+    return [allOption, ...branchList];
+  }, [branches, currentCompany]);
+
+  const statusOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทุกสถานะรถ', icon: Filter },
+    { value: 'AVAILABLE', label: 'พร้อมใช้งาน (Available)', dot: '#10b981', badge: 'พร้อมใช้งาน', badgeClass: 'bg-emerald-50 text-[#0f5238] border border-emerald-200' },
+    { value: 'IN_WASH', label: 'อยู่ระหว่างล้าง (In Wash)', dot: '#3b82f6', badge: 'กำลังล้าง', badgeClass: 'bg-blue-50 text-blue-800 border border-blue-200' },
+    { value: 'IN_TRANSIT', label: 'ระหว่างขนส่ง (In Transit)', dot: '#f59e0b', badge: 'กำลังสไลด์', badgeClass: 'bg-amber-50 text-amber-800 border border-amber-200' },
+  ], []);
+
+  const slideActionOptions: DropdownOption[] = useMemo(() => [
+    { value: 'ALL', label: 'ทุกขั้นตอน / สถานะ', icon: Filter },
+    { value: 'CREATED', label: 'สร้างใบงานใหม่', dot: '#0284c7', icon: Clock },
+    { value: 'PICKUP_VERIFIED', label: 'ยืนยันรับรถขึ้นสไลด์', dot: '#4f46e5', icon: CheckCircle2 },
+    { value: 'IN_TRANSIT', label: 'อยู่ระหว่างขนส่ง', dot: '#f59e0b', icon: Truck },
+    { value: 'DELIVERED', label: 'ส่งมอบปลายทางแล้ว', dot: '#2563eb', icon: MapPin },
+    { value: 'APPROVED', label: 'สาขาตรวจรับสำเร็จ', dot: '#059669', icon: CheckCircle2 },
+    { value: 'CANCELLED', label: 'ยกเลิกการสไลด์', dot: '#dc2626', icon: X },
+  ], []);
 
   // Filtered vehicles
   const displayedVehicles = useMemo(() => {
@@ -258,31 +298,29 @@ export default function VehicleStockPage() {
             <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
               {/* Branch Filter - Only show if not EV7 */}
               {currentCompany !== 'EV7' && (
-                <select
-                  value={selectedBranchFilter}
-                  onChange={(e) => setSelectedBranchFilter(e.target.value)}
-                  className="h-10 px-3 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
-                >
-                  <option value="ALL">ทุกสาขา {currentCompany === 'GI' ? '(GI Hubs)' : ''}</option>
-                  {branches
-                    .filter(b => currentCompany === 'ALL' || b.code.startsWith(currentCompany))
-                    .map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                </select>
+                <div className="w-full sm:w-[260px]">
+                  <CustomDropdown
+                    value={selectedBranchFilter}
+                    onChange={setSelectedBranchFilter}
+                    options={branchOptions}
+                    icon={Building2}
+                    dropdownWidth="w-full sm:w-[320px]"
+                    placeholder="เลือกสาขา"
+                  />
+                </div>
               )}
 
               {/* Status Filter */}
-              <select
-                value={selectedStatusFilter}
-                onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                className="h-10 px-3 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
-              >
-                <option value="ALL">ทุกสถานะรถ</option>
-                <option value="AVAILABLE">พร้อมใช้งาน (Available)</option>
-                <option value="IN_WASH">กำลังล้าง (In Wash)</option>
-                <option value="IN_TRANSIT">ระหว่างขนส่ง (In Transit)</option>
-              </select>
+              <div className="w-full sm:w-[190px]">
+                <CustomDropdown
+                  value={selectedStatusFilter}
+                  onChange={setSelectedStatusFilter}
+                  options={statusOptions}
+                  icon={Filter}
+                  dropdownWidth="w-full sm:w-[240px]"
+                  placeholder="ทุกสถานะรถ"
+                />
+              </div>
             </div>
           </div>
 
@@ -464,19 +502,16 @@ export default function VehicleStockPage() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <select
-                value={selectedSlideActionFilter}
-                onChange={(e) => setSelectedSlideActionFilter(e.target.value)}
-                className="h-10 px-3 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
-              >
-                <option value="ALL">ทุกขั้นตอน / สถานะ</option>
-                <option value="CREATED">สร้างใบงานใหม่</option>
-                <option value="PICKUP_VERIFIED">ยืนยันรับรถขึ้นสไลด์</option>
-                <option value="IN_TRANSIT">อยู่ระหว่างขนส่ง</option>
-                <option value="DELIVERED">ส่งมอบปลายทางแล้ว</option>
-                <option value="APPROVED">สาขาตรวจรับสำเร็จ</option>
-                <option value="CANCELLED">ยกเลิกการสไลด์</option>
-              </select>
+              <div className="w-full sm:w-[220px]">
+                <CustomDropdown
+                  value={selectedSlideActionFilter}
+                  onChange={setSelectedSlideActionFilter}
+                  options={slideActionOptions}
+                  icon={Filter}
+                  dropdownWidth="w-full sm:w-[250px]"
+                  placeholder="ทุกขั้นตอน / สถานะ"
+                />
+              </div>
 
               <button
                 type="button"

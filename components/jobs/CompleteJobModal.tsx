@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Job } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
-import { Upload, X } from 'lucide-react';
+import { Upload, X, Camera } from 'lucide-react';
 import { SAMPLE_PHOTOS } from './constants';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 interface CompleteJobModalProps {
   job: Job;
@@ -26,6 +27,12 @@ export const CompleteJobModal: React.FC<CompleteJobModalProps> = ({
   const [photoUrl, setPhotoUrl] = useState('');
   const [caption, setCaption] = useState('');
   const [evidenceType, setEvidenceType] = useState<'AFTER' | 'BEFORE' | 'DROPOFF'>('AFTER');
+
+  const evidenceOptions: DropdownOption[] = useMemo(() => [
+    { value: 'AFTER', label: 'รูปหลังทำความสะอาดเสร็จ (After Wash)', dot: '#10b981' },
+    { value: 'BEFORE', label: 'รูปก่อนเริ่มงาน (Before)', dot: '#3b82f6' },
+    { value: 'DROPOFF', label: 'รูปส่งมอบรถที่ปลายทาง (Delivery Dropoff)', dot: '#f59e0b' },
+  ], []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,16 +100,14 @@ export const CompleteJobModal: React.FC<CompleteJobModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">ประเภทรูปถ่าย:</label>
-            <select
+            <CustomDropdown
               value={evidenceType}
-              onChange={(e) => setEvidenceType(e.target.value as 'AFTER' | 'BEFORE' | 'DROPOFF')}
-              className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs outline-none font-medium focus:ring-2"
-              style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
-            >
-              <option value="AFTER">รูปหลังทำความสะอาดเสร็จ (After Wash)</option>
-              <option value="BEFORE">รูปก่อนเริ่มงาน (Before)</option>
-              <option value="DROPOFF">รูปส่งมอบรถที่ปลายทาง (Delivery Dropoff)</option>
-            </select>
+              onChange={(val) => setEvidenceType(val as 'AFTER' | 'BEFORE' | 'DROPOFF')}
+              options={evidenceOptions}
+              icon={Camera}
+              dropdownWidth="w-full"
+              placeholder="เลือกประเภทรูปถ่าย"
+            />
           </div>
 
           <div>

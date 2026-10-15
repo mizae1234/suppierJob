@@ -24,6 +24,7 @@ import {
   ChevronUp,
   HelpCircle
 } from 'lucide-react';
+import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 interface ParsedVehicle {
   rowNum: number;
@@ -118,6 +119,25 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
   const availableBranches = branches.filter(b => b.companyId === selectedCompanyId);
   const activeBranch = branches.find(b => b.id === (isBranchUser ? effectiveUserBranchId : selectedBranchId));
   const activeCompany = companies.find(c => c.id === (isBranchUser ? (user?.companyId || activeBranch?.companyId || selectedCompanyId) : selectedCompanyId));
+
+  const duplicateOptions: DropdownOption[] = [
+    { value: 'UPDATE', label: 'อัปเดตข้อมูลเดิม (Upsert)', dot: '#3b82f6' },
+    { value: 'SKIP', label: 'ข้ามรายการเดิม (Skip Duplicate)', dot: '#f59e0b' },
+  ];
+
+  const importCompanyOptions: DropdownOption[] = companies.map(c => ({
+    value: c.id,
+    label: `${c.name} (${c.code})`,
+    dot: c.code === 'EV7' ? '#2d6a4f' : '#3b82f6',
+    icon: Building2,
+  }));
+
+  const importBranchOptions: DropdownOption[] = availableBranches.map(b => ({
+    value: b.id,
+    label: b.name,
+    sublabel: b.code ? `รหัส: ${b.code}` : undefined,
+    dot: b.code.startsWith('EV7') || b.code === 'GI06' ? '#2d6a4f' : '#3b82f6',
+  }));
 
   // ── Template Generator ──
   const handleDownloadTemplate = async () => {
@@ -507,14 +527,13 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">
                     หากพบ VIN ซ้ำในระบบ:
                   </label>
-                  <select
+                  <CustomDropdown
                     value={duplicateAction}
-                    onChange={(e) => setDuplicateAction(e.target.value as 'UPDATE' | 'SKIP')}
-                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
-                  >
-                    <option value="UPDATE">อัปเดตข้อมูลเดิม (Upsert)</option>
-                    <option value="SKIP">ข้ามรายการเดิม (Skip Duplicate)</option>
-                  </select>
+                    onChange={(val) => setDuplicateAction(val as 'UPDATE' | 'SKIP')}
+                    options={duplicateOptions}
+                    dropdownWidth="w-full"
+                    buttonClassName="bg-white"
+                  />
                 </div>
 
                 {/* Template Download Button */}
@@ -539,22 +558,20 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">
                     บริษัทเริ่มต้น:
                   </label>
-                  <select
+                  <CustomDropdown
                     value={selectedCompanyId}
-                    onChange={(e) => {
-                      const newCompId = e.target.value;
+                    onChange={(newCompId) => {
                       setSelectedCompanyId(newCompId);
                       const matchingBranches = branches.filter(b => b.companyId === newCompId);
                       if (matchingBranches.length > 0) {
                         setSelectedBranchId(matchingBranches[0].id);
                       }
                     }}
-                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
-                  >
-                    {companies.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
-                    ))}
-                  </select>
+                    options={importCompanyOptions}
+                    icon={Building2}
+                    dropdownWidth="w-full"
+                    buttonClassName="bg-white"
+                  />
                 </div>
 
                 {/* Default Branch */}
@@ -562,15 +579,13 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">
                     สาขาเริ่มต้น (ถ้าไม่ระบุในไฟล์):
                   </label>
-                  <select
+                  <CustomDropdown
                     value={selectedBranchId}
-                    onChange={(e) => setSelectedBranchId(e.target.value)}
-                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
-                  >
-                    {availableBranches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
+                    onChange={setSelectedBranchId}
+                    options={importBranchOptions}
+                    dropdownWidth="w-full"
+                    buttonClassName="bg-white"
+                  />
                 </div>
 
                 {/* Duplicate Action */}
@@ -578,14 +593,13 @@ export default function VehicleImportModal({ isOpen, onClose }: VehicleImportMod
                   <label className="block text-[11px] font-bold text-gray-700 mb-1">
                     หากพบ VIN ซ้ำในระบบ:
                   </label>
-                  <select
+                  <CustomDropdown
                     value={duplicateAction}
-                    onChange={(e) => setDuplicateAction(e.target.value as 'UPDATE' | 'SKIP')}
-                    className="w-full h-10 px-2.5 rounded-xl border border-gray-200 bg-white text-xs font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#0f5238]"
-                  >
-                    <option value="UPDATE">อัปเดตข้อมูลเดิม (Upsert)</option>
-                    <option value="SKIP">ข้ามรายการเดิม (Skip Duplicate)</option>
-                  </select>
+                    onChange={(val) => setDuplicateAction(val as 'UPDATE' | 'SKIP')}
+                    options={duplicateOptions}
+                    dropdownWidth="w-full"
+                    buttonClassName="bg-white"
+                  />
                 </div>
 
                 {/* Template Download Button — aligned with dropdowns */}

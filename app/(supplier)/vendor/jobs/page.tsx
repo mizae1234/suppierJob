@@ -279,6 +279,9 @@ function SupplierJobsPageContent() {
       unitPrice: cost,
       branchName: job.branchName,
       routeText,
+      originName: origin,
+      destName: dest,
+      distance: job.distance,
       rejectReason: job.rejectReason,
       job,
     };

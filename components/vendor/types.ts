@@ -14,6 +14,9 @@ export interface WorkModalTarget {
   unitPrice: number;
   branchName: string;
   routeText?: string;
+  originName?: string;
+  destName?: string;
+  distance?: number;
   rejectReason?: string;
   job: Job;
 }
