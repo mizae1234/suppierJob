@@ -51,7 +51,7 @@ model Branch {
   id          String    @id @default(uuid())
   companyId   String
   company     Company   @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  code        String    // เช่น BKK-HO, BKK-RNG, BKK-RM9
+  code        String    @unique // เช่น BKK-HO, BKK-RNG, BKK-RM9
   name        String    // พระราม 9, รังสิต, เชียงใหม่
   address     String?
   phone       String?

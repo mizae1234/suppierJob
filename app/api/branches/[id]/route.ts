@@ -93,18 +93,21 @@ export async function PATCH(
 
     const isBranch = user.role === 'BRANCH';
 
-    // If code is changing, check uniqueness (only for MASTER/ADMIN)
+    // If code is changing, check uniqueness across entire system (Globally Unique)
     if (!isBranch && code && code.trim() !== branch.code) {
-      const existing = await prisma.branch.findUnique({
+      const existing = await prisma.branch.findFirst({
         where: {
-          companyId_code: {
-            companyId: branch.companyId,
-            code: code.trim(),
-          },
+          code: code.trim(),
+          id: { not: branch.id },
+        },
+        include: {
+          company: { select: { name: true, code: true } },
         },
       });
       if (existing) {
-        return NextResponse.json({ error: `รหัสสาขา ${code.trim()} ถูกใช้งานแล้ว` }, { status: 400 });
+        return NextResponse.json({
+          error: `รหัสสาขา ${code.trim()} ถูกใช้งานแล้วในระบบ (สังกัด ${existing.company.name})`,
+        }, { status: 400 });
       }
     }
 

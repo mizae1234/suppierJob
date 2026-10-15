@@ -107,18 +107,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'คุณไม่มีสิทธิ์เพิ่มสาขาให้บริษัทอื่น' }, { status: 403 });
     }
 
-    // Check duplicate code within company
-    const existing = await prisma.branch.findUnique({
+    // Check duplicate code across entire system (Globally Unique)
+    const existing = await prisma.branch.findFirst({
       where: {
-        companyId_code: {
-          companyId,
-          code: code.trim(),
-        },
+        code: code.trim(),
+      },
+      include: {
+        company: { select: { name: true, code: true } },
       },
     });
 
     if (existing) {
-      return NextResponse.json({ error: `รหัสสาขา ${code.trim()} มีอยู่ในระบบของบริษัทนี้แล้ว` }, { status: 400 });
+      return NextResponse.json({
+        error: `รหัสสาขา ${code.trim()} ถูกใช้งานแล้วในระบบ (สังกัด ${existing.company.name})`,
+      }, { status: 400 });
     }
 
     const lat = latitude !== undefined && latitude !== '' && latitude !== null ? Number(latitude) : null;
