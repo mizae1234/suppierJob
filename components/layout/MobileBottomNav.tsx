@@ -36,7 +36,7 @@ const moreMenuItems = [
   { label: 'ขอรถสไลด์', icon: Truck, href: '/jobs/create-vehicle-slide', color: '#059669' },
   { divider: true },
   { label: 'รถในสต็อก / VIN', icon: Car, href: '/vehicles', color: '#6b7280' },
-  { label: 'จัดการสาขา', icon: Building2, href: '/branches', color: '#6b7280', roleVisibility: ['MASTER', 'ADMIN'] },
+  { label: 'ข้อมูลสาขา', icon: Building2, href: '/branches', color: '#6b7280', roleVisibility: ['MASTER', 'ADMIN', 'BRANCH'] },
   { label: 'จัดการ Supplier', icon: Store, href: '/suppliers', color: '#6b7280', roleVisibility: ['MASTER'] },
   { label: 'จัดการผู้ใช้งาน', icon: Users, href: '/users', color: '#6b7280', roleVisibility: ['MASTER'] },
   { label: 'ใบวางบิล / Invoice', icon: Receipt, href: '/invoices', color: '#6b7280' },

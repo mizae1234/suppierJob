@@ -18,12 +18,17 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { name: 'asc' },
       });
-    } catch (includeErr) {
-      console.warn('Fallback: querying suppliers without rateItems include');
-      suppliers = await prisma.supplier.findMany({
-        where: { isActive: true },
-        orderBy: { name: 'asc' },
-      });
+    } catch (includeErr: any) {
+      // Only fallback if the rateItems relation/table does not exist in database yet
+      if (includeErr?.code === 'P2021' || includeErr?.code === 'P2017') {
+        console.warn('Fallback: querying suppliers without rateItems include');
+        suppliers = await prisma.supplier.findMany({
+          where: { isActive: true },
+          orderBy: { name: 'asc' },
+        });
+      } else {
+        throw includeErr;
+      }
     }
 
     // Mask sensitive financial information if user is not ADMIN/MASTER or the supplier themselves

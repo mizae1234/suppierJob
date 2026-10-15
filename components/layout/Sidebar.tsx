@@ -81,7 +81,7 @@ export const Sidebar: React.FC = () => {
       href: '/branches',
       icon: Building2,
       badge: null,
-      roleVisibility: ['MASTER', 'ADMIN'],
+      roleVisibility: ['MASTER', 'ADMIN', 'BRANCH'],
     },
     {
       label: 'จัดการ Supplier',

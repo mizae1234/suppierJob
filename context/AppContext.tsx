@@ -220,8 +220,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     }
-    if (currentRole === 'ADMIN') return true;
-    if (currentRole === 'SUPPLIER') return job.supplierId === currentSupplierId;
+    if (currentRole === 'SUPPLIER') {
+      if (!currentSupplierId || currentSupplierId === 'ALL') return true;
+      return job.supplierId === currentSupplierId;
+    }
     return true;
   });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
@@ -15,7 +15,9 @@ import {
   ArrowLeft,
   ChevronDown,
   Check,
-  Globe,
+  Users,
+  Sparkles,
+  Truck,
 } from 'lucide-react';
 
 export const SupplierSidebar: React.FC = () => {
@@ -25,12 +27,7 @@ export const SupplierSidebar: React.FC = () => {
   const { user } = useAuth();
   const {
     jobs,
-    branches,
-    activeBranch,
-    currentBranchId,
     setCurrentBranchId,
-    currentCompany,
-    setCurrentCompany,
     activeSupplier,
     suppliers,
     currentSupplierId,
@@ -38,32 +35,57 @@ export const SupplierSidebar: React.FC = () => {
     setCurrentRole,
   } = useApp();
 
-  const [isBranchDropdownOpen, setIsBranchDropdownOpen] = useState(false);
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
 
   const isMaster = user?.role === 'MASTER';
+  const canSwitchSupplier = isMaster || user?.role === 'ADMIN' || !user?.supplierId || suppliers.length > 1;
   const isAllSupplier = !activeSupplier || currentSupplierId === 'ALL' || !currentSupplierId;
   const supplierName = isAllSupplier
-    ? (isMaster ? 'ทุก Supplier (All Partners)' : (user?.supplierName || 'Supplier'))
+    ? 'ทุก Supplier (All Partners)'
     : (activeSupplier?.name || user?.supplierName || 'Supplier');
 
-  // Compute live counts filtered by active branch and supplier
+  // Compute live counts filtered by active supplier
   const activeJobsCount = useMemo(() => {
     const sId = activeSupplier?.id || user?.supplierId;
-    let list = isAllSupplier ? jobs : jobs.filter(j => j.supplierId === sId);
-    if (currentBranchId) {
-      list = list.filter(j => j.branchId === currentBranchId);
-    }
+    const list = isAllSupplier ? jobs : jobs.filter(j => j.supplierId === sId);
     return list.filter(j => j.status === 'IN_PROGRESS' || j.status === 'PENDING_SUPPLIER').length;
-  }, [jobs, isAllSupplier, activeSupplier, user, currentBranchId]);
+  }, [jobs, isAllSupplier, activeSupplier, user]);
 
   const readyInvoiceCount = useMemo(() => {
     const sId = activeSupplier?.id || user?.supplierId;
-    let list = isAllSupplier ? jobs : jobs.filter(j => j.supplierId === sId);
-    if (currentBranchId) {
-      list = list.filter(j => j.branchId === currentBranchId);
-    }
+    const list = isAllSupplier ? jobs : jobs.filter(j => j.supplierId === sId);
     return list.filter(j => j.status === 'APPROVED').length;
-  }, [jobs, isAllSupplier, activeSupplier, user, currentBranchId]);
+  }, [jobs, isAllSupplier, activeSupplier, user]);
+
+  // Helpers to categorize suppliers into Car Wash and Vehicle Slide
+  const getSupplierServices = useCallback((s: any): string[] => {
+    if (Array.isArray(s.services)) return s.services;
+    if (typeof s.services === 'string') return s.services.split(',').map((x: string) => x.trim());
+    return [];
+  }, []);
+
+  const isCarWash = useCallback((s: any) => {
+    const sv = getSupplierServices(s);
+    if (sv.length > 0) return sv.includes('CAR_WASH') || sv.some((x: string) => x.includes('WASH'));
+    if (jobs.some(j => j.supplierId === s.id && j.jobType === 'CAR_WASH')) return true;
+    const n = (s.name || '').toLowerCase();
+    return n.includes('wash') || n.includes('clean') || n.includes('carcare') || !n.includes('slide');
+  }, [jobs, getSupplierServices]);
+
+  const isSlide = useCallback((s: any) => {
+    const sv = getSupplierServices(s);
+    if (sv.length > 0) return sv.includes('VEHICLE_SLIDE') || sv.some((x: string) => x.includes('SLIDE'));
+    if (jobs.some(j => j.supplierId === s.id && j.jobType === 'VEHICLE_SLIDE')) return true;
+    const n = (s.name || '').toLowerCase();
+    return n.includes('slide') || n.includes('สไลด์') || n.includes('logistics');
+  }, [jobs, getSupplierServices]);
+
+  const carWashSuppliers = useMemo(() => suppliers.filter(isCarWash), [suppliers, isCarWash]);
+  const slideSuppliers = useMemo(() => suppliers.filter(isSlide), [suppliers, isSlide]);
+  const otherSuppliers = useMemo(() => suppliers.filter(s => !isCarWash(s) && !isSlide(s)), [suppliers, isCarWash, isSlide]);
+
+  const isCurrentSlide = activeSupplier ? isSlide(activeSupplier) : false;
+  const isCurrentWash = activeSupplier ? isCarWash(activeSupplier) : false;
 
   const navItems = [
     {
@@ -92,20 +114,6 @@ export const SupplierSidebar: React.FC = () => {
     setCurrentRole('MASTER');
     router.push('/');
   };
-
-  // Filter branches to only those that have jobs for this supplier
-  const supplierBranchIds = useMemo(() => {
-    const sId = activeSupplier?.id || user?.supplierId;
-    
-    // Always filter: show only branches that have actual supplier jobs
-    const relevantJobs = (isAllSupplier || !sId) ? jobs : jobs.filter(j => j.supplierId === sId);
-    return new Set(relevantJobs.map(j => j.branchId));
-  }, [jobs, activeSupplier, user, isAllSupplier]);
-
-  // Group branches by company — only those with jobs
-  const ev7Branches = branches.filter(b => ((b as any).companyCode === 'EV7' || b.code === 'GI06' || b.code.startsWith('EV7')) && supplierBranchIds.has(b.id));
-  const giBranches = branches.filter(b => ((b as any).companyCode === 'GI' || (b.code.startsWith('GI') && b.code !== 'GI06')) && supplierBranchIds.has(b.id));
-  const totalRelevantBranches = ev7Branches.length + giBranches.length;
 
   const containerClasses =
     'fixed left-0 top-0 h-full w-72 bg-white border-r shadow-[0_4px_24px_rgba(0,0,0,0.04)] z-50 flex flex-col justify-between select-none print:hidden';
@@ -148,207 +156,277 @@ export const SupplierSidebar: React.FC = () => {
           </Link>
         </div>
 
-        {/* Branch Switcher Card: Allows viewing jobs by branch (Image 2) */}
+        {/* Supplier Switcher Card (Categorized into Car Wash & Vehicle Slide) */}
         <div className="px-5 py-3.5 border-b shrink-0 relative" style={{ borderColor: theme.borderSoft }}>
           <button
             type="button"
-            onClick={() => setIsBranchDropdownOpen(!isBranchDropdownOpen)}
-            className="w-full p-3 rounded-2xl border text-left flex items-center justify-between gap-2.5 transition-all duration-200 hover:border-emerald-500 hover:shadow-xs active:scale-[0.99] cursor-pointer group"
+            onClick={() => {
+              if (canSwitchSupplier) {
+                setIsSupplierDropdownOpen(!isSupplierDropdownOpen);
+              }
+            }}
+            disabled={!canSwitchSupplier}
+            className={`w-full p-3 rounded-2xl border text-left flex items-center justify-between gap-2.5 transition-all duration-200 group ${
+              canSwitchSupplier
+                ? 'hover:border-emerald-500 hover:shadow-xs active:scale-[0.99] cursor-pointer'
+                : 'cursor-default'
+            }`}
             style={{ backgroundColor: theme.bgCard, borderColor: theme.borderSoft }}
           >
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs transition-transform group-hover:scale-105"
-                style={{ backgroundColor: `${theme.primary}18`, color: theme.primary }}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs transition-transform ${
+                  canSwitchSupplier ? 'group-hover:scale-105' : ''
+                } ${
+                  isAllSupplier
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : isCurrentSlide && isCurrentWash
+                      ? 'bg-purple-100 text-purple-700'
+                      : isCurrentSlide
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-blue-100 text-blue-700'
+                }`}
               >
-                <Building2 className="w-4.5 h-4.5" />
+                {isAllSupplier ? (
+                  <Users className="w-4.5 h-4.5" />
+                ) : isCurrentSlide && !isCurrentWash ? (
+                  <Truck className="w-4.5 h-4.5" />
+                ) : isCurrentWash && !isCurrentSlide ? (
+                  <Sparkles className="w-4.5 h-4.5" />
+                ) : (
+                  <Store className="w-4.5 h-4.5" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-gray-900 truncate">
-                  {currentCompany === 'EV7' || (activeBranch && ((activeBranch as any).companyCode === 'EV7' || activeBranch.code === 'GI06' || activeBranch.code.startsWith('EV7')))
-                    ? 'EV7'
-                    : activeBranch
-                      ? activeBranch.name
-                      : 'ทุกสาขา (All Branches)'}
+                  {supplierName}
                 </p>
                 <p
                   className="text-[11px] font-medium transition-colors duration-300 truncate mt-0.5 flex items-center gap-1"
                   style={{ color: theme.textMuted }}
                 >
-                  <span>สาขาที่สั่งงาน</span>
-                  <span>•</span>
-                  <span className="text-emerald-700 font-semibold">เปลี่ยนสาขา</span>
+                  <span
+                    className={
+                      isAllSupplier
+                        ? 'text-gray-500'
+                        : isCurrentSlide && isCurrentWash
+                          ? 'text-purple-600 font-semibold'
+                          : isCurrentSlide
+                            ? 'text-amber-600 font-semibold'
+                            : 'text-blue-600 font-semibold'
+                    }
+                  >
+                    {isAllSupplier
+                      ? 'ทุกหมวดบริการ'
+                      : isCurrentSlide && isCurrentWash
+                        ? 'ล้างรถ & สไลด์'
+                        : isCurrentSlide
+                          ? 'บริการรถสไลด์'
+                          : 'บริการล้างรถ'}
+                  </span>
+                  {canSwitchSupplier && (
+                    <>
+                      <span>•</span>
+                      <span className="text-emerald-700 font-semibold">เปลี่ยนคู่ค้า</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
-            <ChevronDown
-              className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${
-                isBranchDropdownOpen ? 'rotate-180 text-emerald-600' : ''
-              }`}
-            />
+            {canSwitchSupplier && (
+              <ChevronDown
+                className={`w-4 h-4 text-gray-400 group-hover:text-gray-700 shrink-0 transition-transform duration-200 ${
+                  isSupplierDropdownOpen ? 'rotate-180 text-emerald-600' : ''
+                }`}
+              />
+            )}
           </button>
 
-          {/* Branch Dropdown Popover */}
-          {isBranchDropdownOpen && (
+          {/* Supplier Dropdown Popover */}
+          {isSupplierDropdownOpen && (
             <>
               <div
                 className="fixed inset-0 z-40"
-                onClick={() => setIsBranchDropdownOpen(false)}
+                onClick={() => setIsSupplierDropdownOpen(false)}
               />
               <div className="absolute left-5 right-5 top-full mt-1.5 bg-white rounded-2xl shadow-xl border border-gray-200 py-1.5 z-50 text-gray-800 animate-in fade-in duration-150 max-h-80 overflow-y-auto">
                 <div className="px-3.5 py-1.5 border-b border-gray-100 flex items-center justify-between">
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    บริษัท / สาขา
+                    ผู้ให้บริการ / คู่ค้า (Supplier)
                   </p>
-                  <span className="text-[10px] text-gray-400">
-                    {totalRelevantBranches} รายการ
+                  <span className="text-[10px] text-gray-400 font-medium">
+                    {suppliers.length} รายการ
                   </span>
                 </div>
 
-                {/* Option: All Branches */}
+                {/* Option: All Suppliers */}
                 <button
                   type="button"
                   onClick={() => {
+                    setCurrentSupplierId('');
                     setCurrentBranchId('');
-                    setCurrentCompany('ALL');
-                    setIsBranchDropdownOpen(false);
+                    setIsSupplierDropdownOpen(false);
                   }}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs text-left hover:bg-emerald-50/60 transition-colors cursor-pointer ${
-                    !currentBranchId
+                    isAllSupplier
                       ? 'text-emerald-800 bg-emerald-50 font-bold'
                       : 'text-gray-700 font-medium'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                      <Globe className="w-3.5 h-3.5" />
+                      <Users className="w-3.5 h-3.5" />
                     </div>
-                    <div>
-                      <p className="leading-tight">ทุกสาขา (All Branches)</p>
-                      <p className="text-[10px] text-gray-400 font-normal">ดูงานจากทุกสาขาของ EV7 & GI</p>
+                    <div className="min-w-0">
+                      <p className="leading-tight truncate">ทุก Supplier (All Partners)</p>
+                      <p className="text-[10px] text-gray-400 font-normal truncate">
+                        ดูงานทุกหมวดบริการของทุกคู่ค้า
+                      </p>
                     </div>
                   </div>
-                  {!currentBranchId && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                  {isAllSupplier && <Check className="w-4 h-4 text-emerald-600 shrink-0 ml-2" />}
                 </button>
 
-                {/* EV7 (No sub-branches) */}
-                {ev7Branches.length > 0 && (
+                {/* Category 1: Car Wash */}
+                {carWashSuppliers.length > 0 && (
                   <div>
-                    <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#0f5238]" />
-                      <span>EV7</span>
+                    <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        <span className="text-blue-700">หมวดบริการล้างรถ (Car Wash)</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-normal">
+                        {carWashSuppliers.length} ร้าน
+                      </span>
                     </div>
-                    {(() => {
-                      const ev7Branch = ev7Branches[0];
-                      const isSelected = currentCompany === 'EV7' && (!currentBranchId || currentBranchId === ev7Branch.id);
+                    {carWashSuppliers.map((sup) => {
+                      const isSelected = currentSupplierId === sup.id;
                       return (
                         <button
-                          key={ev7Branch.id}
+                          key={`wash-${sup.id}`}
                           type="button"
                           onClick={() => {
-                            setCurrentBranchId(ev7Branch.id);
-                            setCurrentCompany('EV7');
-                            setIsBranchDropdownOpen(false);
+                            setCurrentSupplierId(sup.id);
+                            setCurrentBranchId('');
+                            setIsSupplierDropdownOpen(false);
                           }}
-                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left hover:bg-gray-50 transition-colors cursor-pointer ${
+                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left hover:bg-blue-50/50 transition-colors cursor-pointer ${
                             isSelected
-                              ? 'text-emerald-800 bg-emerald-50 font-bold'
+                              ? 'text-blue-900 bg-blue-50 font-bold'
                               : 'text-gray-700 font-medium'
                           }`}
                         >
-                          <div className="min-w-0 pr-2">
-                            <p className="leading-tight truncate">EV7</p>
-                            <p className="text-[10px] text-gray-400 font-normal truncate">
-                              งานทั้งหมดของ EV7
-                            </p>
+                          <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                            <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                              <Sparkles className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="leading-tight truncate">{sup.name}</p>
+                              <p className="text-[10px] text-gray-400 font-normal truncate font-mono">
+                                {sup.code || ''}{sup.phone ? ` • ${sup.phone}` : ''}
+                              </p>
+                            </div>
                           </div>
-                          {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                {/* GI Branches */}
-                {giBranches.length > 0 && (
-                  <div>
-                    <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#0f5238]" />
-                      <span>สาขา GI</span>
-                    </div>
-                    {giBranches.map((branch) => {
-                      const isSelected = currentBranchId === branch.id;
-                      return (
-                        <button
-                          key={branch.id}
-                          type="button"
-                          onClick={() => {
-                            setCurrentBranchId(branch.id);
-                            setCurrentCompany('GI');
-                            setIsBranchDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left hover:bg-gray-50 transition-colors cursor-pointer ${
-                            isSelected
-                              ? 'text-emerald-800 bg-emerald-50 font-bold'
-                              : 'text-gray-700 font-medium'
-                          }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <p className="leading-tight truncate">{branch.name}</p>
-                            <p className="text-[10px] text-gray-400 font-normal font-mono truncate">
-                              {branch.code}
-                            </p>
-                          </div>
-                          {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                          {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
                         </button>
                       );
                     })}
                   </div>
                 )}
 
-                {/* Empty state when supplier has no jobs yet */}
-                {!isAllSupplier && totalRelevantBranches === 0 && (
-                  <div className="px-4 py-6 text-center">
-                    <p className="text-xs text-gray-400">ยังไม่มีสาขาที่สั่งงานมาให้คุณ</p>
-                    <p className="text-[10px] text-gray-300 mt-1">เมื่อมีสาขาสั่งงาน จะแสดงที่นี่</p>
+                {/* Category 2: Vehicle Slide */}
+                {slideSuppliers.length > 0 && (
+                  <div>
+                    <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span className="text-amber-700">หมวดบริการรถสไลด์ (Vehicle Slide)</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-normal">
+                        {slideSuppliers.length} ร้าน
+                      </span>
+                    </div>
+                    {slideSuppliers.map((sup) => {
+                      const isSelected = currentSupplierId === sup.id;
+                      return (
+                        <button
+                          key={`slide-${sup.id}`}
+                          type="button"
+                          onClick={() => {
+                            setCurrentSupplierId(sup.id);
+                            setCurrentBranchId('');
+                            setIsSupplierDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left hover:bg-amber-50/50 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'text-amber-900 bg-amber-50 font-bold'
+                              : 'text-gray-700 font-medium'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                            <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                              <Truck className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="leading-tight truncate">{sup.name}</p>
+                              <p className="text-[10px] text-gray-400 font-normal truncate font-mono">
+                                {sup.code || ''}{sup.phone ? ` • ${sup.phone}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-amber-600 shrink-0" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
-                {/* Optional: Supplier switch section for Master */}
-                {isMaster && (
-                  <div className="pt-1.5 mt-1.5 border-t border-gray-100">
-                    <div className="px-3.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      จำลองมุมมอง Supplier
+                {/* Category 3: Other suppliers if any */}
+                {otherSuppliers.length > 0 && (
+                  <div>
+                    <div className="px-3.5 pt-2.5 pb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                        <span className="text-gray-600">บริการอื่นๆ</span>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-normal">
+                        {otherSuppliers.length} ร้าน
+                      </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentSupplierId('');
-                        setIsBranchDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3.5 py-1.5 text-xs text-left hover:bg-gray-50 transition-colors cursor-pointer ${
-                        isAllSupplier ? 'text-emerald-800 font-bold' : 'text-gray-600'
-                      }`}
-                    >
-                      <span className="truncate">🏢 ทุก Supplier (All)</span>
-                      {isAllSupplier && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
-                    </button>
-                    {suppliers.map(sup => (
-                      <button
-                        key={sup.id}
-                        type="button"
-                        onClick={() => {
-                          setCurrentSupplierId(sup.id);
-                          setIsBranchDropdownOpen(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-3.5 py-1.5 text-xs text-left hover:bg-gray-50 transition-colors cursor-pointer ${
-                          currentSupplierId === sup.id ? 'text-emerald-800 font-bold' : 'text-gray-600'
-                        }`}
-                      >
-                        <span className="truncate">{sup.name}</span>
-                        {currentSupplierId === sup.id && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
-                      </button>
-                    ))}
+                    {otherSuppliers.map((sup) => {
+                      const isSelected = currentSupplierId === sup.id;
+                      return (
+                        <button
+                          key={`other-${sup.id}`}
+                          type="button"
+                          onClick={() => {
+                            setCurrentSupplierId(sup.id);
+                            setCurrentBranchId('');
+                            setIsSupplierDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3.5 py-2 text-xs text-left hover:bg-gray-50 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'text-gray-900 bg-gray-100 font-bold'
+                              : 'text-gray-700 font-medium'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p className="leading-tight truncate">{sup.name}</p>
+                            <p className="text-[10px] text-gray-400 font-normal truncate font-mono">
+                              {sup.code || ''}{sup.phone ? ` • ${sup.phone}` : ''}
+                            </p>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-gray-700 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {suppliers.length === 0 && (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-xs text-gray-400">ยังไม่มีรายชื่อคู่ค้าในระบบ</p>
                   </div>
                 )}
               </div>
