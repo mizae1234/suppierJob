@@ -58,6 +58,12 @@ export default function VehicleReportsPage() {
   const allRecords: VehicleRecord[] = useMemo(() => {
     const records: VehicleRecord[] = [];
 
+    const getRouteLabel = (j: any) => {
+      const origin = j.customOriginAddress || j.originBranchName || j.branchName || 'ต้นทาง';
+      const dest = j.customDestAddress || j.destBranchName || 'ปลายทาง';
+      return `${origin} ➔ ${dest}${j.distance ? ` (${j.distance} กม.)` : ''}`;
+    };
+
     for (const job of jobs) {
       // Jobs with items (CAR_WASH or VEHICLE_SLIDE with items)
       if (job.carWashItems && job.carWashItems.length > 0) {
@@ -78,7 +84,7 @@ export default function VehicleReportsPage() {
             itemStatus: item.status,
             jobStatus: job.status,
             companyCode: job.companyCode,
-            branchName: job.branchName,
+            branchName: job.jobType === 'VEHICLE_SLIDE' ? getRouteLabel(job) : job.branchName,
             supplierName: job.supplierName,
             invoiceNumber: job.invoiceNumber || null,
             remarks: item.remarks || null,
@@ -103,7 +109,7 @@ export default function VehicleReportsPage() {
           itemStatus: job.status,
           jobStatus: job.status,
           companyCode: job.companyCode,
-          branchName: job.branchName,
+          branchName: getRouteLabel(job),
           supplierName: job.supplierName,
           invoiceNumber: job.invoiceNumber || null,
           remarks: null,

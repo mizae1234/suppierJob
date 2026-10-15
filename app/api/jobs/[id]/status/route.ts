@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
+import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 
 // PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard)
 export async function PATCH(
@@ -22,7 +23,12 @@ export async function PATCH(
 
     const job = await prisma.job.findUnique({
       where: { id },
-      include: { carWashItems: true },
+      include: {
+        carWashItems: true,
+        originBranch: { select: { code: true, name: true, address: true } },
+        destBranch: { select: { code: true, name: true, address: true } },
+        supplier: { select: { name: true } },
+      },
     });
 
     if (!job) {
@@ -250,6 +256,46 @@ export async function PATCH(
       metadata: { jobNumber: job.jobNumber, fromStatus: job.status, toStatus: status, rejectReason },
       request,
     });
+
+    // Record VehicleSlideLog if VEHICLE_SLIDE
+    if (job.jobType === 'VEHICLE_SLIDE') {
+      const vins = job.carWashItems && job.carWashItems.length > 0
+        ? job.carWashItems.map(c => c.vin)
+        : (job.vin ? [job.vin] : []);
+
+      let slideAction: 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | null = null;
+      if (status === 'IN_PROGRESS') slideAction = 'IN_TRANSIT';
+      else if (status === 'WAITING_APPROVAL') slideAction = 'DELIVERED';
+      else if (status === 'APPROVED') slideAction = 'APPROVED';
+      else if (status === 'CANCELLED') slideAction = 'CANCELLED';
+
+      if (slideAction && vins.length > 0) {
+        const { originName, destName } = getSlideRouteLabels(job);
+        recordVehicleSlideLog({
+          jobId: job.id,
+          jobNumber: job.jobNumber,
+          vins,
+          action: slideAction,
+          originBranchId: job.originBranchId,
+          originName,
+          originAddress: job.customOriginAddress || job.originBranch?.address,
+          originLat: job.customOriginLat,
+          originLng: job.customOriginLng,
+          destBranchId: job.destBranchId,
+          destName,
+          destAddress: job.customDestAddress || job.destBranch?.address,
+          destLat: job.customDestLat,
+          destLng: job.customDestLng,
+          distance: null,
+          supplierId: job.supplierId,
+          supplierName: job.supplier?.name,
+          actorId: user.id,
+          actorName: user.displayName || user.username,
+          actorRole: user.role,
+          remarks: rejectReason || descMap[status] || null,
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, job: updatedJob });
   } catch (error) {

@@ -6,6 +6,7 @@ import { logAuditFromUser } from '@/lib/audit-log';
 import { getActiveJobsByVin } from '@/lib/active-jobs';
 import { getVehicleLabel } from '@/lib/job-utils';
 import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-wash-rates';
+import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 
 // GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
@@ -507,6 +508,9 @@ export async function POST(request: NextRequest) {
           },
         },
         include: {
+          originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+          destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+          supplier: { select: { name: true } },
           carWashItems: {
             include: {
               vehicle: { select: { model: true, color: true, licensePlate: true } },
@@ -515,10 +519,54 @@ export async function POST(request: NextRequest) {
         },
       });
 
+      const { originName, destName } = getSlideRouteLabels({
+        originBranch: job.originBranch,
+        destBranch: job.destBranch,
+        customOriginAddress: job.customOriginAddress,
+        customDestAddress: job.customDestAddress,
+      });
+
       // Update vehicle status to IN_TRANSIT
       await prisma.vehicle.updateMany({
         where: { vin: { in: vinsList } },
         data: { status: 'IN_TRANSIT' },
+      });
+
+      // Record Vehicle Slide Movement Log for all vehicles
+      recordVehicleSlideLog({
+        jobId: job.id,
+        jobNumber,
+        vins: vinsList,
+        action: 'CREATED',
+        originBranchId,
+        originName,
+        originAddress: job.customOriginAddress || job.originBranch?.address,
+        originLat: job.customOriginLat ?? job.originBranch?.latitude,
+        originLng: job.customOriginLng ?? job.originBranch?.longitude,
+        destBranchId: destBranchId || null,
+        destName,
+        destAddress: job.customDestAddress || job.destBranch?.address,
+        destLat: job.customDestLat ?? job.destBranch?.latitude,
+        destLng: job.customDestLng ?? job.destBranch?.longitude,
+        distance: distance ? parseFloat(distance) : null,
+        supplierId,
+        supplierName: job.supplier?.name,
+        actorId: user.id,
+        actorName: snapshotName,
+        actorRole: user.role,
+        remarks: finalTransferReason || undefined,
+      });
+
+      // Timeline activity for job creation
+      await prisma.jobActivity.create({
+        data: {
+          jobId: job.id,
+          action: 'JOB_CREATED',
+          actor: snapshotName,
+          actorRole: user.role,
+          description: `สร้างคำสั่งรถสไลด์ ขนส่งจาก ${originName} ➔ ไปยัง ${destName} (${vinsList.length} คัน)`,
+          metadata: JSON.stringify({ originName, destName, distance, vins: vinsList }),
+        },
       });
 
       // Audit Log: CREATE_JOB (Vehicle Slide)
@@ -526,8 +574,16 @@ export async function POST(request: NextRequest) {
         action: 'CREATE_JOB',
         entityType: 'Job',
         entityId: job.id,
-        description: `สร้างใบงานรถสไลด์ ${jobNumber} (${vinsList.length} คัน, ฿${totalEstimatedCost.toLocaleString()})`,
-        metadata: { jobNumber, jobType: 'VEHICLE_SLIDE', vinCount: vinsList.length, totalEstimatedCost },
+        description: `สร้างใบงานรถสไลด์ ${jobNumber} (${vinsList.length} คัน) จาก ${originName} ไป ${destName} (฿${totalEstimatedCost.toLocaleString()})`,
+        metadata: { 
+          jobNumber, 
+          jobType: 'VEHICLE_SLIDE', 
+          vinCount: vinsList.length, 
+          totalEstimatedCost,
+          originName,
+          destName,
+          distance: distance ? parseFloat(distance) : null 
+        },
         request,
       });
 

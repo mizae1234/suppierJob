@@ -125,6 +125,7 @@ model Vehicle {
   status          String        @default("AVAILABLE") // AVAILABLE, IN_TRANSIT, IN_WASH
   jobs            Job[]
   carWashItems    CarWashItem[]
+  slideLogs       VehicleSlideLog[]
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -187,6 +188,9 @@ model Job {
 
   // บันทึกกิจกรรม / Timeline
   activities       JobActivity[]
+
+  // บันทึก Log การสไลด์ย้ายรถ
+  slideLogs        VehicleSlideLog[]
 
   // ค่าใช้จ่ายและการวางบิล
   estimatedCost    Float?
@@ -306,5 +310,47 @@ model AuditLog {
   @@index([supplierId])
   @@index([action])
   @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// บันทึก Log การสไลด์ย้ายรถ (Vehicle Slide Movement Log)
+model VehicleSlideLog {
+  id             String    @id @default(uuid())
+  vin            String
+  vehicle        Vehicle?  @relation(fields: [vin], references: [vin], onDelete: NoAction, onUpdate: NoAction)
+  jobId          String
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobNumber      String
+  action         String    // CREATED, PICKUP_VERIFIED, DELIVERED, APPROVED, CANCELLED
+  
+  // ต้นทาง (Origin)
+  originBranchId String?
+  originName     String    // เช่น "สาขา GI11 (พระนครศรีอยุธยา)" หรือที่อยู่จุดรับรถ
+  originAddress  String?
+  originLat      Float?
+  originLng      Float?
+
+  // ปลายทาง (Destination)
+  destBranchId   String?
+  destName       String    // เช่น "สาขา GI01 (กาญจนาภิเษก-บางแค)" หรือที่อยู่ปลายทาง
+  destAddress    String?
+  destLat        Float?
+  destLng        Float?
+
+  distance       Float?    // ระยะทาง (กิโลเมตร)
+  supplierId     String?
+  supplierName   String?
+  
+  actorId        String?
+  actorName      String?
+  actorRole      String?   // ADMIN, BRANCH, SUPPLIER, MASTER
+  
+  remarks        String?
+  createdAt      DateTime  @default(now())
+
+  @@index([vin])
+  @@index([jobId])
+  @@index([jobNumber])
+  @@index([action])
   @@index([createdAt])
 }

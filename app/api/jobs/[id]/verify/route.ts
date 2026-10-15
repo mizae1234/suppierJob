@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { uploadBase64Evidence } from '@/lib/s3';
 import { rateLimit } from '@/lib/rate-limit';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 
 const MAX_ATTEMPTS = 20;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
@@ -42,6 +43,9 @@ export async function POST(
       where: { id: jobId },
       include: {
         vehicle: true,
+        originBranch: { select: { code: true, name: true, address: true } },
+        destBranch: { select: { code: true, name: true, address: true } },
+        supplier: { select: { name: true } },
         carWashItems: { include: { vehicle: true } },
       },
     });
@@ -132,6 +136,32 @@ export async function POST(
         },
       });
     });
+
+    if (job.jobType === 'VEHICLE_SLIDE') {
+      const { originName, destName } = getSlideRouteLabels({
+        originBranch: job.originBranch,
+        destBranch: job.destBranch,
+        customOriginAddress: job.customOriginAddress,
+        customDestAddress: job.customDestAddress,
+      });
+
+      recordVehicleSlideLog({
+        jobId: job.id,
+        jobNumber: job.jobNumber,
+        vins: [matchedVin],
+        action: 'PICKUP_VERIFIED',
+        originBranchId: job.originBranchId,
+        originName,
+        destBranchId: job.destBranchId,
+        destName,
+        supplierId: job.supplierId,
+        supplierName: job.supplier?.name,
+        actorId: user.id,
+        actorName,
+        actorRole: user.role,
+        remarks: `Supplier ยืนยันรับรถขึ้นสไลด์ ณ ${originName} เตรียมเดินทางไป ${destName}`,
+      });
+    }
 
     logAuditFromUser(user, {
       action: 'VERIFY_VEHICLE',

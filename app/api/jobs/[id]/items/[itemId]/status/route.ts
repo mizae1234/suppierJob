@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
@@ -27,7 +28,12 @@ export async function PATCH(
     // Load the parent job with all items
     const job = await prisma.job.findUnique({
       where: { id: jobId },
-      include: { carWashItems: true },
+      include: {
+        carWashItems: true,
+        originBranch: { select: { code: true, name: true, address: true } },
+        destBranch: { select: { code: true, name: true, address: true } },
+        supplier: { select: { name: true } },
+      },
     });
 
     if (!job) {
@@ -342,6 +348,41 @@ export async function PATCH(
       metadata: { jobId, jobNumber: job.jobNumber, vin: item.vin, fromStatus: item.status, toStatus: status, remarks },
       request,
     });
+
+    // Record VehicleSlideLog if VEHICLE_SLIDE
+    if (job.jobType === 'VEHICLE_SLIDE') {
+      const { originName, destName } = getSlideRouteLabels(job);
+      let slideAction: 'DELIVERED' | 'APPROVED' | 'CANCELLED' | null = null;
+      if (status === 'COMPLETED') slideAction = 'DELIVERED';
+      else if (status === 'APPROVED') slideAction = 'APPROVED';
+      else if (status === 'CANCELLED') slideAction = 'CANCELLED';
+
+      if (slideAction) {
+        recordVehicleSlideLog({
+          jobId,
+          jobNumber: job.jobNumber,
+          vins: [item.vin],
+          action: slideAction,
+          originBranchId: job.originBranchId,
+          originName,
+          originAddress: job.customOriginAddress || job.originBranch?.address,
+          originLat: job.customOriginLat,
+          originLng: job.customOriginLng,
+          destBranchId: job.destBranchId,
+          destName,
+          destAddress: job.customDestAddress || job.destBranch?.address,
+          destLat: job.customDestLat,
+          destLng: job.customDestLng,
+          distance: null,
+          supplierId: job.supplierId,
+          supplierName: job.supplier?.name,
+          actorId: user.id,
+          actorName: user.displayName || user.username,
+          actorRole: user.role,
+          remarks: remarks || (slideAction === 'DELIVERED' ? 'Supplier นำส่งรถถึงปลายทาง' : slideAction === 'APPROVED' ? 'สาขาตรวจรับรถเรียบร้อย' : 'ยกเลิกรายการสไลด์รถ'),
+        });
+      }
+    }
 
     return NextResponse.json({
       success: true,

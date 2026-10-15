@@ -251,3 +251,34 @@ export interface Invoice {
   notes?: string;
   createdAt: string;
 }
+
+export interface VehicleSlideLog {
+  id: string;
+  vin: string;
+  vehicle?: {
+    model?: string;
+    color?: string;
+    licensePlate?: string;
+  };
+  jobId: string;
+  jobNumber: string;
+  action: 'CREATED' | 'PICKUP_VERIFIED' | 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | string;
+  originBranchId?: string;
+  originName: string;
+  originAddress?: string;
+  originLat?: number;
+  originLng?: number;
+  destBranchId?: string;
+  destName: string;
+  destAddress?: string;
+  destLat?: number;
+  destLng?: number;
+  distance?: number;
+  supplierId?: string;
+  supplierName?: string;
+  actorId?: string;
+  actorName?: string;
+  actorRole?: string;
+  remarks?: string;
+  createdAt: string;
+}
