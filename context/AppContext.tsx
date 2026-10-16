@@ -138,7 +138,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const [companiesRes, suppliersRes, vehiclesRes, jobsRes, invoicesRes] = await Promise.all([
         fetch('/api/companies'),
         fetch('/api/suppliers'),
-        fetch('/api/vehicles'),
+        fetch('/api/vehicles?scope=all'),
         fetch('/api/jobs'),
         fetch('/api/invoices'),
       ]);

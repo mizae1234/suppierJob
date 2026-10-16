@@ -284,7 +284,17 @@ export async function POST(request: NextRequest) {
           { status: 403 }
         );
       }
-      if (user.branchId && user.branchId !== branchId) {
+      if (jobType === 'VEHICLE_SLIDE') {
+        const origId = body.originBranchId || body.branchId;
+        const dstId = body.destBranchId;
+        // Branch user can request a slide if their branch is either origin (sending car) or destination (pulling car to their branch)
+        if (user.branchId && user.branchId !== origId && user.branchId !== dstId) {
+          return NextResponse.json(
+            { error: 'สาขาของคุณต้องเป็นสาขาต้นทางหรือสาขาปลายทางของงานรถสไลด์นี้' },
+            { status: 403 }
+          );
+        }
+      } else if (user.branchId && user.branchId !== branchId) {
         return NextResponse.json(
           { error: 'คุณสามารถสร้างงานได้เฉพาะสาขาตนเองเท่านั้น' },
           { status: 403 }

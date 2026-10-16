@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import TagSearch from '@/components/ui/TagSearch';
 import BranchSelect from '@/components/ui/BranchSelect';
+import { CustomDropdown, DropdownOption } from '@/components/ui/CustomDropdown';
 import { CompanyCode, Job } from '@/types';
 import { haversineDistance } from '@/lib/job-utils';
 import {
@@ -83,9 +84,45 @@ export default function CreateVehicleSlidePage() {
     return branches.filter(b => b.companyId === companyObj.id);
   }, [branches, companies, currentCompany]);
 
-  // Branch selection — Admin/Master pick from available branches
+  // Branch selection for Origin
   const [selectedOriginBranchId, setSelectedOriginBranchId] = useState<string>(currentBranchId || availableBranches[0]?.id || branches[0]?.id || '');
   const originBranchObj = branches.find(b => b.id === selectedOriginBranchId);
+
+  // Branch filter for vehicle stock list (defaults to ALL to show cars from all branches)
+  const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
+
+  // All vehicles available for slide (excluding maintenance)
+  const availableStockVehicles = useMemo(() => {
+    return vehicles.filter(v => v.status !== 'MAINTENANCE');
+  }, [vehicles]);
+
+  // Dropdown options for branch filter
+  const branchFilterOptions: DropdownOption[] = useMemo(() => {
+    const totalCount = availableStockVehicles.length;
+    const allOption: DropdownOption = {
+      value: 'ALL',
+      label: 'ทุกสาขา (All Branches)',
+      badge: `${totalCount} คัน`,
+      badgeClass: 'bg-emerald-100 text-emerald-800 font-bold',
+      icon: Building2,
+    };
+
+    const list: DropdownOption[] = branches
+      .filter(b => availableBranches.some(ab => ab.id === b.id))
+      .map(b => {
+        const count = availableStockVehicles.filter(v => v.currentBranchId === b.id).length;
+        return {
+          value: b.id,
+          label: b.name,
+          sublabel: b.code ? `รหัส: ${b.code}` : undefined,
+          badge: `${count} คัน`,
+          badgeClass: count > 0 ? 'bg-gray-100 text-gray-800 font-semibold' : 'bg-gray-50 text-gray-400',
+          dot: b.code.startsWith('EV7') || b.code === 'GI06' ? '#0f5238' : '#3b82f6',
+        };
+      });
+
+    return [allOption, ...list];
+  }, [branches, availableBranches, availableStockVehicles]);
 
   // Auto-switch branch when company changes
   useEffect(() => {
@@ -145,10 +182,7 @@ export default function CreateVehicleSlidePage() {
     }
   };
 
-  // Vehicles at selected origin branch (busy cars are listed but locked — see activeJob)
-  const branchStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.currentBranchId === selectedOriginBranchId && v.status !== 'MAINTENANCE');
-  }, [vehicles, selectedOriginBranchId]);
+
 
   // Auto-fill requester from logged-in user
   const autoName = authUser?.firstName && authUser?.lastName 
@@ -326,13 +360,25 @@ export default function CreateVehicleSlidePage() {
     ? customOrigin.address.split(',').slice(0, 2).join(',')
     : originBranchObj?.name;
 
-  const filteredVehicles = branchStockVehicles.filter(v => {
-    if (searchTags.length === 0) return true;
-    return searchTags.some(q => {
-      const term = q.toLowerCase();
-      return v.vin.toLowerCase().includes(term) || v.model.toLowerCase().includes(term) || (v.licensePlate && v.licensePlate.toLowerCase().includes(term));
+  const filteredVehicles = useMemo(() => {
+    return availableStockVehicles.filter(v => {
+      if (selectedBranchFilter !== 'ALL' && v.currentBranchId !== selectedBranchFilter) {
+        return false;
+      }
+      if (searchTags.length === 0) return true;
+      return searchTags.some(q => {
+        const term = q.toLowerCase();
+        return (
+          v.vin.toLowerCase().includes(term) ||
+          v.model.toLowerCase().includes(term) ||
+          (v.licensePlate && v.licensePlate.toLowerCase().includes(term)) ||
+          (v.color && v.color.toLowerCase().includes(term)) ||
+          (v.currentBranchName && v.currentBranchName.toLowerCase().includes(term)) ||
+          (v.currentBranchCode && v.currentBranchCode.toLowerCase().includes(term))
+        );
+      });
     });
-  });
+  }, [availableStockVehicles, selectedBranchFilter, searchTags]);
 
   // Cars with unfinished work can't be picked (select-all skips them)
   const selectableVehicles = filteredVehicles.filter(v => !v.activeJob);
@@ -344,24 +390,80 @@ export default function CreateVehicleSlidePage() {
   const handleToggleSelectAllFiltered = () => {
     if (isAllFilteredSelected) {
       const filteredVinSet = new Set(filteredVehicles.map(v => v.vin));
-      setSelectedVins(prev => prev.filter(vin => !filteredVinSet.has(vin)));
+      setSelectedVins(prev => {
+        const next = prev.filter(vin => !filteredVinSet.has(vin));
+        if (next.length === 0 && currentRole === 'BRANCH') {
+          const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
+          if (myBranchId) setSelectedOriginBranchId(myBranchId);
+        }
+        return next;
+      });
     } else {
-      const newVins = new Set([...selectedVins, ...selectableVehicles.map(v => v.vin)]);
-      setSelectedVins(Array.from(newVins));
+      // Check if selectable vehicles come from multiple branches
+      const branchIds = Array.from(new Set(selectableVehicles.map(v => v.currentBranchId).filter(Boolean)));
+      if (branchIds.length > 1) {
+        // Target branch: already selected branch or first branch in list
+        const targetBranchId = selectedVins.length > 0
+          ? (vehicles.find(v => v.vin === selectedVins[0])?.currentBranchId || branchIds[0])
+          : branchIds[0];
+        const targetVehicles = selectableVehicles.filter(v => v.currentBranchId === targetBranchId);
+        const targetBranchName = branches.find(b => b.id === targetBranchId)?.name || 'สาขาต้นทาง';
+        const newVins = new Set([...selectedVins, ...targetVehicles.map(v => v.vin)]);
+        setSelectedVins(Array.from(newVins));
+        setSelectedOriginBranchId(targetBranchId);
+        showToast(`เลือกเฉพาะรถของ ${targetBranchName} (${targetVehicles.length} คัน) เนื่องจากรถสไลด์ 1 เที่ยวต้องรับจากสาขาต้นทางเดียวกัน`, 'info');
+      } else if (branchIds.length === 1) {
+        setSelectedOriginBranchId(branchIds[0]);
+        const newVins = new Set([...selectedVins, ...selectableVehicles.map(v => v.vin)]);
+        setSelectedVins(Array.from(newVins));
+      }
     }
   };
 
   const handleToggleVehicle = (vin: string) => {
+    const clickedVehicle = vehicles.find(v => v.vin === vin);
+    if (!clickedVehicle) return;
+
     if (!selectedVins.includes(vin)) {
-      const busyJob = vehicles.find(v => v.vin === vin)?.activeJob;
+      const busyJob = clickedVehicle.activeJob;
       if (busyJob) {
         showToast(`รถคันนี้มีงานค้างอยู่ (ใบงาน ${busyJob.jobNumber}) — สั่งงานซ้ำได้เมื่องานเดิมเสร็จสิ้น`, 'warning');
         return;
       }
+
+      // If other vehicles are already selected, ensure they are from the same origin branch
+      if (selectedVins.length > 0) {
+        const firstSelected = vehicles.find(v => v.vin === selectedVins[0]);
+        if (firstSelected && firstSelected.currentBranchId !== clickedVehicle.currentBranchId) {
+          const firstBranch = branches.find(b => b.id === firstSelected.currentBranchId);
+          const clickedBranch = branches.find(b => b.id === clickedVehicle.currentBranchId);
+          showToast(
+            `รถคันนี้อยู่ที่ ${clickedBranch?.name || clickedVehicle.currentBranchCode || 'สาขาอื่น'} แต่รถที่เลือกไว้ก่อนหน้าอยู่ที่ ${firstBranch?.name || firstSelected.currentBranchCode || 'สาขาต้นทาง'} — รถสไลด์ 1 เที่ยวต้องรับจากสาขาต้นทางเดียวกัน`,
+            'warning'
+          );
+          return;
+        }
+      } else {
+        // First vehicle selected: auto-sync Origin Branch to this vehicle's current location!
+        if (clickedVehicle.currentBranchId) {
+          setSelectedOriginBranchId(clickedVehicle.currentBranchId);
+          // If branch user, and the car is from another branch, default destination to user's branch!
+          const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
+          if (currentRole === 'BRANCH' && myBranchId && myBranchId !== clickedVehicle.currentBranchId) {
+            setDestBranchId(myBranchId);
+          }
+        }
+      }
     }
-    setSelectedVins(prev =>
-      prev.includes(vin) ? prev.filter(v => v !== vin) : [...prev, vin]
-    );
+
+    setSelectedVins(prev => {
+      const next = prev.includes(vin) ? prev.filter(v => v !== vin) : [...prev, vin];
+      if (next.length === 0 && currentRole === 'BRANCH') {
+        const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
+        if (myBranchId) setSelectedOriginBranchId(myBranchId);
+      }
+      return next;
+    });
   };
 
   const { showToast } = useToast();
@@ -513,7 +615,7 @@ export default function CreateVehicleSlidePage() {
             recommendationReason={supplierRecommendation?.reason}
           />
 
-          {/* Step 2: Select VIN from current branch */}
+          {/* Step 2: Select VIN from any branch */}
           <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -523,10 +625,36 @@ export default function CreateVehicleSlidePage() {
               <span className="text-xs text-gray-500">เลือกแล้ว {selectedVins.length} คัน</span>
             </div>
 
+            {/* Filter by Branch */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold text-gray-600 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>สาขาที่รถจอดอยู่:</span>
+                </span>
+                {selectedBranchFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedBranchFilter('ALL')}
+                    className="text-[10px] text-emerald-700 hover:underline font-semibold cursor-pointer"
+                  >
+                    ดูรถทุกสาขา ({availableStockVehicles.length} คัน)
+                  </button>
+                )}
+              </label>
+              <CustomDropdown
+                options={branchFilterOptions}
+                value={selectedBranchFilter}
+                onChange={(val) => setSelectedBranchFilter(val)}
+                placeholder="เลือกสาขาที่รถจอดอยู่"
+                className="w-full text-xs"
+              />
+            </div>
+
             <TagSearch
               tags={searchTags}
               onTagsChange={setSearchTags}
-              placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน... (กด Enter เพื่อเพิ่ม)"
+              placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน / สาขา... (กด Enter เพื่อเพิ่ม)"
               accentColor="#0f5238"
             />
 
@@ -536,7 +664,7 @@ export default function CreateVehicleSlidePage() {
                 <button
                   type="button"
                   onClick={handleToggleSelectAllFiltered}
-                  className="flex items-center gap-2 font-medium text-gray-700 hover:text-emerald-900 transition-colors select-none py-1 group"
+                  className="flex items-center gap-2 font-medium text-gray-700 hover:text-emerald-900 transition-colors select-none py-1 group cursor-pointer"
                 >
                   <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
                     isAllFilteredSelected
@@ -566,13 +694,19 @@ export default function CreateVehicleSlidePage() {
             <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
               {filteredVehicles.length === 0 ? (
                 <div className="p-6 text-center text-xs text-gray-400">
-                  ไม่มีรถสถานะพร้อมย้ายในสต็อกสาขานี้ หรือไม่ตรงกับการค้นหา
+                  {selectedBranchFilter === 'ALL'
+                    ? 'ไม่มีรถสถานะพร้อมย้ายในสต็อก หรือไม่ตรงกับการค้นหา'
+                    : 'ไม่มีรถสถานะพร้อมย้ายในสาขานี้ หรือไม่ตรงกับการค้นหา'}
                 </div>
               ) : (
                 filteredVehicles.map(v => {
                   const isSelected = selectedVins.includes(v.vin);
                   const busyJob = v.activeJob;
                   const isWash = busyJob?.jobType === 'CAR_WASH';
+                  const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
+                  const isMyBranch = myBranchId && v.currentBranchId === myBranchId;
+                  const branchDisplay = v.currentBranchName || branches.find(b => b.id === v.currentBranchId)?.name || v.currentBranchCode || 'ไม่ระบุสาขา';
+
                   return (
                     <div
                       key={v.vin}
@@ -620,6 +754,23 @@ export default function CreateVehicleSlidePage() {
                           {v.model}
                           {v.color && <span className="text-gray-400"> · {v.color}</span>}
                         </p>
+
+                        {/* Location / Current Branch badge */}
+                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-500 font-medium">
+                          <Building2 className="w-3 h-3 text-emerald-700 shrink-0" />
+                          <span className="truncate">{branchDisplay}</span>
+                          {currentRole === 'BRANCH' && (
+                            isMyBranch ? (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold shrink-0">
+                                สาขาของคุณ
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[9px] font-medium border border-amber-200/60 shrink-0">
+                                สาขาอื่น
+                              </span>
+                            )
+                          )}
+                        </div>
 
                         {/* Status tag */}
                         {busyJob ? (
@@ -738,23 +889,33 @@ export default function CreateVehicleSlidePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Origin Branch + Pickup Point */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  สาขาต้นทาง (Origin Branch):
+                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center justify-between">
+                  <span>สาขาต้นทาง (Origin Branch):</span>
+                  {selectedVins.length > 0 && originBranchObj && (
+                    <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      ตามตำแหน่งรถที่เลือก ({originBranchObj.name})
+                    </span>
+                  )}
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {currentRole === 'ADMIN' ? (
+                  {currentRole === 'ADMIN' || selectedVins.length === 0 ? (
                     <BranchSelect
                       branches={branches}
                       value={selectedOriginBranchId}
                       onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); setSelectedSupplierId(''); setIsCustomPrice(false); }}
                     />
                   ) : (
-                    <input
-                      type="text"
-                      disabled
-                      value={originBranchObj?.name || ''}
-                      className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-gray-50 text-xs text-gray-600 font-medium"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        disabled
+                        value={originBranchObj?.name ? `${originBranchObj.name} (${originBranchObj.code})` : ''}
+                        className="w-full h-10 px-3 rounded-xl border border-emerald-200 bg-emerald-50/60 text-xs text-emerald-950 font-bold"
+                      />
+                      <span className="absolute right-3 top-2.5 text-[10px] text-emerald-700 font-medium flex items-center gap-1 pointer-events-none">
+                        <Building2 className="w-3.5 h-3.5" /> ตำแหน่งรถ
+                      </span>
+                    </div>
                   )}
 
                   {/* Pickup Mode Toggle */}

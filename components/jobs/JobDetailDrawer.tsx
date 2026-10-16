@@ -178,25 +178,25 @@ export function JobDetailDrawer({
           />
 
           {/* Drawer Container */}
-          <div className="fixed inset-y-0 right-0 max-w-full flex pl-6 sm:pl-10 pointer-events-none">
-            <div className="w-screen max-w-2xl bg-white shadow-2xl flex flex-col h-full pointer-events-auto border-l border-gray-100 animate-slide-in-right">
+          <div className="fixed inset-y-0 right-0 max-w-full flex pl-4 sm:pl-8 pointer-events-none">
+            <div className="w-screen max-w-2xl lg:max-w-3xl bg-white shadow-2xl flex flex-col h-full pointer-events-auto border-l border-gray-100 animate-slide-in-right">
               
               {/* Sticky Drawer Header */}
-              <div className="px-6 py-4 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="px-2.5 py-0.5 rounded-full font-bold text-xs" style={{ backgroundColor: '#dcfce7', color: '#0f5238' }}>
+              <div className="px-5 sm:px-6 py-3.5 sm:py-4 border-b border-gray-100 bg-white/95 backdrop-blur-md sticky top-0 z-20 flex items-center justify-between shrink-0 gap-3">
+                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap min-w-0">
+                  <span className="px-2.5 py-0.5 rounded-full font-bold text-xs shrink-0" style={{ backgroundColor: '#dcfce7', color: '#0f5238' }}>
                     {activeJob.companyCode}
                   </span>
                   
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-base font-bold text-gray-900 font-mono">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <h3 className="text-sm sm:text-base font-bold text-gray-900 font-mono tracking-tight">
                       {activeJob.jobNumber}
                     </h3>
                     <button
                       type="button"
                       onClick={() => handleCopyText(activeJob.jobNumber)}
                       title="คัดลอกเลขที่งาน"
-                      className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                      className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors cursor-pointer"
                     >
                       {copiedText === activeJob.jobNumber ? (
                         <CheckCheck className="w-3.5 h-3.5" style={{ color: theme.iconColor }} />
@@ -206,7 +206,7 @@ export function JobDetailDrawer({
                     </button>
                   </div>
 
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
                     STATUS_MAP[activeJob.status]?.bg || 'bg-gray-100'
                   } ${STATUS_MAP[activeJob.status]?.text || 'text-gray-700'}`}>
                     {STATUS_MAP[activeJob.status]?.label || activeJob.status}
@@ -219,7 +219,7 @@ export function JobDetailDrawer({
 
                     if (dir === 'INBOUND') {
                       return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs whitespace-nowrap shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
                           📥 รับเข้า (สาขาปลายทาง)
                         </span>
@@ -227,14 +227,14 @@ export function JobDetailDrawer({
                     }
                     if (dir === 'OUTBOUND') {
                       return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-xs">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-xs whitespace-nowrap shrink-0">
                           📤 ส่งออก (สาขาต้นทาง)
                         </span>
                       );
                     }
                     if (dir === 'INTERNAL' || activeJob.destBranchId) {
                       return (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs whitespace-nowrap shrink-0" title={`${activeJob.originBranchName || activeJob.branchName} → ${activeJob.destBranchName}`}>
                           🚚 ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}
                         </span>
                       );
@@ -244,28 +244,30 @@ export function JobDetailDrawer({
                 </div>
 
                 {/* Right controls: Prev/Next & Close */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {currentJobIndex >= 0 && (totalJobs || 0) > 1 && (
-                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-100 text-[11px] text-gray-600">
-                      <span className="font-medium font-mono">{currentJobIndex + 1} / {(totalJobs || 0)}</span>
-                      <div className="flex items-center ml-1 border-l border-gray-300 pl-1">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-100/90 text-xs text-gray-700 select-none whitespace-nowrap shrink-0 border border-gray-200/60 shadow-2xs">
+                      <span className="font-semibold font-mono tabular-nums whitespace-nowrap text-[11px]">
+                        {currentJobIndex + 1} / {(totalJobs || 0)}
+                      </span>
+                      <div className="flex items-center ml-1 border-l border-gray-300 pl-1 gap-0.5">
                         <button
                           type="button"
                           onClick={onPrevJob}
                           disabled={!hasPrevJob}
                           title="งานก่อนหน้า (ลูกศรซ้าย)"
-                          className="p-1 rounded hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent text-gray-700 transition-colors"
+                          className="p-1 rounded-md hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent text-gray-700 transition-colors cursor-pointer disabled:cursor-not-allowed"
                         >
-                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
                         <button
                           type="button"
                           onClick={onNextJob}
                           disabled={!hasNextJob}
                           title="งานถัดไป (ลูกศรขวา)"
-                          className="p-1 rounded hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent text-gray-700 transition-colors"
+                          className="p-1 rounded-md hover:bg-white disabled:opacity-30 disabled:hover:bg-transparent text-gray-700 transition-colors cursor-pointer disabled:cursor-not-allowed"
                         >
-                          <ChevronRight className="w-3.5 h-3.5" />
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
                       </div>
                     </div>
@@ -275,7 +277,7 @@ export function JobDetailDrawer({
                     type="button"
                     onClick={() => onClose()}
                     title="ปิด (Esc)"
-                    className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                    className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors cursor-pointer shrink-0"
                   >
                     <X className="w-5 h-5" />
                   </button>
