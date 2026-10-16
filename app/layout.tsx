@@ -7,6 +7,15 @@ import { ToastProvider } from '@/components/ui/Toast';
 export const metadata: Metadata = {
   title: 'ระบบจัดการงาน Supplier (EV7 & GI)',
   description: 'Supplier Job Management สำหรับบริหารงานสั่งล้างรถ ขอรถสไลด์ ตรวจรับงาน และออกใบวางบิล โดยใช้ VIN เป็นข้อมูลหลัก',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '64x64' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/icon.png',
+  },
 };
 
 export default function RootLayout({
@@ -17,6 +26,9 @@ export default function RootLayout({
   return (
     <html lang="th" className="h-full">
       <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="alternate icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/icon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link 

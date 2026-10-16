@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0f5238"/>
+      <stop offset="50%" stop-color="#14532d"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fde047"/>
+      <stop offset="100%" stop-color="#eab308"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background: Premium Squircle -->
+  <rect width="64" height="64" rx="16" fill="url(#bgGrad)"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="15.5" stroke="#34d399" stroke-opacity="0.3" stroke-width="1"/>
+
+  <!-- Graphic Elements -->
+  <g>
+    <!-- Small Car on Flatbed (Mint Emerald) -->
+    <path d="M16 23 C16 23 18.5 16.5 23.5 16.5 L28.5 16.5 C31.5 16.5 34 23 34 23 Z" fill="#34d399"/>
+    <path d="M19.5 22 L23 18 L28 18 L31 22 Z" fill="#0f5238"/>
+
+    <!-- Slide Truck Body (Crisp White) -->
+    <path d="M12 24 L35 24 L35 21 L37 21 L38 27 L47 27 C48.5 27 50 28.2 50.5 29.8 L51.5 33 L51.5 38 C51.5 39.1 50.6 40 49.5 40 L45.8 40 C45.4 37.8 43.4 36 41 36 C38.6 36 36.6 37.8 36.2 40 L24.8 40 C24.4 37.8 22.4 36 20 36 C17.6 36 15.6 37.8 15.2 40 L12 40 C11.4 40 11 39.6 11 39 L11 25 C11 24.4 11.4 24 12 24 Z" fill="#ffffff"/>
+
+    <!-- Cab Window -->
+    <path d="M38.5 28.5 L45 28.5 C46.2 28.5 47.2 29.5 47.7 30.8 L48.5 33 L38.5 33 Z" fill="#0f5238"/>
+
+    <!-- Wheels (White outer with Dark Emerald Hub) -->
+    <circle cx="20" cy="40" r="4.5" fill="#ffffff"/>
+    <circle cx="20" cy="40" r="2.2" fill="#064e3b"/>
+
+    <circle cx="41" cy="40" r="4.5" fill="#ffffff"/>
+    <circle cx="41" cy="40" r="2.2" fill="#064e3b"/>
+
+    <!-- Headlight Accent -->
+    <circle cx="50.5" cy="35" r="1.2" fill="#fde047"/>
+
+    <!-- Sparkle ✨ (Car Wash / Quality Star) -->
+    <path d="M44 8 C44 11.8 45.8 13.8 49 14.5 C45.8 15.2 44 17.2 44 21 C44 17.2 42.2 15.2 39 14.5 C42.2 13.8 44 11.8 44 8 Z" fill="url(#goldGrad)"/>
+    <circle cx="36" cy="9" r="1.2" fill="#fde047"/>
+  </g>
+</svg>
