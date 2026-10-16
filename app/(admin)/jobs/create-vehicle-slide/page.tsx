@@ -774,47 +774,66 @@ export default function CreateVehicleSlidePage() {
 
                         {/* Status tag */}
                         {busyJob ? (
-                          <div className="mt-2 flex items-center justify-between gap-1.5 flex-wrap">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50/90 border border-amber-200/80 text-amber-800 text-[10px] font-medium flex-wrap">
-                              {isWash ? (
-                                <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
-                              ) : (
-                                <Truck className="w-3 h-3 text-sky-600 shrink-0" />
-                              )}
-                              <span className="font-semibold">
-                                ติดงาน{isWash ? 'ล้างรถ' : 'รถสไลด์'}
-                              </span>
-                              <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-amber-200 text-amber-900 text-[10px]">
-                                {busyJob.jobNumber}
-                              </span>
-                              <span className="text-gray-400 text-[9px]">
-                                {busyJob.verifiedAt ? '(ยืนยันตัวรถแล้ว)' : '(รอดำเนินการ)'}
-                              </span>
+                          <div className="mt-2 flex items-center justify-between gap-2 p-2 px-2.5 rounded-xl bg-gradient-to-r from-amber-50/90 via-amber-50/70 to-orange-50/50 border border-amber-200/80 shadow-2xs">
+                            {/* Left: Icon & Details */}
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${
+                                isWash 
+                                  ? 'bg-amber-100/90 text-amber-700 border border-amber-200/80' 
+                                  : 'bg-sky-100/90 text-sky-700 border border-sky-200/80'
+                              }`}>
+                                {isWash ? (
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                                ) : (
+                                  <Truck className="w-3.5 h-3.5 text-sky-600" />
+                                )}
+                              </div>
+
+                              <div className="min-w-0 flex flex-col justify-center">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-[11px] text-amber-950 tracking-tight leading-none">
+                                    ติดงาน{isWash ? 'ล้างรถ' : 'รถสไลด์'}
+                                  </span>
+                                  <span className="font-mono text-[10px] font-bold text-amber-900 bg-white/90 px-1.5 py-0.5 rounded-md border border-amber-200/70 leading-none shadow-2xs">
+                                    {busyJob.jobNumber}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-800/80 leading-none">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                    busyJob.verifiedAt ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
+                                  }`} />
+                                  <span className="font-medium">
+                                    {busyJob.verifiedAt ? 'ยืนยันตัวรถแล้ว' : 'รอดำเนินการ'}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Cancel button if unverified and admin/master/branch */}
-                            {currentRole !== 'SUPPLIER' && (
-                              busyJob.canCancel !== false && !busyJob.verifiedAt ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleOpenCancelModal(e, v)}
-                                  disabled={isCancellingBusyJob && vehicleToCancel?.vin === v.vin}
-                                  className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-red-100 hover:bg-red-200 text-red-700 transition-all cursor-pointer shadow-2xs disabled:opacity-50"
-                                  title="ยกเลิกคำสั่งงานสำหรับรถคันนี้ (เนื่องจาก Supplier ยังไม่ได้ยืนยันตัวรถ)"
-                                >
-                                  {isCancellingBusyJob && vehicleToCancel?.vin === v.vin ? (
-                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                  ) : (
-                                    <X className="w-2.5 h-2.5" />
-                                  )}
-                                  <span>ยกเลิกงานคันนี้</span>
-                                </button>
-                              ) : (
-                                <span className="text-[9px] text-gray-400 italic ml-auto" title="Supplier ถ่ายรูปยืนยันตัวรถแล้ว ไม่สามารถยกเลิกได้">
-                                  เริ่มงานแล้ว
-                                </span>
-                              )
-                            )}
+                            {/* Right: Cancel Action / Verified badge */}
+                            <div className="shrink-0 flex items-center">
+                              {currentRole !== 'SUPPLIER' && (
+                                busyJob.canCancel !== false && !busyJob.verifiedAt ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleOpenCancelModal(e, v)}
+                                    disabled={isCancellingBusyJob && vehicleToCancel?.vin === v.vin}
+                                    className="w-7 h-7 rounded-lg bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 border border-amber-200/80 hover:border-red-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50 group"
+                                    title="ยกเลิกคำสั่งงานสำหรับรถคันนี้"
+                                    aria-label="ยกเลิกคำสั่งงานสำหรับรถคันนี้"
+                                  >
+                                    {isCancellingBusyJob && vehicleToCancel?.vin === v.vin ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" />
+                                    ) : (
+                                      <X className="w-3.5 h-3.5 stroke-[2.5] group-hover:scale-110 transition-transform" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-[9px] text-gray-400 italic px-1.5 py-0.5 rounded bg-white/70 border border-amber-200/60" title="Supplier ถ่ายรูปยืนยันตัวรถแล้ว ไม่สามารถยกเลิกได้">
+                                    เริ่มงานแล้ว
+                                  </span>
+                                )
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
