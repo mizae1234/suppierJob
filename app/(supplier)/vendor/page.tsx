@@ -34,11 +34,16 @@ export default function SupplierDashboardPage() {
   const theme = useTheme();
 
   const isMaster = user?.role === 'MASTER';
-  const isAll = (!activeSupplier || currentSupplierId === 'ALL') && isMaster;
-  const supplierId = activeSupplier?.id || user?.supplierId;
-  const supplierName = isAll
-    ? (isMaster ? 'ทุก Supplier (All Partners)' : (user?.supplierName || 'Supplier'))
-    : (activeSupplier?.name || user?.supplierName || 'Supplier');
+  const isAdmin = user?.role === 'ADMIN';
+  const isSupplierUser = user?.role === 'SUPPLIER';
+
+  const isAll = !isSupplierUser && (isMaster || isAdmin) && (!activeSupplier || currentSupplierId === 'ALL');
+  const supplierId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
+  const supplierName = isSupplierUser
+    ? (user?.supplierName || activeSupplier?.name || 'Supplier')
+    : isAll
+      ? 'ทุก Supplier (All Partners)'
+      : (activeSupplier?.name || user?.supplierName || 'Supplier');
 
   // Filter jobs for this supplier and selected branch
   const myJobs = useMemo(() => {

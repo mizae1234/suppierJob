@@ -6,6 +6,7 @@ import { getJobTotalCost } from '@/lib/job-utils';
 import { formatThaiDate } from '@/lib/date-utils';
 import { JobStatus } from '@/types';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
+import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import { 
   BarChart3, 
   FileDown, 
@@ -54,7 +55,7 @@ export default function ReportsPage() {
   // Wash Report Filters
   const [washSearchQuery, setWashSearchQuery] = useState('');
   const [washStatusFilter, setWashStatusFilter] = useState<'ALL' | JobStatus>('ALL');
-  const [washPackageFilter, setWashPackageFilter] = useState<'ALL' | 'STANDARD' | 'DEEP_CLEAN' | 'POLISH'>('ALL');
+  const [washSupplierFilter, setWashSupplierFilter] = useState<string>('ALL');
 
   // Status dropdown options for car wash reports matching project UI
   const washStatusOptions: DropdownOption[] = useMemo(() => [
@@ -176,27 +177,37 @@ export default function ReportsPage() {
     return Array.from(map.values()).sort((a, b) => b.totalCost - a.totalCost);
   }, [washJobs]);
 
-  // Wash Types breakdown
-  const washTypeStats = useMemo(() => {
-    const stats: Record<string, { label: string; count: number; cost: number }> = {
-      STANDARD: { label: 'ล้างมาตรฐาน (Standard Wash)', count: 0, cost: 0 },
-      DEEP_CLEAN: { label: 'ล้างพิเศษ / ดูดฝุ่น (Deep Clean)', count: 0, cost: 0 },
-      POLISH: { label: 'ขัดเคลือบสี (Polish)', count: 0, cost: 0 },
-    };
+  // Dynamic Wash Services breakdown based on each supplier's actual services
+  const dynamicWashServiceStats = useMemo(() => {
+    const map = new Map<string, { code: string; label: string; count: number; cost: number }>();
 
     washJobs.forEach(j => {
       const isApproved = ['APPROVED', 'INVOICED'].includes(j.status);
       (j.carWashItems || []).forEach(item => {
-        const type = item.washType && stats[item.washType] ? item.washType : 'STANDARD';
-        stats[type].count += 1;
+        const rawCode = item.washType || 'WASH_NORMAL';
+        const meta = getWashServiceDisplay(rawCode);
+        const displayLabel = meta.name;
+
+        const existing = map.get(displayLabel) || { code: rawCode, label: displayLabel, count: 0, cost: 0 };
+        existing.count += 1;
         if (isApproved) {
-          stats[type].cost += item.unitPrice || 0;
+          existing.cost += item.unitPrice || 0;
         }
+        map.set(displayLabel, existing);
       });
     });
 
-    return Object.values(stats);
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
   }, [washJobs]);
+
+  // Supplier dropdown options for car wash reports
+  const washSupplierOptions: DropdownOption[] = useMemo(() => {
+    const opts: DropdownOption[] = [{ value: 'ALL', label: 'Supplier ทั้งหมด', dot: '#9ca3af' }];
+    supplierWashStats.forEach(s => {
+      opts.push({ value: s.supplierName, label: s.supplierName, dot: '#10b981' });
+    });
+    return opts;
+  }, [supplierWashStats]);
 
   // Filtered wash jobs for the report table
   const filteredWashReportJobs = useMemo(() => {
@@ -204,11 +215,8 @@ export default function ReportsPage() {
       // Status filter
       if (washStatusFilter !== 'ALL' && j.status !== washStatusFilter) return false;
 
-      // Package filter (match if job has any item with this washType)
-      if (washPackageFilter !== 'ALL') {
-        const hasPkg = (j.carWashItems || []).some(item => (item.washType || 'STANDARD') === washPackageFilter);
-        if (!hasPkg) return false;
-      }
+      // Supplier filter
+      if (washSupplierFilter !== 'ALL' && (j.supplierName || 'ไม่ระบุ Supplier') !== washSupplierFilter) return false;
 
       // Search query
       if (washSearchQuery.trim()) {
@@ -219,29 +227,19 @@ export default function ReportsPage() {
         const matchVin = j.carWashItems?.some(item => item.vin?.toLowerCase().includes(q));
         const matchPlate = j.carWashItems?.some(item => item.licensePlate?.toLowerCase().includes(q));
         const matchModel = j.carWashItems?.some(item => item.vehicleModel?.toLowerCase().includes(q));
+        const matchService = j.carWashItems?.some(item => {
+          const sName = getWashServiceDisplay(item.washType).name.toLowerCase();
+          return sName.includes(q) || item.washType?.toLowerCase().includes(q);
+        });
 
-        if (!matchJobNo && !matchSupplier && !matchBranch && !matchVin && !matchPlate && !matchModel) {
+        if (!matchJobNo && !matchSupplier && !matchBranch && !matchVin && !matchPlate && !matchModel && !matchService) {
           return false;
         }
       }
 
       return true;
     });
-  }, [washJobs, washStatusFilter, washPackageFilter, washSearchQuery]);
-
-  // Package filter counts
-  const washPackageCounts = useMemo(() => {
-    let standard = 0;
-    let deepClean = 0;
-    let polish = 0;
-    washJobs.forEach(j => {
-      const items = j.carWashItems || [];
-      if (items.some(i => (i.washType || 'STANDARD') === 'STANDARD')) standard += 1;
-      if (items.some(i => i.washType === 'DEEP_CLEAN')) deepClean += 1;
-      if (items.some(i => i.washType === 'POLISH')) polish += 1;
-    });
-    return { standard, deepClean, polish };
-  }, [washJobs]);
+  }, [washJobs, washStatusFilter, washSupplierFilter, washSearchQuery]);
 
   // Car models breakdown
   const carModelStats = useMemo(() => {
@@ -392,11 +390,12 @@ export default function ReportsPage() {
 
     if (activeTab === 'wash') {
       filename = `Car_Wash_Report_${new Date().toISOString().slice(0, 10)}.csv`;
-      headers = ['เลขที่ใบงาน', 'วันที่สร้าง', 'บริษัท', 'สาขา', 'Supplier', 'VIN', 'ทะเบียน', 'รุ่นรถ', 'แพ็กเกจล้าง', 'ราคาต่อคัน', 'สถานะ'];
+      headers = ['เลขที่ใบงาน', 'วันที่สร้าง', 'บริษัท', 'สาขา', 'Supplier', 'VIN', 'ทะเบียน', 'รุ่นรถ', 'รายการบริการ', 'ราคาต่อคัน', 'สถานะ'];
       rows = [];
       filteredWashReportJobs.forEach(j => {
         if (j.carWashItems && j.carWashItems.length > 0) {
           j.carWashItems.forEach(item => {
+            const svcName = getWashServiceDisplay(item.washType).name;
             rows.push([
               sanitizeCell(j.jobNumber),
               sanitizeCell(formatThaiDate(j.createdAt)),
@@ -406,7 +405,7 @@ export default function ReportsPage() {
               sanitizeCell(item.vin),
               sanitizeCell(item.licensePlate || '-'),
               sanitizeCell(item.vehicleModel || '-'),
-              sanitizeCell(item.washType || 'STANDARD'),
+              sanitizeCell(svcName),
               sanitizeCell(item.unitPrice || 0),
               sanitizeCell(j.status),
             ]);
@@ -834,8 +833,8 @@ export default function ReportsPage() {
             </div>
 
             <div className="p-4 rounded-2xl bg-white border border-gray-100 shadow-xs flex flex-col justify-between">
-              <span className="text-[11px] font-semibold text-gray-400">ร้านคาร์แคร์ที่ร่วมงาน</span>
-              <p className="text-2xl font-bold text-gray-900 mt-2">{supplierWashStats.length} <span className="text-xs font-normal text-gray-400">ร้าน</span></p>
+              <span className="text-[11px] font-semibold text-gray-400">Supplier ผู้ให้บริการ</span>
+              <p className="text-2xl font-bold text-gray-900 mt-2">{supplierWashStats.length} <span className="text-xs font-normal text-gray-400">เจ้า</span></p>
               <div className="mt-2 text-[10px] text-gray-500 font-medium">
                 ให้บริการ {branchWashStats.length} สาขา
               </div>
@@ -878,74 +877,24 @@ export default function ReportsPage() {
 
             {/* ── Filter Toolbar ── */}
             <div className="p-3 bg-gray-50/70 border-b border-gray-100 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-              {/* Left: Service Package Filter Pills */}
+              {/* Left: Supplier Filter Dropdown (if multiple suppliers) */}
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center p-1 bg-white rounded-xl border border-gray-200/80 shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => setWashPackageFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 ${
-                      washPackageFilter === 'ALL'
-                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <span>ทั้งหมด</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      washPackageFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {washJobs.length}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWashPackageFilter('STANDARD')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 ${
-                      washPackageFilter === 'STANDARD'
-                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <span>ล้างมาตรฐาน</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      washPackageFilter === 'STANDARD' ? 'bg-white/20 text-white' : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      {washPackageCounts.standard}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWashPackageFilter('DEEP_CLEAN')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 ${
-                      washPackageFilter === 'DEEP_CLEAN'
-                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <span>ล้างพิเศษ / ดูดฝุ่น</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      washPackageFilter === 'DEEP_CLEAN' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'
-                    }`}>
-                      {washPackageCounts.deepClean}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWashPackageFilter('POLISH')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 ${
-                      washPackageFilter === 'POLISH'
-                        ? 'bg-amber-600 text-white shadow-2xs font-bold'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <span>ขัดเคลือบสี</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      washPackageFilter === 'POLISH' ? 'bg-white/20 text-white' : 'bg-purple-50 text-purple-700'
-                    }`}>
-                      {washPackageCounts.polish}
-                    </span>
-                  </button>
-                </div>
+                {supplierWashStats.length > 1 ? (
+                  <div className="w-56 sm:w-64">
+                    <CustomDropdown
+                      value={washSupplierFilter}
+                      onChange={(val) => setWashSupplierFilter(val as any)}
+                      options={washSupplierOptions}
+                      dropdownWidth="w-64"
+                      buttonClassName="!h-9 !py-1.5 !px-3 !rounded-xl !bg-white text-xs font-semibold"
+                    />
+                  </div>
+                ) : supplierWashStats.length === 1 ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50/80 border border-amber-200/60 rounded-xl text-xs font-semibold text-amber-900 shadow-2xs">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Supplier: {supplierWashStats[0].supplierName}</span>
+                  </div>
+                ) : null}
               </div>
 
               {/* Right: Status Dropdown & Search Input */}
@@ -989,9 +938,9 @@ export default function ReportsPage() {
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50/80 text-gray-600 font-bold text-[11px] uppercase tracking-wider">
                     <th className="py-3.5 px-4 whitespace-nowrap">เลขที่ใบงาน / วันที่</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap">ร้านคาร์แคร์ (Supplier)</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Supplier ผู้ให้บริการ</th>
                     <th className="py-3.5 px-4 whitespace-nowrap">จำนวนรถ & รายการรถ</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap">แพ็กเกจบริการ</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">รายการบริการ (Services)</th>
                     <th className="py-3.5 px-4 text-right whitespace-nowrap">ยอดรวมค่าล้าง</th>
                     <th className="py-3.5 px-4 text-center whitespace-nowrap">สถานะ</th>
                     <th className="py-3.5 px-4 text-center whitespace-nowrap">การจัดการ</th>
@@ -1001,9 +950,6 @@ export default function ReportsPage() {
                   {filteredWashReportJobs.map(j => {
                     const st = STATUS_MAP[j.status] || { label: j.status, bg: 'bg-gray-50 border-gray-200', text: 'text-gray-700', dot: 'bg-gray-400' };
                     const items = j.carWashItems || [];
-                    const stdCount = items.filter(i => (i.washType || 'STANDARD') === 'STANDARD').length;
-                    const deepCount = items.filter(i => i.washType === 'DEEP_CLEAN').length;
-                    const polCount = items.filter(i => i.washType === 'POLISH').length;
 
                     return (
                       <tr key={j.id} className="hover:bg-gray-50/80 transition-colors">
@@ -1080,28 +1026,32 @@ export default function ReportsPage() {
                           )}
                         </td>
 
-                        {/* Packages */}
+                        {/* Services */}
                         <td className="py-4 px-4 min-w-[180px]">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {stdCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 text-[10px] font-semibold whitespace-nowrap">
-                                ล้างมาตรฐาน {stdCount > 1 ? `(${stdCount})` : ''}
-                              </span>
-                            )}
-                            {deepCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200/80 text-[10px] font-semibold whitespace-nowrap">
-                                ดูดฝุ่น {deepCount > 1 ? `(${deepCount})` : ''}
-                              </span>
-                            )}
-                            {polCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-900 border border-purple-200/80 text-[10px] font-semibold whitespace-nowrap">
-                                ขัดเคลือบสี {polCount > 1 ? `(${polCount})` : ''}
-                              </span>
-                            )}
-                            {items.length === 0 && (
-                              <span className="text-[11px] text-gray-400">ล้างมาตรฐาน</span>
-                            )}
-                          </div>
+                          {(() => {
+                            const serviceCounts = new Map<string, number>();
+                            items.forEach(i => {
+                              const name = getWashServiceDisplay(i.washType).name;
+                              serviceCounts.set(name, (serviceCounts.get(name) || 0) + 1);
+                            });
+
+                            if (serviceCounts.size === 0) {
+                              return <span className="text-[11px] text-gray-400">ล้างทำความสะอาด</span>;
+                            }
+
+                            return (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {Array.from(serviceCounts.entries()).map(([name, count]) => (
+                                  <span
+                                    key={name}
+                                    className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200/80 text-[10px] font-semibold whitespace-nowrap"
+                                  >
+                                    {name} {count > 1 ? `(${count})` : ''}
+                                  </span>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Total Cost */}
@@ -1140,7 +1090,7 @@ export default function ReportsPage() {
                             <Sparkles className="w-6 h-6" />
                           </div>
                           <span className="text-xs font-semibold text-gray-600">
-                            {washSearchQuery || washStatusFilter !== 'ALL' || washPackageFilter !== 'ALL'
+                            {washSearchQuery || washStatusFilter !== 'ALL' || washSupplierFilter !== 'ALL'
                               ? 'ไม่พบข้อมูลใบงานล้างรถตามเงื่อนไขที่ค้นหา'
                               : 'ยังไม่มีประวัติการสั่งล้างรถในระบบ'}
                           </span>
@@ -1217,7 +1167,7 @@ export default function ReportsPage() {
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-600" />
-                <h3 className="text-sm font-bold text-gray-900">ผลงานร้านคาร์แคร์ (Car Wash Suppliers)</h3>
+                <h3 className="text-sm font-bold text-gray-900">ผลงาน Supplier คาร์แคร์ (Car Wash Suppliers)</h3>
               </div>
               <span className="text-xs text-gray-400 font-medium">{supplierWashStats.length} ราย</span>
             </div>
@@ -1293,47 +1243,54 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* Section 4: สรุปตามประเภทการล้าง และ สถิติแยกรุ่นรถยนต์ (Service Packages & Car Models) */}
+          {/* Section 4: สรุปตามบริการคาร์แคร์จริง และ สถิติแยกรุ่นรถยนต์ (Actual Wash Services & Car Models) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            {/* Left: 3 Service Package Cards */}
-            <div className="lg:col-span-7 flex flex-col gap-3.5">
-              <div className="flex items-center justify-between px-1">
+            {/* Left: Dynamic Service Breakdown */}
+            <div className="lg:col-span-7 rounded-2xl bg-white border border-gray-100 shadow-xs flex flex-col justify-between overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-amber-600" />
-                  <h3 className="text-sm font-bold text-gray-900">แพ็กเกจบริการล้างรถ (Service Packages)</h3>
+                  <h3 className="text-sm font-bold text-gray-900">
+                    บริการคาร์แคร์ที่สั่งทำจริง (Services Provided)
+                  </h3>
                 </div>
-                <span className="text-xs text-gray-400 font-medium">รวม 3 แพ็กเกจ</span>
+                <span className="text-xs text-gray-400 font-medium">
+                  {dynamicWashServiceStats.length} รายการบริการ
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {washTypeStats.map(t => {
-                  const pct = totalCarsWashed > 0 ? Math.round((t.count / totalCarsWashed) * 100) : 0;
-                  return (
-                    <div key={t.label} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-xs flex flex-col justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-gray-900 leading-snug line-clamp-1" title={t.label}>
-                          {t.label}
-                        </span>
-                        <div className="flex items-baseline justify-between mt-3">
-                          <p className="text-xl font-bold text-amber-800">{t.count} <span className="text-xs font-normal text-gray-400">คัน</span></p>
-                          <p className="text-xs font-bold text-gray-900 font-mono">฿{t.cost.toLocaleString()}</p>
+              <div className="p-4 flex-1">
+                {dynamicWashServiceStats.length > 0 ? (
+                  <div className="space-y-3">
+                    {dynamicWashServiceStats.map(s => {
+                      const pct = totalCarsWashed > 0 ? Math.round((s.count / totalCarsWashed) * 100) : 0;
+                      return (
+                        <div key={s.label} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-gray-800 truncate max-w-[240px]" title={s.label}>
+                              {s.label}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-amber-800">{s.count} คัน</span>
+                              <span className="text-gray-400 font-mono text-[11px]">({pct}%)</span>
+                              <span className="font-mono font-semibold text-gray-700 text-xs">฿{s.cost.toLocaleString()}</span>
+                            </div>
+                          </div>
+                          <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                            <div
+                              className="h-full bg-amber-500 rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between text-[10px] text-gray-400 mb-1">
-                          <span>สัดส่วน</span>
-                          <span className="font-mono font-semibold">{pct}%</span>
-                        </div>
-                        <div className="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                          <div 
-                            className="h-full bg-amber-500 rounded-full" 
-                            style={{ width: `${pct}%` }} 
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center text-center py-6 text-gray-400 text-xs">
+                    ยังไม่มีข้อมูลบริการล้างรถที่ส่งทำ
+                  </div>
+                )}
               </div>
             </div>
 

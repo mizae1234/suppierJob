@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Car, Truck, Navigation } from 'lucide-react';
+import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Car, Truck, Navigation, Sparkles } from 'lucide-react';
 import { WorkModalTarget } from './types';
 import { useTheme } from '@/hooks/useTheme';
 import { useToast } from '@/components/ui/Toast';
 import { compressImage, MAX_RAW_FILE_SIZE } from './image-utils';
+import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 
 export interface VendorVerifyVehicleModalProps {
   target: WorkModalTarget | null;
@@ -185,43 +186,88 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
-                <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 shadow-2xs flex items-center justify-center shrink-0 text-emerald-800">
-                  <Car className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
-                    <span className="text-xs font-bold text-gray-900 truncate">
-                      {target.vehicleModel || 'รถยนต์'}
-                    </span>
-                    {target.vehicleColor && (
-                      <span className="text-[11px] text-gray-500">· {target.vehicleColor}</span>
-                    )}
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-[#0f5238] shrink-0">
-                      {target.serviceLabel}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-600 flex-wrap">
-                    <span>VIN: {target.vin}</span>
-                    {target.licensePlate && (
-                      <span className="px-1 bg-white rounded border border-gray-200 font-bold text-gray-800">
-                        {target.licensePlate}
+          ) : (() => {
+            const washMeta = getWashServiceDisplay(target.serviceType || 'WASH_NORMAL');
+            return (
+              <div className="rounded-xl border border-gray-100 bg-[#fbfdfc] overflow-hidden shadow-2xs text-xs">
+                {/* Top Row: Service Badge, Job#, Price */}
+                <div className="p-2.5 bg-white border-b border-gray-100 flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#0f5238] text-white shrink-0 shadow-2xs">
+                        <Sparkles className="w-3 h-3 text-amber-300" />
+                        <span>{washMeta.name}</span>
                       </span>
+                      <span className="font-mono text-[11px] font-bold text-gray-700 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                        #{target.jobNumber}
+                      </span>
+                    </div>
+
+                    <span className="text-sm font-black text-[#0f5238] font-mono shrink-0">
+                      ฿{target.unitPrice.toLocaleString()}
+                    </span>
+                  </div>
+
+                  {/* Vehicle specifications inline */}
+                  <div className="flex items-center gap-1.5 text-[11px] text-gray-600 flex-wrap">
+                    <span className="font-bold text-gray-900">{target.vehicleModel || 'รถยนต์'}</span>
+                    {target.vehicleColor && <span>· สี{target.vehicleColor}</span>}
+                    <span className="text-gray-300">•</span>
+                    <span className="font-mono text-gray-700">VIN: {target.vin}</span>
+                    {target.licensePlate && (
+                      <>
+                        <span className="text-gray-300">•</span>
+                        <span className="font-semibold text-amber-900 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/70 text-[10px]">
+                          {target.licensePlate}
+                        </span>
+                      </>
                     )}
                   </div>
+                </div>
+
+                {/* Service details and remarks */}
+                <div className="p-2.5 bg-[#f8faf9] flex flex-col gap-1.5 text-[11px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-gray-700">
+                      <span className="font-semibold text-gray-500 text-[10px]">หมวดหมู่:</span>
+                      <span>{target.washServiceCategory || washMeta.categoryName}</span>
+                    </div>
+                    {target.branchName && (
+                      <div className="text-[10px] text-gray-500">
+                        สาขา: <span className="font-semibold text-gray-700">{target.branchName}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {(target.washServiceDescription || washMeta.defaultRemarks) && (
+                    <p className="text-gray-600 leading-tight">
+                      <span className="font-medium text-gray-500">ขอบเขตงาน:</span> {target.washServiceDescription || washMeta.defaultRemarks}
+                    </p>
+                  )}
+
+                  {(target.remarks || target.itemRemarks) && (
+                    <div className="flex items-start gap-1.5 p-2 rounded-lg bg-amber-100/70 border border-amber-300/80 text-amber-950 font-medium text-[11px] leading-snug">
+                      <span className="shrink-0 font-bold text-amber-800">📌 จุดที่ต้องเน้นพิเศษ:</span>
+                      <span className="font-semibold">{target.remarks || target.itemRemarks}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-              <span className="text-xs font-black text-[#0f5238] font-mono shrink-0">
-                ฿{target.unitPrice.toLocaleString()}
-              </span>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Form Body - Only Photo Upload */}
-        <div className="p-4 sm:p-5 flex flex-col gap-4">
+        <div className="p-4 sm:p-5 flex flex-col gap-3.5">
+          {/* Helpful Verification Prompt */}
+          <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200/60 flex items-center gap-2 text-xs text-blue-900">
+            <span className="text-sm shrink-0">💡</span>
+            <p className="text-[11px] leading-snug">
+              {isSlide
+                ? 'โปรดตรวจสอบข้อมูลรถและเส้นทาง ก่อนถ่ายรูปยืนยันตัวรถเพื่อเริ่มงาน'
+                : 'โปรดตรวจสอบประเภทงานล้างและจุดที่ต้องเน้น ก่อนถ่ายรูปยืนยันตัวรถเพื่อเริ่มงาน'}
+            </p>
+          </div>
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-bold text-gray-800 flex items-center gap-1">

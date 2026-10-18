@@ -38,24 +38,30 @@ export const SupplierSidebar: React.FC = () => {
   const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState(false);
 
   const isMaster = user?.role === 'MASTER';
-  const canSwitchSupplier = isMaster || user?.role === 'ADMIN' || !user?.supplierId || suppliers.length > 1;
-  const isAllSupplier = !activeSupplier || currentSupplierId === 'ALL' || !currentSupplierId;
-  const supplierName = isAllSupplier
-    ? 'ทุก Supplier (All Partners)'
-    : (activeSupplier?.name || user?.supplierName || 'Supplier');
+  const isAdmin = user?.role === 'ADMIN';
+  const isSupplierUser = user?.role === 'SUPPLIER';
+
+  // Only Master or Admin can switch supplier to inspect their view. Real supplier users CANNOT switch.
+  const canSwitchSupplier = (isMaster || isAdmin) && suppliers.length > 1;
+  const isAllSupplier = !isSupplierUser && (isMaster || isAdmin) && (!activeSupplier || currentSupplierId === 'ALL' || !currentSupplierId);
+  const supplierName = isSupplierUser
+    ? (user?.supplierName || activeSupplier?.name || 'Supplier')
+    : isAllSupplier
+      ? 'ทุก Supplier (All Partners)'
+      : (activeSupplier?.name || user?.supplierName || 'Supplier');
 
   // Compute live counts filtered by active supplier
   const activeJobsCount = useMemo(() => {
-    const sId = activeSupplier?.id || user?.supplierId;
+    const sId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
     const list = isAllSupplier ? jobs : jobs.filter(j => j.supplierId === sId);
     return list.filter(j => j.status === 'IN_PROGRESS' || j.status === 'PENDING_SUPPLIER').length;
-  }, [jobs, isAllSupplier, activeSupplier, user]);
+  }, [jobs, isAllSupplier, activeSupplier, user, isSupplierUser]);
 
   const readyInvoiceCount = useMemo(() => {
-    const sId = activeSupplier?.id || user?.supplierId;
+    const sId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
     const list = isAllSupplier ? jobs : jobs.filter(j => j.supplierId === sId);
     return list.filter(j => j.status === 'APPROVED').length;
-  }, [jobs, isAllSupplier, activeSupplier, user]);
+  }, [jobs, isAllSupplier, activeSupplier, user, isSupplierUser]);
 
   // Helpers to categorize suppliers into Car Wash and Vehicle Slide
   const getSupplierServices = useCallback((s: any): string[] => {
@@ -84,8 +90,12 @@ export const SupplierSidebar: React.FC = () => {
   const slideSuppliers = useMemo(() => suppliers.filter(isSlide), [suppliers, isSlide]);
   const otherSuppliers = useMemo(() => suppliers.filter(s => !isCarWash(s) && !isSlide(s)), [suppliers, isCarWash, isSlide]);
 
-  const isCurrentSlide = activeSupplier ? isSlide(activeSupplier) : false;
-  const isCurrentWash = activeSupplier ? isCarWash(activeSupplier) : false;
+  const currentSupplierObj = isSupplierUser
+    ? (suppliers.find(s => s.id === user?.supplierId) || activeSupplier)
+    : activeSupplier;
+
+  const isCurrentSlide = currentSupplierObj ? isSlide(currentSupplierObj) : false;
+  const isCurrentWash = currentSupplierObj ? isCarWash(currentSupplierObj) : false;
 
   const navItems = [
     {
@@ -243,7 +253,7 @@ export const SupplierSidebar: React.FC = () => {
           </button>
 
           {/* Supplier Dropdown Popover */}
-          {isSupplierDropdownOpen && (
+          {canSwitchSupplier && isSupplierDropdownOpen && (
             <>
               <div
                 className="fixed inset-0 z-40"

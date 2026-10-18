@@ -34,29 +34,34 @@ export default function SupplierLayout({ children }: { children: React.ReactNode
   const [searchTags, setSearchTags] = useState<string[]>([]);
 
   const isMaster = user?.role === 'MASTER';
-  const isAll = !activeSupplier || currentSupplierId === 'ALL' || !currentSupplierId;
-  const supplierName = isAll
-    ? (isMaster ? 'ทุก Supplier (All Partners)' : (user?.supplierName || 'Supplier'))
-    : (activeSupplier?.name || user?.supplierName || 'Supplier');
+  const isAdmin = user?.role === 'ADMIN';
+  const isSupplierUser = user?.role === 'SUPPLIER';
+
+  const isAll = !isSupplierUser && (isMaster || isAdmin) && (!activeSupplier || currentSupplierId === 'ALL' || !currentSupplierId);
+  const supplierName = isSupplierUser
+    ? (user?.supplierName || activeSupplier?.name || 'Supplier')
+    : isAll
+      ? 'ทุก Supplier (All Partners)'
+      : (activeSupplier?.name || user?.supplierName || 'Supplier');
 
   // Compute live counts
   const activeJobsCount = useMemo(() => {
-    const sId = activeSupplier?.id || user?.supplierId;
+    const sId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
     let list = isAll ? jobs : jobs.filter(j => j.supplierId === sId);
     if (currentBranchId) {
       list = list.filter(j => j.branchId === currentBranchId);
     }
     return list.filter(j => j.status === 'IN_PROGRESS' || j.status === 'PENDING_SUPPLIER').length;
-  }, [jobs, isAll, activeSupplier, user, currentBranchId]);
+  }, [jobs, isAll, activeSupplier, user, currentBranchId, isSupplierUser]);
 
   const readyInvoiceCount = useMemo(() => {
-    const sId = activeSupplier?.id || user?.supplierId;
+    const sId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
     let list = isAll ? jobs : jobs.filter(j => j.supplierId === sId);
     if (currentBranchId) {
       list = list.filter(j => j.branchId === currentBranchId);
     }
     return list.filter(j => j.status === 'APPROVED').length;
-  }, [jobs, isAll, activeSupplier, user, currentBranchId]);
+  }, [jobs, isAll, activeSupplier, user, currentBranchId, isSupplierUser]);
 
   const navItems = [
     { label: 'หน้าแรก', href: '/vendor', icon: LayoutDashboard },

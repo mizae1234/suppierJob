@@ -122,7 +122,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentRole, setCurrentRole] = useState<UserRole>('ADMIN');
   const [currentCompany, setCurrentCompany] = useState<'ALL' | CompanyCode>('ALL');
   const [currentBranchId, setCurrentBranchId] = useState<string>('');
-  const [currentSupplierId, setCurrentSupplierId] = useState<string>('');
+  const [currentSupplierIdState, setCurrentSupplierIdState] = useState<string>('');
+  const currentSupplierId = user?.role === 'SUPPLIER' ? (user.supplierId || '') : currentSupplierIdState;
+
+  const setCurrentSupplierId = useCallback((id: string) => {
+    if (user?.role === 'SUPPLIER') {
+      setCurrentSupplierIdState(user.supplierId || '');
+      return;
+    }
+    setCurrentSupplierIdState(id);
+  }, [user]);
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -203,7 +212,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isAuthenticated, user, selectedCompany, fetchData]);
 
   const activeBranch = branches.find(b => b.id === currentBranchId);
-  const activeSupplier = suppliers.find(s => s.id === currentSupplierId);
+  const effectiveSupplierId = user?.role === 'SUPPLIER' ? (user.supplierId || '') : currentSupplierId;
+  const activeSupplier = suppliers.find(s => s.id === effectiveSupplierId);
 
   // ─── Filtered data ──────────────────────────────
   const filteredJobs = jobs.filter(job => {
@@ -220,9 +230,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     }
-    if (currentRole === 'SUPPLIER') {
-      if (!currentSupplierId || currentSupplierId === 'ALL') return true;
-      return job.supplierId === currentSupplierId;
+    if (currentRole === 'SUPPLIER' || user?.role === 'SUPPLIER') {
+      const sId = user?.supplierId || currentSupplierId;
+      if (!sId) return false;
+      return job.supplierId === sId;
     }
     return true;
   });

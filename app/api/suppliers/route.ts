@@ -6,10 +6,15 @@ export async function GET(request: NextRequest) {
   const user = await getSessionUser(request);
 
   try {
+    const whereCondition: any = { isActive: true };
+    if (user && user.role === 'SUPPLIER') {
+      whereCondition.id = user.supplierId || 'none';
+    }
+
     let suppliers: any[];
     try {
       suppliers = await (prisma.supplier as any).findMany({
-        where: { isActive: true },
+        where: whereCondition,
         include: {
           rateItems: {
             where: { isActive: true },
@@ -23,7 +28,7 @@ export async function GET(request: NextRequest) {
       if (includeErr?.code === 'P2021' || includeErr?.code === 'P2017') {
         console.warn('Fallback: querying suppliers without rateItems include');
         suppliers = await prisma.supplier.findMany({
-          where: { isActive: true },
+          where: whereCondition,
           orderBy: { name: 'asc' },
         });
       } else {

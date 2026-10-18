@@ -6,6 +6,7 @@ import { useApp } from '@/context/AppContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import { getVehicleLabel } from '@/lib/job-utils';
+import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import {
   ArrowLeft,
   Camera,
@@ -225,21 +226,20 @@ export default function SupplierSubmitPage() {
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-mono font-bold text-gray-900">{item.vin}</span>
-                          <span className={`px-1 py-0.5 rounded text-[9px] font-bold ${
-                            item.washType === 'DEEP_CLEAN'
-                              ? 'bg-blue-50 text-blue-700'
-                              : item.washType === 'POLISH'
-                              ? 'bg-purple-50 text-purple-700'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {item.washType}
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            {getWashServiceDisplay(item.washType).name}
                           </span>
                         </div>
                         {item.vehicleModel && (
                           <p className="text-[10px] text-gray-500 truncate">
                             {item.vehicleModel} {item.vehicleColor && `• ${item.vehicleColor}`}
+                          </p>
+                        )}
+                        {item.remarks && (
+                          <p className="text-[10px] text-amber-700 font-medium truncate mt-0.5">
+                            📌 {item.remarks}
                           </p>
                         )}
                       </div>

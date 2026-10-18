@@ -9,6 +9,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost, getVehicleLabel, classifySupplierItem, classifySupplierSlide } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import { Job, JobStatus, CarWashItemStatus } from '@/types';
+import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import { VendorRejectModal, VendorSubmitPhotoModal, VendorVerifyVehicleModal, WorkModalTarget } from '@/components/vendor';
 import {
   ClipboardList,
@@ -103,8 +104,11 @@ function SupplierJobsPageContent() {
   const searchParams = useSearchParams();
 
   const isMaster = user?.role === 'MASTER';
-  const isAll = (!activeSupplier || currentSupplierId === 'ALL') && isMaster;
-  const supplierId = activeSupplier?.id || user?.supplierId;
+  const isAdmin = user?.role === 'ADMIN';
+  const isSupplierUser = user?.role === 'SUPPLIER';
+
+  const isAll = !isSupplierUser && (isMaster || isAdmin) && (!activeSupplier || currentSupplierId === 'ALL');
+  const supplierId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
 
   const rawTab = searchParams.get('tab');
   const initialTab: TabKey =
@@ -239,6 +243,7 @@ function SupplierJobsPageContent() {
     const origin = card.job.originBranchName || card.job.branchName;
     const dest = card.job.destBranchName || card.job.customDestAddress || 'ปลายทาง';
     const routeText = isSlide ? `${origin} → ${dest}${card.job.distance ? ` (${card.job.distance} กม.)` : ''}` : undefined;
+    const washMeta = !isSlide ? getWashServiceDisplay(card.washType || 'WASH_NORMAL') : null;
 
     return {
       type: isSlide ? 'VEHICLE_SLIDE' : 'CAR_WASH',
@@ -250,7 +255,11 @@ function SupplierJobsPageContent() {
       vehicleColor: card.vehicleColor,
       licensePlate: card.licensePlate,
       serviceType: card.washType,
-      serviceLabel: isSlide ? 'รถสไลด์ขนส่ง' : card.washType === 'STANDARD' ? 'ล้างปกติ' : card.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : 'ขัดเคลือบ',
+      serviceLabel: isSlide ? 'รถสไลด์ขนส่ง' : (washMeta?.name || 'ล้างรถ'),
+      washServiceCategory: washMeta?.categoryName,
+      washServiceDescription: washMeta?.defaultRemarks,
+      remarks: card.itemRemarks,
+      itemRemarks: card.itemRemarks,
       unitPrice: card.unitPrice,
       branchName: card.branchName,
       routeText,
@@ -301,11 +310,10 @@ function SupplierJobsPageContent() {
     else setVerifyTarget(target);
   };
 
-  const handleVehicleVerified = async (target: WorkModalTarget) => {
+  const handleVehicleVerified = async () => {
     setVerifyTarget(null);
     await refreshData();
     setActiveTab('progress');
-    setPhotoModalTarget(target);
   };
 
   // ─── Open reject modal handlers ──
@@ -415,7 +423,7 @@ function SupplierJobsPageContent() {
         }`}
       >
         {/* Top Row: Vehicle + Price */}
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between mb-2.5">
           <div className="flex items-center gap-2.5">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
               isNeedsVerify
@@ -431,14 +439,22 @@ function SupplierJobsPageContent() {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <p className="text-sm font-bold text-gray-900">{getVehicleLabel(card.vin, card.licensePlate)}</p>
-                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
-                  card.washType === 'DEEP_CLEAN'
-                    ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                    : card.washType === 'POLISH'
-                    ? 'bg-purple-50 text-purple-700 border border-purple-100'
-                    : 'bg-gray-50 text-gray-600 border border-gray-100'
+                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border shadow-2xs ${
+                  card.washType === 'POLISH_STAINS' || card.washType === 'DEEP_CLEAN'
+                    ? 'bg-amber-100/90 text-amber-900 border-amber-300'
+                    : card.washType === 'WASH_AND_COAT' || card.washType === 'POLISH'
+                    ? 'bg-purple-100/90 text-purple-900 border-purple-300'
+                    : card.washType === 'COATING'
+                    ? 'bg-indigo-100/90 text-indigo-900 border-indigo-300'
+                    : card.washType === 'BIG_SIZE_M8'
+                    ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300'
+                    : card.washType === 'WASH_INSPECTION'
+                    ? 'bg-sky-100/90 text-sky-900 border-sky-300'
+                    : card.washType === 'VACUUM_CUSTOMER' || card.washType === 'VACUUM_CENTER'
+                    ? 'bg-teal-100/90 text-teal-900 border-teal-300'
+                    : 'bg-blue-100/90 text-blue-900 border-blue-300'
                 }`}>
-                  {card.washType === 'STANDARD' ? 'ล้างปกติ' : card.washType === 'DEEP_CLEAN' ? 'ล้างเชิงลึก' : card.washType === 'POLISH' ? 'ขัดเคลือบ' : 'ล้างรถ'}
+                  {getWashServiceDisplay(card.washType || 'WASH_NORMAL').name}
                 </span>
               </div>
               <p className="text-[11px] text-gray-500 mt-0.5 truncate max-w-[200px]">
@@ -456,6 +472,38 @@ function SupplierJobsPageContent() {
             )}
           </div>
         </div>
+
+        {/* Wash Service Details & Instructions Box (ชัดเจนก่อนเริ่มงาน & ระหว่างทำงาน) */}
+        {(() => {
+          const washMeta = getWashServiceDisplay(card.washType || 'WASH_NORMAL');
+          return (
+            <div className="mb-3 p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80 text-xs">
+              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="font-semibold text-gray-500 text-[11px]">บริการ:</span>
+                  <span className="font-bold text-gray-900 text-xs">
+                    {washMeta.name}
+                  </span>
+                  <span className="text-[10px] text-gray-600 bg-white px-1.5 py-0.2 rounded border border-gray-200 shrink-0">
+                    {washMeta.categoryName}
+                  </span>
+                </div>
+              </div>
+              {washMeta.defaultRemarks && (
+                <p className="text-[11px] text-gray-600 leading-normal">
+                  <span className="text-gray-400">ขอบเขตงาน:</span> {washMeta.defaultRemarks}
+                </p>
+              )}
+              {card.itemRemarks && (
+                <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-snug">
+                  <span className="shrink-0 font-bold text-amber-800">📌 จุดที่ต้องเน้น:</span>
+                  <span className="font-semibold">{card.itemRemarks}</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Job Reference Badge + Progress */}
         <div className="flex items-center justify-between mb-3 gap-2 overflow-hidden">

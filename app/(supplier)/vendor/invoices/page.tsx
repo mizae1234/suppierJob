@@ -29,8 +29,11 @@ export default function SupplierInvoicesPage() {
   const theme = useTheme();
 
   const isMaster = user?.role === 'MASTER';
-  const isAll = (!activeSupplier || currentSupplierId === 'ALL') && isMaster;
-  const supplierId = activeSupplier?.id || user?.supplierId;
+  const isAdmin = user?.role === 'ADMIN';
+  const isSupplierUser = user?.role === 'SUPPLIER';
+
+  const isAll = !isSupplierUser && (isMaster || isAdmin) && (!activeSupplier || currentSupplierId === 'ALL');
+  const supplierId = isSupplierUser ? user?.supplierId : (activeSupplier?.id || user?.supplierId);
 
   const [isCreating, setIsCreating] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);

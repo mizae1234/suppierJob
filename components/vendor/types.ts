@@ -11,6 +11,10 @@ export interface WorkModalTarget {
   licensePlate?: string;
   serviceType: string;
   serviceLabel: string;
+  washServiceCategory?: string;
+  washServiceDescription?: string;
+  remarks?: string;
+  itemRemarks?: string;
   unitPrice: number;
   branchName: string;
   routeText?: string;
