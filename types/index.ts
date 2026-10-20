@@ -92,10 +92,16 @@ export interface Vehicle {
   currentBranchId: string;
   currentBranchCode: string;
   currentBranchName: string;
-  vehicleType: 'Sedan' | 'SUV' | 'Hatchback' | 'Commercial' | 'MPV';
+  /** Sedan | SUV | Hatchback | Commercial | MPV หรือ 'ไม่ระบุ' (รถที่ sync จาก D365) */
+  vehicleType: string;
   licensePlate?: string;
   mileage?: number;
-  status: 'AVAILABLE' | 'IN_TRANSIT' | 'IN_WASH' | 'MAINTENANCE';
+  status: 'AVAILABLE' | 'IN_TRANSIT' | 'IN_WASH' | 'MAINTENANCE' | 'OUT_OF_STOCK';
+  /** แหล่งข้อมูลรถ: MANUAL (สร้าง/นำเข้าเอง) | D365 (sync อัตโนมัติ) */
+  source?: 'MANUAL' | 'D365';
+  /** ถูกจองใน D365 (แสดงผลเท่านั้น ยังสั่งงานได้) */
+  d365Reserved?: boolean;
+  lastSyncedAt?: string | null;
   /** Unfinished job currently holding this car (null = free to order) */
   activeJob?: { 
     jobId: string; 

@@ -676,6 +676,26 @@ export const openApiSpec = {
         responses: { 200: { description: 'ข้อมูลรายงาน' } },
       },
     },
+    '/api/integrations/d365/sync': {
+      get: {
+        tags: ['Vehicles'],
+        summary: 'ประวัติการ Sync รถจาก D365 (10 รอบล่าสุด) และสถานะการตั้งค่า',
+        responses: { 200: { description: 'configured, autoSyncEnabled, intervalMinutes, runs[]' } },
+      },
+      post: {
+        tags: ['Vehicles'],
+        summary: 'สั่ง Sync รถในสต็อกจาก D365 ทันที (MASTER / ADMIN)',
+        description:
+          'ดึงรถรายคันจาก D365 (BPC_InventOnHand) ทุกบริษัท แล้ว upsert ลงตาราง Vehicle ' +
+          'รถที่ไม่อยู่ใน D365 แล้วจะถูก mark เป็น OUT_OF_STOCK',
+        responses: {
+          200: { description: 'Sync สำเร็จ หรือสำเร็จบางส่วน (status: SUCCESS | PARTIAL)' },
+          409: { description: 'มีการ Sync กำลังทำงานอยู่' },
+          502: { description: 'เชื่อมต่อ / ดึงข้อมูลจาก D365 ไม่สำเร็จ' },
+          503: { description: 'ยังไม่ได้ตั้งค่า D365_* ใน environment' },
+        },
+      },
+    },
 
     // ----------------------------------------------------
     // Suppliers, Companies & Invoices

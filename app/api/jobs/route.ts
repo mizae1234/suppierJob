@@ -346,6 +346,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ─── Guard: รถที่ไม่อยู่ในสต็อก D365 แล้ว สั่งสไลด์ / ล้างรถใหม่ไม่ได้ (ล้างรถ Service ยังได้) ───
+    const allowsOutOfStock = jobType === 'CAR_WASH' && body.carCategory === 'SERVICE';
+    if (!allowsOutOfStock && requestedVins.length > 0) {
+      const outOfStock = await prisma.vehicle.findMany({
+        where: { vin: { in: requestedVins }, status: 'OUT_OF_STOCK' },
+        select: { vin: true, licensePlate: true },
+      });
+      if (outOfStock.length > 0) {
+        return NextResponse.json(
+          {
+            error: `รถต่อไปนี้ไม่อยู่ในสต็อกแล้ว (ตามข้อมูล D365) สั่งงานไม่ได้: ${outOfStock.map(v => getVehicleLabel(v.vin, v.licensePlate)).join(', ')}`,
+            outOfStockVins: outOfStock.map(v => v.vin),
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     if (jobType === 'CAR_WASH') {
       // ─── Car Wash ─────────────────────
       const { items, estimatedCost, transferReason, carCategory } = body;

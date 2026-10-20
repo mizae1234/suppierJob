@@ -32,7 +32,8 @@ export type AuditAction =
   | 'EXPORT_DATA'
   | 'CREATE_BRANCH'
   | 'UPDATE_BRANCH'
-  | 'DELETE_BRANCH';
+  | 'DELETE_BRANCH'
+  | 'SYNC_D365_VEHICLES';
 
 export type EntityType =
   | 'Job'
@@ -41,7 +42,8 @@ export type EntityType =
   | 'User'
   | 'CarWashItem'
   | 'Supplier'
-  | 'Branch';
+  | 'Branch'
+  | 'D365SyncRun';
 
 interface AuditLogParams {
   userId?: string | null;

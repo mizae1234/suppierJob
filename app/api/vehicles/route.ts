@@ -76,7 +76,10 @@ export async function GET(request: NextRequest) {
 
     if (status) where.status = status;
 
-    const limit = limitParam ? Math.min(200, Math.max(1, parseInt(limitParam, 10))) : 200;
+    // D365 sync ดึงรถทั้งเครือมา (200+ คัน) และหน้าเว็บโหลดทั้งหมดฝั่ง client → เพดาน 2000
+    const MAX_LIMIT = 2000;
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) ? Math.min(MAX_LIMIT, Math.max(1, parsedLimit)) : MAX_LIMIT;
 
     const vehicles = await prisma.vehicle.findMany({
       where,
@@ -105,6 +108,9 @@ export async function GET(request: NextRequest) {
       licensePlate: v.licensePlate,
       mileage: v.mileage,
       status: v.status || 'AVAILABLE',
+      source: v.source,
+      d365Reserved: v.d365Reserved,
+      lastSyncedAt: v.lastSyncedAt,
       activeJob: activeJobs.get(v.vin) || null,
     }));
 

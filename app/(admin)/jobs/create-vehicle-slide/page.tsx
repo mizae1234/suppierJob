@@ -91,9 +91,9 @@ export default function CreateVehicleSlidePage() {
   // Branch filter for vehicle stock list (defaults to ALL to show cars from all branches)
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
 
-  // All vehicles available for slide (excluding maintenance)
+  // All vehicles available for slide (excluding maintenance / out of stock)
   const availableStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.status !== 'MAINTENANCE');
+    return vehicles.filter(v => v.status !== 'MAINTENANCE' && v.status !== 'OUT_OF_STOCK');
   }, [vehicles]);
 
   // Dropdown options for branch filter

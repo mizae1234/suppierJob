@@ -35,8 +35,11 @@ export default function VehicleStockPage() {
     branches, 
     currentRole, 
     currentBranchId, 
-    currentCompany 
+    currentCompany,
+    refreshData,
   } = useApp();
+
+  const canSyncD365 = currentRole === 'MASTER' || currentRole === 'ADMIN';
 
   const [activeTab, setActiveTab] = useState<'STOCK' | 'SLIDE_LOGS'>('STOCK');
 
@@ -46,6 +49,16 @@ export default function VehicleStockPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+
+  // ─── D365 Sync State ───
+  type D365SyncRunInfo = {
+    id: string; trigger: string; triggeredBy: string | null; status: string;
+    startedAt: string; finishedAt: string | null;
+    created: number; updated: number; restocked: number; outOfStock: number; skipped: number;
+  };
+  const [d365Info, setD365Info] = useState<{ configured: boolean; autoSyncEnabled: boolean; intervalMinutes: number; runs: D365SyncRunInfo[] } | null>(null);
+  const [isSyncingD365, setIsSyncingD365] = useState(false);
+  const [d365Message, setD365Message] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
   // ─── Slide Logs State ───
   const [slideLogs, setSlideLogs] = useState<VehicleSlideLog[]>([]);
@@ -59,6 +72,11 @@ export default function VehicleStockPage() {
   const [modalTab, setModalTab] = useState<'JOBS' | 'SLIDE_LOGS'>('JOBS');
 
   // ─── Custom Dropdown Options ───
+  // บริษัทของสาขาต้องดูจาก companyCode จริง (เช่น GI06 เป็นของ EV7) ไม่ใช่ prefix ของรหัสสาขา
+  const getBranchCompanyCode = (b: (typeof branches)[number]) =>
+    (b as typeof b & { companyCode?: string }).companyCode ||
+    (b.code === 'GI06' || b.code.startsWith('EV7') ? 'EV7' : 'GI');
+
   const branchOptions: DropdownOption[] = useMemo(() => {
     const allOption: DropdownOption = {
       value: 'ALL',
@@ -67,22 +85,29 @@ export default function VehicleStockPage() {
     };
 
     const branchList: DropdownOption[] = branches
-      .filter(b => currentCompany === 'ALL' || b.code.startsWith(currentCompany))
+      .filter(b => currentCompany === 'ALL' || getBranchCompanyCode(b) === currentCompany)
       .map(b => ({
         value: b.id,
         label: b.name,
         sublabel: b.code ? `รหัสสาขา: ${b.code}` : undefined,
-        dot: b.code.startsWith('EV7') || b.code === 'GI06' ? '#2d6a4f' : '#3b82f6',
+        dot: getBranchCompanyCode(b) === 'EV7' ? '#2d6a4f' : '#3b82f6',
       }));
 
     return [allOption, ...branchList];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branches, currentCompany]);
+
+  // เปลี่ยนบริษัทแล้ว ถ้าสาขาที่เลือกค้างไว้ไม่อยู่ในบริษัทใหม่ → ถือเป็น "ทุกสาขา"
+  const effectiveBranchFilter = branchOptions.some(o => o.value === selectedBranchFilter)
+    ? selectedBranchFilter
+    : 'ALL';
 
   const statusOptions: DropdownOption[] = useMemo(() => [
     { value: 'ALL', label: 'ทุกสถานะรถ', icon: Filter },
     { value: 'AVAILABLE', label: 'พร้อมใช้งาน (Available)', dot: '#10b981', badge: 'พร้อมใช้งาน', badgeClass: 'bg-emerald-50 text-[#0f5238] border border-emerald-200' },
     { value: 'IN_WASH', label: 'อยู่ระหว่างล้าง (In Wash)', dot: '#3b82f6', badge: 'กำลังล้าง', badgeClass: 'bg-blue-50 text-blue-800 border border-blue-200' },
     { value: 'IN_TRANSIT', label: 'ระหว่างขนส่ง (In Transit)', dot: '#f59e0b', badge: 'กำลังสไลด์', badgeClass: 'bg-amber-50 text-amber-800 border border-amber-200' },
+    { value: 'OUT_OF_STOCK', label: 'ไม่อยู่ในสต็อก (Out of Stock)', dot: '#9ca3af', badge: 'หมดสต็อก', badgeClass: 'bg-gray-100 text-gray-600 border border-gray-200' },
   ], []);
 
   const slideActionOptions: DropdownOption[] = useMemo(() => [
@@ -102,7 +127,7 @@ export default function VehicleStockPage() {
       if (currentCompany !== 'ALL' && v.companyCode !== currentCompany) return false;
 
       // Branch filter
-      if (selectedBranchFilter !== 'ALL' && v.currentBranchId !== selectedBranchFilter) return false;
+      if (effectiveBranchFilter !== 'ALL' && v.currentBranchId !== effectiveBranchFilter) return false;
 
       // Status filter
       if (selectedStatusFilter !== 'ALL' && v.status !== selectedStatusFilter) return false;
@@ -122,7 +147,7 @@ export default function VehicleStockPage() {
 
       return true;
     });
-  }, [vehicles, currentCompany, selectedBranchFilter, selectedStatusFilter, searchTags]);
+  }, [vehicles, currentCompany, effectiveBranchFilter, selectedStatusFilter, searchTags]);
 
   // Find job history for selected VIN
   const vinHistory: Job[] = useMemo(() => {
@@ -215,6 +240,49 @@ export default function VehicleStockPage() {
     );
   };
 
+  // ─── D365 Sync ───
+  const fetchD365Info = useCallback(async () => {
+    try {
+      const res = await fetch('/api/integrations/d365/sync');
+      if (!res.ok) return;
+      setD365Info(await res.json());
+    } catch (err) {
+      console.error('Error fetching D365 sync info:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canSyncD365) fetchD365Info();
+  }, [canSyncD365, fetchD365Info]);
+
+  const handleSyncD365 = async () => {
+    setIsSyncingD365(true);
+    setD365Message(null);
+    try {
+      const res = await fetch('/api/integrations/d365/sync', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setD365Message({ type: res.status === 409 ? 'warning' : 'error', text: data.error || 'Sync ไม่สำเร็จ' });
+      } else {
+        setD365Message({ type: data.status === 'PARTIAL' ? 'warning' : 'success', text: data.message });
+        await refreshData();
+      }
+    } catch {
+      setD365Message({ type: 'error', text: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้' });
+    } finally {
+      setIsSyncingD365(false);
+      fetchD365Info();
+    }
+  };
+
+  const lastD365Run = d365Info?.runs?.[0];
+  const d365RunStatusLabel: Record<string, { label: string; cls: string }> = {
+    SUCCESS: { label: 'สำเร็จ', cls: 'text-emerald-700' },
+    PARTIAL: { label: 'บางส่วน', cls: 'text-amber-700' },
+    FAILED: { label: 'ล้มเหลว', cls: 'text-rose-700' },
+    RUNNING: { label: 'กำลังทำงาน', cls: 'text-blue-700' },
+  };
+
   return (
     <div className="flex flex-col gap-6 pb-12">
       {/* Header */}
@@ -233,6 +301,17 @@ export default function VehicleStockPage() {
           <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-100 text-[#0f5238]">
             รถในระบบทั้งหมด {displayedVehicles.length} คัน
           </span>
+          {canSyncD365 && d365Info?.configured && (
+            <button
+              onClick={handleSyncD365}
+              disabled={isSyncingD365}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-[#0f5238] text-[#0f5238] bg-white hover:bg-emerald-50 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+              title="ดึงรถในสต็อกจาก D365 ทันที"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingD365 ? 'animate-spin' : ''}`} />
+              <span>{isSyncingD365 ? 'กำลัง Sync...' : 'Sync จาก D365'}</span>
+            </button>
+          )}
           {currentRole !== 'SUPPLIER' && (
             <button
               onClick={() => setIsImportModalOpen(true)}
@@ -244,6 +323,53 @@ export default function VehicleStockPage() {
           )}
         </div>
       </div>
+
+      {/* D365 Sync Status */}
+      {canSyncD365 && d365Info?.configured && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 rounded-xl bg-white border border-emerald-950/10 text-[11px] text-gray-600">
+            <span className="inline-flex items-center gap-1.5 font-bold text-gray-800">
+              <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
+              D365 Sync
+            </span>
+            <span>
+              {d365Info.autoSyncEnabled
+                ? `อัตโนมัติทุก ${d365Info.intervalMinutes} นาที`
+                : 'ปิด Sync อัตโนมัติ (กด Sync เองได้)'}
+            </span>
+            {lastD365Run ? (
+              <>
+                <span>
+                  ล่าสุด: {formatThaiDateTime(lastD365Run.startedAt)}{' '}
+                  <strong className={d365RunStatusLabel[lastD365Run.status]?.cls || ''}>
+                    ({d365RunStatusLabel[lastD365Run.status]?.label || lastD365Run.status})
+                  </strong>
+                </span>
+                {lastD365Run.status !== 'RUNNING' && lastD365Run.status !== 'FAILED' && (
+                  <span className="text-gray-500">
+                    ใหม่ {lastD365Run.created} · อัปเดต {lastD365Run.updated} · กลับเข้าสต็อก {lastD365Run.restocked} · หมดสต็อก {lastD365Run.outOfStock} · ข้าม {lastD365Run.skipped}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-gray-400">ยังไม่เคย Sync</span>
+            )}
+          </div>
+          {d365Message && (
+            <div className={`flex items-start gap-2 px-4 py-2.5 rounded-xl text-xs font-medium border ${
+              d365Message.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-[#0f5238]'
+                : d365Message.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}>
+              {d365Message.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+              <span className="flex-1">{d365Message.text}</span>
+              <button type="button" onClick={() => setD365Message(null)} className="cursor-pointer opacity-60 hover:opacity-100" aria-label="ปิด">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Tabs */}
       <div className="flex items-center gap-2 border-b border-gray-200">
@@ -300,7 +426,7 @@ export default function VehicleStockPage() {
               {currentCompany !== 'EV7' && (
                 <div className="w-full sm:w-[260px]">
                   <CustomDropdown
-                    value={selectedBranchFilter}
+                    value={effectiveBranchFilter}
                     onChange={setSelectedBranchFilter}
                     options={branchOptions}
                     icon={Building2}
@@ -360,13 +486,14 @@ export default function VehicleStockPage() {
                         AVAILABLE: { label: 'พร้อมใช้งาน', bg: 'bg-emerald-50 text-[#0f5238] border border-emerald-200' },
                         IN_WASH: { label: 'อยู่ระหว่างล้าง', bg: 'bg-blue-50 text-blue-800 border border-blue-200' },
                         IN_TRANSIT: { label: 'อยู่ระหว่างขนส่ง', bg: 'bg-amber-50 text-amber-800 border border-amber-200' },
-                        MAINTENANCE: { label: 'ซ่อมบำรุง', bg: 'bg-gray-100 text-gray-700 border border-gray-200' }
+                        MAINTENANCE: { label: 'ซ่อมบำรุง', bg: 'bg-gray-100 text-gray-700 border border-gray-200' },
+                        OUT_OF_STOCK: { label: 'ไม่อยู่ในสต็อก', bg: 'bg-gray-100 text-gray-500 border border-gray-200' },
                       }[vehicle.status] || { label: vehicle.status, bg: 'bg-gray-100 text-gray-700 border border-gray-200' };
 
                       return (
                         <tr 
                           key={vehicle.vin} 
-                          className="hover:bg-[#fbfdfc] transition-colors group"
+                          className={`hover:bg-[#fbfdfc] transition-colors group ${vehicle.status === 'OUT_OF_STOCK' ? 'opacity-60' : ''}`}
                         >
                           <td className="py-2 px-3 text-center text-gray-400 font-mono text-[11px]">
                             {idx + 1}
@@ -384,6 +511,14 @@ export default function VehicleStockPage() {
                               >
                                 {vehicle.vin}
                               </button>
+                              {vehicle.source === 'D365' && (
+                                <span
+                                  className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-bold text-[9px] border border-sky-200 shrink-0"
+                                  title={vehicle.lastSyncedAt ? `Sync จาก D365 ล่าสุด: ${formatThaiDateTime(vehicle.lastSyncedAt)}` : 'ข้อมูลจาก D365'}
+                                >
+                                  D365
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="py-2 px-3 whitespace-nowrap">
@@ -420,9 +555,19 @@ export default function VehicleStockPage() {
                             </div>
                           </td>
                           <td className="py-2 px-3 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${statusConfig.bg}`}>
-                              {statusConfig.label}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${statusConfig.bg}`}>
+                                {statusConfig.label}
+                              </span>
+                              {vehicle.d365Reserved && vehicle.status !== 'OUT_OF_STOCK' && (
+                                <span
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200 whitespace-nowrap"
+                                  title="รถคันนี้ถูกจองใน D365 (ยังสั่งงานได้ตามปกติ)"
+                                >
+                                  จองแล้ว
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2 px-3 whitespace-nowrap text-center">
                             <button

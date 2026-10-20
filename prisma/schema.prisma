@@ -122,7 +122,17 @@ model Vehicle {
   vehicleType     String        // Sedan, SUV, Commercial, Hatchback
   licensePlate    String?
   mileage         Int?
-  status          String        @default("AVAILABLE") // AVAILABLE, IN_TRANSIT, IN_WASH
+  status          String        @default("AVAILABLE") // AVAILABLE, IN_TRANSIT, IN_WASH, OUT_OF_STOCK
+
+  // D365 Integration (sync จาก BPC_InventOnHand)
+  source          String        @default("MANUAL") // MANUAL | D365
+  d365ItemId      String?       // รหัสสินค้าใน D365 เช่น GI-0700380
+  d365SiteId      String?       // InventSiteId เช่น GI01
+  d365WarehouseId String?       // InventLocationId เช่น 62008
+  d365Reserved    Boolean       @default(false) // ReservPhysical > 0 (แสดงผลเท่านั้น ยังสั่งงานได้)
+  lastSyncedAt    DateTime?
+  outOfStockAt    DateTime?
+
   jobs            Job[]
   carWashItems    CarWashItem[]
   slideLogs       VehicleSlideLog[]
@@ -132,6 +142,7 @@ model Vehicle {
   @@index([companyId])
   @@index([currentBranchId])
   @@index([status])
+  @@index([source])
 }
 
 // งานสั่งงาน Supplier
@@ -353,4 +364,24 @@ model VehicleSlideLog {
   @@index([jobNumber])
   @@index([action])
   @@index([createdAt])
+}
+
+// ประวัติการ Sync รถจาก D365 (ใช้เป็น lock กันรันซ้อนด้วย)
+model D365SyncRun {
+  id          String    @id @default(uuid())
+  trigger     String    // SCHEDULED | MANUAL
+  triggeredBy String?   // ชื่อผู้กด (กรณี MANUAL)
+  status      String    // RUNNING | SUCCESS | PARTIAL | FAILED
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  fetched     Int       @default(0) // จำนวนแถวที่ดึงจาก D365
+  created     Int       @default(0)
+  updated     Int       @default(0)
+  restocked   Int       @default(0) // OUT_OF_STOCK -> AVAILABLE
+  outOfStock  Int       @default(0) // AVAILABLE -> OUT_OF_STOCK
+  skipped     Int       @default(0)
+  errors      String?   @db.NVarChar(Max) // JSON array
+
+  @@index([startedAt])
+  @@index([status])
 }

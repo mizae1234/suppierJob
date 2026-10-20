@@ -262,7 +262,7 @@ export default function CreateCarWashPage() {
 
   // Branch vehicles (only vehicles currently in stock at selected branch)
   const branchStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.currentBranchId === selectedBranchId);
+    return vehicles.filter(v => v.currentBranchId === selectedBranchId && v.status !== 'OUT_OF_STOCK');
   }, [vehicles, selectedBranchId]);
 
   // VIN & License Plate search tags
