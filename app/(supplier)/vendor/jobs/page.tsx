@@ -422,9 +422,10 @@ function SupplierJobsPageContent() {
             : 'border-red-200/60'
         }`}
       >
-        {/* Top Row: Vehicle + Price */}
-        <div className="flex items-start justify-between mb-2.5">
-          <div className="flex items-center gap-2.5">
+
+        {/* Top Row: Vehicle Info & Price */}
+        <div className="flex items-start justify-between gap-3 mb-2.5">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
               isNeedsVerify
                 ? 'bg-sky-50 text-sky-600 border border-sky-100'
@@ -436,35 +437,22 @@ function SupplierJobsPageContent() {
             }`}>
               {isNeedsVerify ? <ScanLine className="w-5 h-5" /> : <Car className="w-5 h-5" />}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <p className="text-sm font-bold text-gray-900">{getVehicleLabel(card.vin, card.licensePlate)}</p>
-                <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border shadow-2xs ${
-                  card.washType === 'POLISH_STAINS' || card.washType === 'DEEP_CLEAN'
-                    ? 'bg-amber-100/90 text-amber-900 border-amber-300'
-                    : card.washType === 'WASH_AND_COAT' || card.washType === 'POLISH'
-                    ? 'bg-purple-100/90 text-purple-900 border-purple-300'
-                    : card.washType === 'COATING'
-                    ? 'bg-indigo-100/90 text-indigo-900 border-indigo-300'
-                    : card.washType === 'BIG_SIZE_M8'
-                    ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300'
-                    : card.washType === 'WASH_INSPECTION'
-                    ? 'bg-sky-100/90 text-sky-900 border-sky-300'
-                    : card.washType === 'VACUUM_CUSTOMER' || card.washType === 'VACUUM_CENTER'
-                    ? 'bg-teal-100/90 text-teal-900 border-teal-300'
-                    : 'bg-blue-100/90 text-blue-900 border-blue-300'
-                }`}>
-                  {getWashServiceDisplay(card.washType || 'WASH_NORMAL').name}
-                </span>
+                <p className="text-sm font-bold text-gray-900 leading-tight">
+                  {getVehicleLabel(card.vin, card.licensePlate)}
+                </p>
               </div>
-              <p className="text-[11px] text-gray-500 mt-0.5 truncate max-w-[200px]">
+              <p className="text-[11px] text-gray-500 mt-1 truncate">
                 {card.vehicleModel || 'รถยนต์'} {card.vehicleColor ? `• ${card.vehicleColor}` : ''}
-                <span className="font-mono"> • VIN ...{card.vin.slice(-6)}</span>
+                {card.licensePlate && card.licensePlate !== '-' && !card.licensePlate.includes('ป้ายแดง') ? (
+                  <span className="font-mono"> • VIN ...{card.vin.slice(-6)}</span>
+                ) : null}
               </p>
             </div>
           </div>
           <div className="text-right shrink-0">
-            <span className={`text-sm font-mono ${card.itemStatus === 'CANCELLED' ? 'text-gray-400 text-xs' : 'font-black'}`} style={card.itemStatus !== 'CANCELLED' ? { color: theme.primary } : undefined}>
+            <span className={`text-base font-mono ${card.itemStatus === 'CANCELLED' ? 'text-gray-400 text-xs' : 'font-black'}`} style={card.itemStatus !== 'CANCELLED' ? { color: theme.primary } : undefined}>
               ฿{card.unitPrice.toLocaleString()}
             </span>
             {card.itemStatus === 'CANCELLED' && (
@@ -473,32 +461,47 @@ function SupplierJobsPageContent() {
           </div>
         </div>
 
-        {/* Wash Service Details & Instructions Box (ชัดเจนก่อนเริ่มงาน & ระหว่างทำงาน) */}
+        {/* Unified Service & Instruction Card (Clean, modern, no nested clutter) */}
         {(() => {
           const washMeta = getWashServiceDisplay(card.washType || 'WASH_NORMAL');
+          const badgeClass =
+            card.washType === 'POLISH_STAINS' || card.washType === 'DEEP_CLEAN'
+              ? 'bg-amber-100/90 text-amber-900 border-amber-300'
+              : card.washType === 'WASH_AND_COAT' || card.washType === 'POLISH'
+              ? 'bg-purple-100/90 text-purple-900 border-purple-300'
+              : card.washType === 'COATING'
+              ? 'bg-indigo-100/90 text-indigo-900 border-indigo-300'
+              : card.washType === 'BIG_SIZE_M8'
+              ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300'
+              : card.washType === 'WASH_INSPECTION'
+              ? 'bg-sky-100/90 text-sky-900 border-sky-300'
+              : card.washType === 'VACUUM_CUSTOMER' || card.washType === 'VACUUM_CENTER'
+              ? 'bg-teal-100/90 text-teal-900 border-teal-300'
+              : 'bg-blue-100/90 text-blue-900 border-blue-300';
+
           return (
-            <div className="mb-3 p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/80 text-xs">
-              <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-                <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span className="font-semibold text-gray-500 text-[11px]">บริการ:</span>
-                  <span className="font-bold text-gray-900 text-xs">
-                    {washMeta.name}
+            <div className="mb-3 p-2.5 rounded-xl bg-[#fbfdfc] border border-gray-200/80 text-xs shadow-2xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold border shadow-2xs ${badgeClass}`}>
+                    <Sparkles className="w-3 h-3" />
+                    <span>{washMeta.name}</span>
                   </span>
-                  <span className="text-[10px] text-gray-600 bg-white px-1.5 py-0.2 rounded border border-gray-200 shrink-0">
-                    {washMeta.categoryName}
+                  <span className="text-[10px] text-gray-500 font-medium">
+                    • {washMeta.categoryName}
                   </span>
                 </div>
+                {!card.itemRemarks && washMeta.defaultRemarks && (
+                  <span className="text-[10px] text-gray-400 truncate max-w-[200px]">
+                    {washMeta.defaultRemarks}
+                  </span>
+                )}
               </div>
-              {washMeta.defaultRemarks && (
-                <p className="text-[11px] text-gray-600 leading-normal">
-                  <span className="text-gray-400">ขอบเขตงาน:</span> {washMeta.defaultRemarks}
-                </p>
-              )}
+
               {card.itemRemarks && (
-                <div className="mt-1.5 flex items-start gap-1.5 p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-[11px] leading-snug">
+                <div className="mt-2 pt-2 border-t border-gray-100 flex items-start gap-1.5 text-[11px] text-amber-950">
                   <span className="shrink-0 font-bold text-amber-800">📌 จุดที่ต้องเน้น:</span>
-                  <span className="font-semibold">{card.itemRemarks}</span>
+                  <span className="font-semibold leading-relaxed">{card.itemRemarks}</span>
                 </div>
               )}
             </div>
