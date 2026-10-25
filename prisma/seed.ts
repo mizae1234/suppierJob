@@ -96,17 +96,6 @@ async function main() {
       bankName: 'ธนาคารไทยพาณิชย์',
       bankAccount: '123-4-56789-0',
     },
-    {
-      code: 'SP-WASHHUB',
-      name: 'Wash Hub Premium Service (วอชฮับ)',
-      taxId: '0105562087654',
-      phone: '095-678-9012',
-      email: 'service@washhub.co.th',
-      address: '22/3 ซอยลาดพร้าว 87 วังทองหลาง กรุงเทพฯ',
-      services: 'CAR_WASH,VEHICLE_SLIDE',
-      bankName: 'ธนาคารกรุงเทพ',
-      bankAccount: '456-7-89012-3',
-    },
   ];
 
   const suppliers: Record<string, { id: string }> = {};
@@ -379,19 +368,6 @@ async function main() {
       companyId: null as string | null,
       branchId: null as string | null,
       supplierId: suppliers['SP-SLIDEEX'].id,
-    },
-    {
-      username: 'supplier-washhub',
-      password: 'sup1234',
-      displayName: 'Wash Hub Premium Service (วอชฮับ)',
-      firstName: 'กิตติ',
-      lastName: 'วอชฮับ',
-      position: 'เจ้าหน้าที่บริการ',
-      phone: '095-678-9012',
-      role: 'SUPPLIER',
-      companyId: null as string | null,
-      branchId: null as string | null,
-      supplierId: suppliers['SP-WASHHUB'].id,
     },
   ];
 
