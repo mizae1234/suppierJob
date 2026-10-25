@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
+import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
@@ -384,10 +385,27 @@ export async function PATCH(
       }
     }
 
+    // ─── Trigger D365 Purchase Order Integration ──────────────
+    // เมื่อทุกรายการผ่านการ Approve (หรือปฏิเสธครบ) และปิดใบงานเป็น APPROVED
+    let d365PoNumber: string | undefined;
+    if (result.progress.allApproved) {
+      try {
+        console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
+        const poResult = await sendJobToD365PurchaseOrder(jobId);
+        console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, poResult);
+        if (poResult.success && poResult.purchId) {
+          d365PoNumber = poResult.purchId;
+        }
+      } catch (poError) {
+        console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       item: result.item,
       progress: result.progress,
+      d365PoNumber,
     });
   } catch (error) {
     console.error('PATCH /api/jobs/[id]/items/[itemId]/status error:', error);

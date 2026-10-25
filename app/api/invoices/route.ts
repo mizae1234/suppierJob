@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       subtotal: inv.subtotal,
       vatAmount: inv.vatAmount,
       totalAmount: inv.totalAmount,
-      jobIds: inv.jobs.map(j => j.id),
+      jobIds: inv.jobs.map((j: { id: string }) => j.id),
       jobs: inv.jobs,
       notes: inv.notes,
       createdAt: inv.createdAt.toISOString(),
