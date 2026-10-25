@@ -16,6 +16,8 @@ import {
   Sparkles,
   Truck,
   Car,
+  Database,
+  Edit2,
 } from 'lucide-react';
 import { Supplier, Job } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
@@ -35,10 +37,40 @@ export function SupplierDetailDrawer({
 }: SupplierDetailDrawerProps) {
   const router = useRouter();
   const theme = useTheme();
-  const { currentRole, setCurrentSupplierId, setCurrentRole } = useApp();
+  const { currentRole, setCurrentSupplierId, setCurrentRole, refreshData } = useApp();
   const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
+  const [isEditingVendorCode, setIsEditingVendorCode] = useState(false);
+  const [vendorCodeInput, setVendorCodeInput] = useState('');
+  const [isSavingVendorCode, setIsSavingVendorCode] = useState(false);
+  const [savedVendorCode, setSavedVendorCode] = useState<string | null | undefined>(undefined);
+
+  const canEditD365 = currentRole === 'MASTER' || currentRole === 'ADMIN';
+  const effectiveVendorCode = savedVendorCode !== undefined ? savedVendorCode : supplier?.d365VendorCode;
 
   if (!supplier) return null;
+
+  const handleSaveVendorCode = async () => {
+    setIsSavingVendorCode(true);
+    try {
+      const res = await fetch(`/api/suppliers/${supplier.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ d365VendorCode: vendorCodeInput.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSavedVendorCode(data.supplier.d365VendorCode);
+        setIsEditingVendorCode(false);
+        refreshData();
+      } else {
+        alert(data.error || 'ไม่สามารถบันทึกรหัส D365 ได้');
+      }
+    } catch {
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+    } finally {
+      setIsSavingVendorCode(false);
+    }
+  };
 
   const handleCopy = (text: string, id: string) => {
     if (!text) return;
@@ -234,6 +266,78 @@ export function SupplierDetailDrawer({
                 <div className="flex items-center justify-between">
                   <span className="text-gray-500">ชื่อบัญชี:</span>
                   <span className="font-bold text-gray-900">{supplier.name}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* D365 F&O ERP Integration */}
+            <div className="p-4 rounded-2xl border border-emerald-950/10 bg-[#fbfdfc] shadow-2xs space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[11px] font-bold text-[#0f5238] uppercase tracking-wider flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>การเชื่อมต่อระบบ D365 F&O (ERP)</span>
+                </h4>
+                {canEditD365 && !isEditingVendorCode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVendorCodeInput(effectiveVendorCode || '');
+                      setIsEditingVendorCode(true);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-emerald-700 hover:text-[#0f5238] font-bold hover:underline cursor-pointer"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                    <span>แก้ไขรหัส D365</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-white border border-emerald-100 text-xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="text-gray-500 block text-[11px]">รหัสคู่ค้าใน D365 (Vendor Account):</span>
+                    <span className="text-[10px] text-gray-400">ใช้สำหรับเปิดใบสั่งซื้อ (Purchase Order) ไปยังระบบบัญชี</span>
+                  </div>
+
+                  {!isEditingVendorCode ? (
+                    <div>
+                      {effectiveVendorCode ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 text-[#0f5238] border border-emerald-300 font-mono font-bold text-xs">
+                          {effectiveVendorCode}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold">
+                          ยังไม่ได้กำหนด
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 mt-1 sm:mt-0">
+                      <input
+                        type="text"
+                        placeholder="เช่น V000342"
+                        value={vendorCodeInput}
+                        onChange={(e) => setVendorCodeInput(e.target.value.toUpperCase())}
+                        className="px-2.5 py-1 text-xs font-mono font-bold border border-gray-300 rounded-lg w-28 focus:outline-hidden focus:ring-1 focus:ring-emerald-500 uppercase"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        disabled={isSavingVendorCode}
+                        onClick={handleSaveVendorCode}
+                        className="px-2.5 py-1 text-xs font-bold bg-[#0f5238] text-white rounded-lg hover:bg-[#0a3d28] disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingVendorCode ? 'กำลังบันทึก...' : 'บันทึก'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingVendorCode(false)}
+                        className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

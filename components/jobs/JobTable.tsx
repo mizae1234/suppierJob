@@ -61,7 +61,14 @@ export const JobTable: React.FC<JobTableProps> = ({
                 return (
                   <tr key={job.id} className="hover:bg-[#fbfdfc] transition-colors">
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <div className="font-bold text-gray-900">{job.jobNumber}</div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-gray-900">{job.jobNumber}</span>
+                        {job.d365PoNumber && (
+                          <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#0f5238] border border-emerald-200 font-mono text-[10px] font-bold" title={`D365 PO: ${job.d365PoNumber}`}>
+                            PO: {job.d365PoNumber}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5 mt-0.5" title={`วันนัดทำงาน • สั่งงานเมื่อ ${formatThaiDate(job.createdAt)}`}>
                         <span className="text-[11px] text-gray-400">{formatThaiDate(getJobScheduleDate(job))}</span>
                         {(() => {

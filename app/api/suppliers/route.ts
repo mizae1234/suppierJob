@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
         vatRate: s.vatRate,
         showroomLabel: s.showroomLabel,
         rateItems: s.rateItems || [],
+        d365VendorCode: s.d365VendorCode,
       };
     });
 

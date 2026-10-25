@@ -343,6 +343,11 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                                 {job.companyCode}
                               </span>
                               <span className="font-mono text-[11px] font-bold text-gray-800 truncate">{job.jobNumber}</span>
+                              {job.d365PoNumber && (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#0f5238] border border-emerald-200 font-mono text-[9px] font-bold shrink-0" title={`D365 PO: ${job.d365PoNumber}`}>
+                                  PO: {job.d365PoNumber}
+                                </span>
+                              )}
                             </div>
                             {card.total > 1 && (
                               <span className="text-[9px] font-bold text-gray-500 bg-white border border-gray-200 px-1.5 py-0.5 rounded-full shrink-0">

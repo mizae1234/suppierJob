@@ -24,6 +24,7 @@ interface VehicleBreakdownItem {
   color: string;
   licensePlate: string;
   jobNumber: string;
+  poNumber?: string | null;
   jobType: string;
   serviceType: string;
   serviceDate: string;
@@ -50,6 +51,12 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
     .map(jid => jobs.find(job => job.id === jid))
     .filter(Boolean) as Job[];
 
+  // Gather unique D365 PO numbers across all jobs in this invoice
+  const allInvoiceJobs = invoiceJobs.length > 0 ? invoiceJobs : ((invoice.jobs as any[]) || []);
+  const poNumbers = Array.from(
+    new Set(allInvoiceJobs.map((j: any) => j.d365PoNumber).filter(Boolean))
+  ) as string[];
+
   const vehicleItems: VehicleBreakdownItem[] = [];
   for (const j of invoiceJobs) {
     if (j.carWashItems && j.carWashItems.length > 0) {
@@ -60,6 +67,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
           color: item.vehicleColor || '-',
           licensePlate: item.licensePlate || '-',
           jobNumber: j.jobNumber,
+          poNumber: j.d365PoNumber,
           jobType: j.jobType,
           serviceType:
             j.jobType === 'VEHICLE_SLIDE'
@@ -84,6 +92,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
         color: j.vehicle?.color || '-',
         licensePlate: j.vehicle?.licensePlate || '-',
         jobNumber: j.jobNumber,
+        poNumber: j.d365PoNumber,
         jobType: j.jobType,
         serviceType: 'รถสไลด์',
         serviceDate: j.createdAt,
@@ -174,6 +183,16 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                 <Receipt className="w-3 h-3" />
                 <span>{invoice.invoiceNumber}</span>
               </div>
+              {poNumbers.length > 0 && (
+                <div className="flex sm:hidden items-center gap-1.5 mb-1.5 flex-wrap">
+                  <span className="text-[11px] text-gray-500 font-semibold">PO:</span>
+                  {poNumbers.map(po => (
+                    <span key={po} className="font-mono font-bold text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-[#0f5238]">
+                      {po}
+                    </span>
+                  ))}
+                </div>
+              )}
               <h2 className="text-lg sm:text-xl font-black text-[#0f5238] tracking-tight">
                 ใบวางบิล / ใบแจ้งหนี้ (INVOICE)
               </h2>
@@ -185,6 +204,18 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
               <p className="hidden sm:block font-mono font-bold text-base text-gray-900 tracking-wide">
                 {invoice.invoiceNumber}
               </p>
+              {poNumbers.length > 0 && (
+                <div className="hidden sm:flex justify-end items-center gap-1.5 mt-0.5 mb-1 flex-wrap">
+                  <span className="text-[11px] text-gray-500 font-semibold">เลขที่ D365 PO:</span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {poNumbers.map(po => (
+                      <span key={po} className="font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-[#0f5238] border border-emerald-200">
+                        {po}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:block gap-2 sm:gap-0 mt-0.5 text-left sm:text-right">
                 <p className="text-gray-600">
                   วันที่ออกบิล:{' '}
@@ -241,7 +272,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                 <thead>
                   <tr className="border-b-2 border-gray-300 font-bold text-gray-700">
                     <th className="py-2.5 px-2">ลำดับ</th>
-                    <th className="py-2.5 px-2">เลขที่ใบสั่งงาน (Job No.)</th>
+                    <th className="py-2.5 px-2">เลขที่ใบสั่งงาน (Job No.) / PO</th>
                     <th className="py-2.5 px-2">ประเภทงาน</th>
                     <th className="py-2.5 px-2">สาขา</th>
                     <th className="py-2.5 px-2 text-center">จำนวนคัน</th>
@@ -252,7 +283,16 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                   {invoiceJobs.map((j, i) => (
                     <tr key={j.id}>
                       <td className="py-2 px-2 text-gray-500">{i + 1}</td>
-                      <td className="py-2 px-2 font-mono font-bold text-gray-900">{j.jobNumber}</td>
+                      <td className="py-2 px-2">
+                        <div className="font-mono font-bold text-gray-900">{j.jobNumber}</div>
+                        {j.d365PoNumber ? (
+                          <div className="text-[10px] font-mono text-[#0f5238] font-bold mt-0.5">
+                            PO: {j.d365PoNumber}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-gray-400 mt-0.5">-</div>
+                        )}
+                      </td>
                       <td className="py-2 px-2">
                         <span className="inline-flex items-center gap-1">
                           {j.jobType === 'CAR_WASH' ? (
@@ -317,9 +357,16 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                         <span className="w-5 h-5 rounded-full bg-white text-gray-500 text-[10px] font-bold flex items-center justify-center border border-gray-200 shrink-0">
                           {i + 1}
                         </span>
-                        <span className="font-mono font-bold text-xs text-gray-900 truncate">
-                          {j.jobNumber}
-                        </span>
+                        <div>
+                          <span className="font-mono font-bold text-xs text-gray-900 truncate block">
+                            {j.jobNumber}
+                          </span>
+                          {j.d365PoNumber && (
+                            <span className="font-mono text-[10px] font-bold text-[#0f5238] block">
+                              PO: {j.d365PoNumber}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white text-gray-700 border border-gray-200 shrink-0">
                         {j.jobType === 'CAR_WASH' ? (
@@ -434,8 +481,15 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
                               <span className="text-[10px] text-gray-400 ml-1">({v.color})</span>
                             )}
                           </td>
-                          <td className="py-2 px-2 font-mono text-[11px] font-semibold text-gray-700">
-                            {v.jobNumber}
+                          <td className="py-2 px-2">
+                            <span className="font-mono text-[11px] font-semibold text-gray-700 block">
+                              {v.jobNumber}
+                            </span>
+                            {v.poNumber && (
+                              <span className="font-mono text-[10px] font-bold text-[#0f5238] block">
+                                PO: {v.poNumber}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2 px-2">
                             <span className="inline-flex items-center gap-1 text-gray-700">

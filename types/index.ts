@@ -81,6 +81,7 @@ export interface Supplier {
   vatRate?: number;
   showroomLabel?: string;
   rateItems?: SupplierRateItem[];
+  d365VendorCode?: string | null;
 }
 
 export interface Vehicle {
@@ -221,6 +222,12 @@ export interface Job {
   actualCost?: number;
   invoiceId?: string;
   invoiceNumber?: string;
+
+  // D365 Purchase Order
+  d365PoNumber?: string | null;
+  d365PoStatus?: string | null;
+  d365PoMessage?: string | null;
+  d365PoSentAt?: string | null;
 
   createdAt: string;
   updatedAt: string;

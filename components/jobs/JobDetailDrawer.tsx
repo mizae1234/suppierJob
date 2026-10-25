@@ -35,6 +35,8 @@ import {
   X,
   XCircle,
   ZoomIn,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 
 export interface JobDetailDrawerProps {
@@ -68,12 +70,13 @@ export function JobDetailDrawer({
   onCompleteJob,
   onPreviewPhoto,
 }: JobDetailDrawerProps) {
-  const { currentRole, activeBranch, currentBranchId, currentCompany, vehicles, jobs, updateJobStatus, updateCarWashItemStatus } = useApp();
+  const { currentRole, activeBranch, currentBranchId, currentCompany, vehicles, jobs, updateJobStatus, updateCarWashItemStatus, refreshData } = useApp();
   const { showToast } = useToast();
   const theme = useTheme();
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [isCancellingJob, setIsCancellingJob] = useState(false);
   const [cancellingItemId, setCancellingItemId] = useState<string | null>(null);
+  const [isRetryingPo, setIsRetryingPo] = useState(false);
   // Cancel Job / Item modal state
   const [cancelModalState, setCancelModalState] = useState<{
     isOpen: boolean;
@@ -81,6 +84,25 @@ export function JobDetailDrawer({
     item?: NonNullable<Job['carWashItems']>[0];
   }>({ isOpen: false, type: 'JOB' });
   const [showSubstituteModal, setShowSubstituteModal] = useState(false);
+
+  const handleRetryPo = async () => {
+    if (!activeJob) return;
+    setIsRetryingPo(true);
+    try {
+      const res = await fetch(`/api/jobs/${activeJob.id}/d365-po`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`✓ สร้าง D365 PO ${data.purchId} สำเร็จ`, 'success');
+        refreshData();
+      } else {
+        showToast(data.message || data.error || 'ไม่สามารถสร้าง PO ได้', 'error');
+      }
+    } catch {
+      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
+    } finally {
+      setIsRetryingPo(false);
+    }
+  };
 
   const handleCopyText = (text: string) => {
     if (navigator?.clipboard?.writeText) {
@@ -205,6 +227,12 @@ export function JobDetailDrawer({
                       )}
                     </button>
                   </div>
+
+                  {activeJob.d365PoNumber && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-[#0f5238] border border-emerald-300 font-mono font-bold text-xs whitespace-nowrap shrink-0" title={`D365 Purchase Order: ${activeJob.d365PoNumber}`}>
+                      PO: {activeJob.d365PoNumber}
+                    </span>
+                  )}
 
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap shrink-0 ${
                     STATUS_MAP[activeJob.status]?.bg || 'bg-gray-100'
@@ -369,6 +397,63 @@ export function JobDetailDrawer({
                     );
                   })()}
                 </div>
+
+                {/* ─── D365 F&O PO Status Card ─── */}
+                {(() => {
+                  const isEligible = ['APPROVED', 'INVOICED'].includes(activeJob.status);
+                  const hasPo = Boolean(activeJob.d365PoNumber);
+                  const isFailed = activeJob.d365PoStatus === 'FAILED';
+
+                  if (!hasPo && !isEligible) return null;
+
+                  return (
+                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
+                      hasPo 
+                        ? 'bg-emerald-50/70 border-emerald-200' 
+                        : isFailed 
+                        ? 'bg-amber-50/80 border-amber-300' 
+                        : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          hasPo ? 'bg-emerald-600 text-white' : isFailed ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-700'
+                        }`}>
+                          <Database className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-gray-900 text-xs">
+                              {hasPo ? 'สร้างใบสั่งซื้อ (D365 PO) สำเร็จ' : isFailed ? 'เปิดใบสั่งซื้อใน D365 ไม่สำเร็จ' : 'สถานะใบสั่งซื้อ D365'}
+                            </span>
+                            {hasPo && (
+                              <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-emerald-100 text-[#0f5238] border border-emerald-300">
+                                {activeJob.d365PoNumber}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                            {hasPo 
+                              ? `ระบบสร้างและยืนยัน PO เลขที่ ${activeJob.d365PoNumber} ใน D365 เรียบร้อยแล้ว` 
+                              : activeJob.d365PoMessage || 'รอเปิดใบสั่งซื้อในระบบ Dynamics 365'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Retry PO Button for MASTER / ADMIN */}
+                      {(currentRole === 'MASTER' || currentRole === 'ADMIN') && !hasPo && isEligible && (
+                        <button
+                          type="button"
+                          disabled={isRetryingPo}
+                          onClick={handleRetryPo}
+                          className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isRetryingPo ? 'animate-spin' : ''}`} />
+                          <span>{isRetryingPo ? 'กำลังส่ง...' : 'ลองส่ง PO อีกครั้ง'}</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Reject Reason Alert */}
                 {activeJob.rejectReason && (
@@ -1178,6 +1263,11 @@ export function JobDetailDrawer({
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div className="print-wo-job-number">{activeJob.jobNumber}</div>
+                    {activeJob.d365PoNumber && (
+                      <div style={{ fontSize: '10pt', fontWeight: 700, color: '#0f5238', marginTop: '2pt', letterSpacing: '0.02em' }}>
+                        เลขที่ D365 PO: <span style={{ fontFamily: 'monospace' }}>{activeJob.d365PoNumber}</span>
+                      </div>
+                    )}
                     <div className="print-wo-subtitle">วันที่สั่ง: {formatThaiDateTime(activeJob.createdAt)}</div>
                   </div>
                 </div>
@@ -1210,6 +1300,12 @@ export function JobDetailDrawer({
                   <div>
                     <dt>ประเภทงาน</dt>
                     <dd>{activeJob.jobType === 'CAR_WASH' ? 'ล้างรถ (Car Wash)' : 'รถสไลด์ (Vehicle Slide)'}</dd>
+                  </div>
+                  <div>
+                    <dt>เลขที่ใบสั่งซื้อ (D365 PO)</dt>
+                    <dd style={{ fontFamily: 'monospace', fontWeight: 700, color: activeJob.d365PoNumber ? '#0f5238' : 'inherit' }}>
+                      {activeJob.d365PoNumber || '-'}
+                    </dd>
                   </div>
                 </dl>
 

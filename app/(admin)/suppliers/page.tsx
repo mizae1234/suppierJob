@@ -247,9 +247,16 @@ export default function SupplierManagementPage() {
                         {monogram}
                       </div>
                       <div>
-                        <span className="font-mono text-xs font-bold text-gray-500 tracking-wide block">
-                          {supplier.code}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-gray-500 tracking-wide">
+                            {supplier.code}
+                          </span>
+                          {supplier.d365VendorCode && (
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-[#0f5238] border border-emerald-200" title={`D365 Vendor Account: ${supplier.d365VendorCode}`}>
+                              D365: {supplier.d365VendorCode}
+                            </span>
+                          )}
+                        </div>
                         <h3 className="text-base font-bold text-gray-900 group-hover:text-[#0f5238] transition-colors leading-snug line-clamp-1">
                           {supplier.name}
                         </h3>
@@ -432,6 +439,11 @@ export default function SupplierManagementPage() {
                               <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#0f5238] font-bold text-[10px] border border-emerald-200/60 font-mono">
                                 {supplier.code}
                               </span>
+                              {supplier.d365VendorCode && (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-[#0f5238] font-bold text-[10px] border border-emerald-300 font-mono" title={`D365 Vendor Account: ${supplier.d365VendorCode}`}>
+                                  D365: {supplier.d365VendorCode}
+                                </span>
+                              )}
                             </div>
                             {supplier.taxId && (
                               <p className="text-[11px] text-gray-400 font-mono mt-0.5">

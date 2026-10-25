@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
+import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 
 // PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard)
 export async function PATCH(
@@ -294,6 +295,20 @@ export async function PATCH(
           actorRole: user.role,
           remarks: rejectReason || descMap[status] || null,
         });
+      }
+    }
+
+    // ─── Trigger D365 Purchase Order Creation ───
+    if (status === 'APPROVED') {
+      try {
+        const poResult = await sendJobToD365PurchaseOrder(id);
+        if (poResult.success && poResult.purchId) {
+          (updatedJob as any).d365PoNumber = poResult.purchId;
+          (updatedJob as any).d365PoStatus = 'SUCCESS';
+          (updatedJob as any).d365PoMessage = poResult.message;
+        }
+      } catch (poErr) {
+        console.error('Trigger D365 PO creation error:', poErr);
       }
     }
 

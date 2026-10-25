@@ -1,0 +1,28 @@
+BEGIN TRY
+
+BEGIN TRAN;
+
+-- AlterTable
+ALTER TABLE [dbo].[Supplier] ADD [d365VendorCode] NVARCHAR(1000);
+
+-- AlterTable
+ALTER TABLE [dbo].[Job] ADD [d365PoNumber] NVARCHAR(1000),
+[d365PoStatus] NVARCHAR(1000),
+[d365PoMessage] NVARCHAR(1000),
+[d365PoSentAt] DATETIME2;
+
+-- CreateIndex
+CREATE NONCLUSTERED INDEX [Job_d365PoNumber_idx] ON [dbo].[Job]([d365PoNumber]);
+
+COMMIT TRAN;
+
+END TRY
+BEGIN CATCH
+
+IF @@TRANCOUNT > 0
+BEGIN
+    ROLLBACK TRAN;
+END;
+THROW
+
+END CATCH

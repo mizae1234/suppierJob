@@ -83,6 +83,7 @@ model Supplier {
   vatType       String             @default("NO_VAT") // VAT_7, NO_VAT
   vatRate       Float              @default(0.0)      // 0.07, 0.0
   showroomLabel String?            // สาขาโชว์รูมประจำ เช่น "ศาลายา", "เลียบด่วน รามอินทรา, วิภาวดี"
+  d365VendorCode String?           // รหัสคู่ค้าใน D365 FO เช่น V000342
   isActive      Boolean            @default(true)
   users         User[]
   jobs          Job[]
@@ -209,6 +210,12 @@ model Job {
   invoiceId        String?
   invoice          Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  // บันทึกการเชื่อมโยง Purchase Order (D365)
+  d365PoNumber     String?       // เช่น PO126000086
+  d365PoStatus     String?       // SUCCESS, FAILED, PENDING
+  d365PoMessage    String?       // ข้อความตอบกลับจาก D365 FO
+  d365PoSentAt     DateTime?     // เวลาที่ส่งเปิด PO
+
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -221,6 +228,7 @@ model Job {
   @@index([createdAt])
   @@index([vin])
   @@index([invoiceId])
+  @@index([d365PoNumber])
 }
 
 // รายการคันรถใน Car Wash Order

@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
         supplier: { select: { code: true, name: true } },
         company: { select: { code: true, name: true } },
         jobs: {
-          select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true },
+          select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true, d365PoNumber: true },
         },
       },
       orderBy: { createdAt: 'desc' },

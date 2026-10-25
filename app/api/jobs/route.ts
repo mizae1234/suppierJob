@@ -199,6 +199,11 @@ export async function GET(request: NextRequest) {
       })(),
       invoiceId: job.invoiceId,
       invoiceNumber: job.invoice?.invoiceNumber,
+      // D365 PO Integration
+      d365PoNumber: job.d365PoNumber,
+      d365PoStatus: job.d365PoStatus,
+      d365PoMessage: job.d365PoMessage,
+      d365PoSentAt: job.d365PoSentAt?.toISOString(),
       // Activities / Timeline
       activities: (job.activities || []).map((a: any) => ({
         id: a.id,
