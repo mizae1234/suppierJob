@@ -933,7 +933,7 @@ export default function CreateVehicleSlidePage() {
                   <span>สาขาต้นทาง (Origin Branch):</span>
                   {selectedVins.length > 0 && originBranchObj && (
                     <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      ตามตำแหน่งรถที่เลือก ({originBranchObj.name})
+                      ตามตำแหน่งรถที่เลือก ({originBranchObj.code ? originBranchObj.code : originBranchObj.name})
                     </span>
                   )}
                 </label>
@@ -945,15 +945,16 @@ export default function CreateVehicleSlidePage() {
                       onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); setSelectedSupplierId(''); setIsCustomPrice(false); }}
                     />
                   ) : (
-                    <div className="relative">
-                      <input
-                        type="text"
-                        disabled
-                        value={originBranchObj?.name ? `${originBranchObj.name} (${originBranchObj.code})` : ''}
-                        className="w-full h-10 px-3 rounded-xl border border-emerald-200 bg-emerald-50/60 text-xs text-emerald-950 font-bold"
-                      />
-                      <span className="absolute right-3 top-2.5 text-[10px] text-emerald-700 font-medium flex items-center gap-1 pointer-events-none">
-                        <Building2 className="w-3.5 h-3.5" /> ตำแหน่งรถ
+                    <div
+                      className="w-full h-10 px-3 rounded-xl border border-emerald-300 bg-emerald-50/70 flex items-center gap-2 text-xs font-bold text-emerald-950 min-w-0"
+                      title={originBranchObj?.name ? `${originBranchObj.name} (${originBranchObj.code})` : ''}
+                    >
+                      <Building2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span className="truncate flex-1">
+                        {originBranchObj?.name ? `${originBranchObj.name} (${originBranchObj.code})` : 'ไม่พบข้อมูลสาขา'}
+                      </span>
+                      <span className="shrink-0 text-[10px] font-semibold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300">
+                        ตำแหน่งรถ
                       </span>
                     </div>
                   )}

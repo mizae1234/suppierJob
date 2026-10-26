@@ -66,9 +66,15 @@ export default function VehicleReportsPage() {
     };
 
     for (const job of jobs) {
+      // Do not include cancelled jobs in vehicle service history
+      if (job.status === 'CANCELLED') continue;
+
       // Jobs with items (CAR_WASH or VEHICLE_SLIDE with items)
       if (job.carWashItems && job.carWashItems.length > 0) {
         for (const item of job.carWashItems) {
+          // Do not include cancelled items
+          if (item.status === 'CANCELLED') continue;
+
           records.push({
             id: item.id,
             vin: item.vin,
@@ -164,7 +170,6 @@ export default function VehicleReportsPage() {
     { value: 'APPROVED', label: 'อนุมัติแล้ว', dot: '#059669', badge: 'อนุมัติ', badgeClass: 'bg-emerald-50 text-[#0f5238]' },
     { value: 'INVOICED', label: 'วางบิลแล้ว', dot: '#6b7280', badge: 'วางบิล', badgeClass: 'bg-gray-100 text-gray-700' },
     { value: 'REJECTED', label: 'ตีกลับ', dot: '#dc2626', badge: 'ตีกลับ', badgeClass: 'bg-red-50 text-red-700' },
-    { value: 'CANCELLED', label: 'ยกเลิก', dot: '#ef4444', badge: 'ยกเลิก', badgeClass: 'bg-red-50 text-red-700' },
   ], []);
 
   const supplierOptions: DropdownOption[] = useMemo(() => [
