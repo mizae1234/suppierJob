@@ -56,17 +56,11 @@ export const getWashReasonItem = (val?: string) => {
 };
 
 const getBranchShortLabel = (code?: string, name?: string) => {
-  if (!name && !code) return 'ต่างสาขา';
-  const cleanName = name
-    ? name
-        .replace(/^GOLD INTEGRATE\s+/i, '')
-        .replace(/\s+CO\.,?\s*LTD\.?/i, '')
-        .replace(/Co\.,?\s*Ltd\.?/i, '')
-        .trim()
-    : '';
-  if (code && cleanName) return `${code} (${cleanName})`;
-  if (code) return `สาขา ${code}`;
-  return cleanName || 'ต่างสาขา';
+  if (code) {
+    if (code === 'GI06' || code.startsWith('EV7')) return 'EV7';
+    return code;
+  }
+  return name || 'ต่างสาขา';
 };
 
 export default function CreateCarWashPage() {
@@ -985,8 +979,8 @@ export default function CreateCarWashPage() {
                             </span>
                           ) : isOtherBranch ? (
                             <span 
-                              className="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 font-semibold shrink-0 max-w-[125px] truncate"
-                              title={v.currentBranchName || 'ต่างสาขา'}
+                              className="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 font-semibold shrink-0"
+                              title={v.currentBranchName ? `${v.currentBranchCode || ''}: ${v.currentBranchName}` : 'ต่างสาขา'}
                             >
                               {getBranchShortLabel(v.currentBranchCode, v.currentBranchName)}
                             </span>

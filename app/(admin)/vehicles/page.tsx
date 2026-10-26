@@ -28,6 +28,40 @@ import {
 import VehicleImportModal from '@/components/vehicles/VehicleImportModal';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
+export const BRANCH_SHORT_NAMES: Record<string, string> = {
+  GI: 'สำนักงานใหญ่',
+  GI01: 'บางแค',
+  GI02: 'มีนบุรี',
+  GI03: 'เลียบด่วนรามอินทรา',
+  GI04: 'สีลม',
+  GI05: 'อุบลราชธานี',
+  GI06: 'EV7',
+  GI07: 'มหาชัย',
+  GI08: 'ศาลายา',
+  GI09: 'วิภาวดี',
+  GI10: 'พิบูลสงคราม',
+  GI11: 'อยุธยา',
+  GI12: 'เชียงใหม่',
+};
+
+export const getVehicleBranchBadge = (v: Vehicle) => {
+  if (v.companyCode === 'EV7') {
+    return {
+      text: 'EV7',
+      title: v.currentBranchName || 'EV7 Co.,Ltd.',
+      badgeClass: 'bg-emerald-50 text-[#0f5238] border-emerald-300',
+    };
+  }
+
+  const code = v.currentBranchCode || 'GI';
+
+  return {
+    text: code,
+    title: v.currentBranchName ? `${code}: ${v.currentBranchName}` : code,
+    badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+  };
+};
+
 export default function VehicleStockPage() {
   const { 
     vehicles, 
@@ -45,6 +79,7 @@ export default function VehicleStockPage() {
 
   // ─── Vehicle Stock State ───
   const [searchTags, setSearchTags] = useState<string[]>([]);
+  const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<'ALL' | 'GI' | 'EV7'>('ALL');
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('ALL');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -77,25 +112,57 @@ export default function VehicleStockPage() {
     (b as typeof b & { companyCode?: string }).companyCode ||
     (b.code === 'GI06' || b.code.startsWith('EV7') ? 'EV7' : 'GI');
 
+  const giVehiclesCount = useMemo(() => vehicles.filter(v => v.companyCode === 'GI').length, [vehicles]);
+  const ev7VehiclesCount = useMemo(() => vehicles.filter(v => v.companyCode === 'EV7').length, [vehicles]);
+
+  const companyFilterOptions: DropdownOption[] = useMemo(() => [
+    {
+      value: 'ALL',
+      label: 'ทุกสังกัด / ทุกบริษัท',
+      badge: `${vehicles.length} คัน`,
+      badgeClass: 'bg-emerald-100 text-[#0f5238] font-bold',
+      icon: Building2,
+    },
+    {
+      value: 'GI',
+      label: 'GI (Gold Integrate)',
+      badge: `${giVehiclesCount} คัน`,
+      badgeClass: 'bg-blue-100 text-blue-800 font-bold',
+      dot: '#2563eb',
+    },
+    {
+      value: 'EV7',
+      label: 'EV7 (EV7 Co.,Ltd.)',
+      badge: `${ev7VehiclesCount} คัน`,
+      badgeClass: 'bg-emerald-100 text-emerald-800 font-bold',
+      dot: '#059669',
+    },
+  ], [vehicles.length, giVehiclesCount, ev7VehiclesCount]);
+
   const branchOptions: DropdownOption[] = useMemo(() => {
     const allOption: DropdownOption = {
       value: 'ALL',
-      label: `ทุกสาขา ${currentCompany === 'GI' ? '(GI Hubs)' : ''}`,
+      label: selectedCompanyFilter === 'ALL'
+        ? 'ทุกสาขา (All Branches)'
+        : selectedCompanyFilter === 'GI'
+          ? 'ทุกสาขา (GI Hubs)'
+          : 'ทุกสาขา (EV7)',
       icon: Building2,
     };
 
     const branchList: DropdownOption[] = branches
-      .filter(b => currentCompany === 'ALL' || getBranchCompanyCode(b) === currentCompany)
+      .filter(b => selectedCompanyFilter === 'ALL' || getBranchCompanyCode(b) === selectedCompanyFilter)
       .map(b => ({
         value: b.id,
         label: b.name,
         sublabel: b.code ? `รหัสสาขา: ${b.code}` : undefined,
-        dot: getBranchCompanyCode(b) === 'EV7' ? '#2d6a4f' : '#3b82f6',
+        dot: getBranchCompanyCode(b) === 'EV7' ? '#059669' : '#3b82f6',
+        badge: getBranchCompanyCode(b) === 'EV7' ? 'EV7' : 'GI',
+        badgeClass: getBranchCompanyCode(b) === 'EV7' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-blue-50 text-blue-800 border border-blue-200',
       }));
 
     return [allOption, ...branchList];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branches, currentCompany]);
+  }, [branches, selectedCompanyFilter]);
 
   // เปลี่ยนบริษัทแล้ว ถ้าสาขาที่เลือกค้างไว้ไม่อยู่ในบริษัทใหม่ → ถือเป็น "ทุกสาขา"
   const effectiveBranchFilter = branchOptions.some(o => o.value === selectedBranchFilter)
@@ -124,7 +191,7 @@ export default function VehicleStockPage() {
   const displayedVehicles = useMemo(() => {
     return vehicles.filter(v => {
       // Company filter
-      if (currentCompany !== 'ALL' && v.companyCode !== currentCompany) return false;
+      if (selectedCompanyFilter !== 'ALL' && v.companyCode !== selectedCompanyFilter) return false;
 
       // Branch filter
       if (effectiveBranchFilter !== 'ALL' && v.currentBranchId !== effectiveBranchFilter) return false;
@@ -140,14 +207,19 @@ export default function VehicleStockPage() {
           const matchesModel = v.model.toLowerCase().includes(term);
           const matchesPlate = v.licensePlate?.toLowerCase().includes(term);
           const matchesColor = v.color.toLowerCase().includes(term);
-          return matchesVin || matchesModel || matchesPlate || matchesColor;
+          const matchesCompany = v.companyCode?.toLowerCase().includes(term);
+          const matchesBranchCode = v.currentBranchCode?.toLowerCase().includes(term);
+          const matchesBranchName = v.currentBranchName?.toLowerCase().includes(term);
+          const shortName = v.currentBranchCode ? BRANCH_SHORT_NAMES[v.currentBranchCode] : undefined;
+          const matchesShortName = shortName ? shortName.toLowerCase().includes(term) : false;
+          return matchesVin || matchesModel || matchesPlate || matchesColor || matchesCompany || matchesBranchCode || matchesBranchName || matchesShortName;
         });
         if (!matches) return false;
       }
 
       return true;
     });
-  }, [vehicles, currentCompany, effectiveBranchFilter, selectedStatusFilter, searchTags]);
+  }, [vehicles, selectedCompanyFilter, effectiveBranchFilter, selectedStatusFilter, searchTags]);
 
   // Find job history for selected VIN
   const vinHistory: Job[] = useMemo(() => {
@@ -166,7 +238,7 @@ export default function VehicleStockPage() {
     setLoadingSlideLogs(true);
     try {
       const params = new URLSearchParams();
-      if (currentCompany !== 'ALL') params.set('companyId', currentCompany);
+      if (selectedCompanyFilter !== 'ALL') params.set('companyId', selectedCompanyFilter);
       if (slideSearchQuery.trim()) params.set('q', slideSearchQuery.trim());
       const res = await fetch(`/api/vehicles/slide-logs?${params.toString()}`);
       const data = await res.json();
@@ -178,7 +250,7 @@ export default function VehicleStockPage() {
     } finally {
       setLoadingSlideLogs(false);
     }
-  }, [currentCompany, slideSearchQuery]);
+  }, [selectedCompanyFilter, slideSearchQuery]);
 
   useEffect(() => {
     if (activeTab === 'SLIDE_LOGS') {
@@ -422,19 +494,32 @@ export default function VehicleStockPage() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap w-full lg:w-auto">
-              {/* Branch Filter - Only show if not EV7 */}
-              {currentCompany !== 'EV7' && (
-                <div className="w-full sm:w-[260px]">
-                  <CustomDropdown
-                    value={effectiveBranchFilter}
-                    onChange={setSelectedBranchFilter}
-                    options={branchOptions}
-                    icon={Building2}
-                    dropdownWidth="w-full sm:w-[320px]"
-                    placeholder="เลือกสาขา"
-                  />
-                </div>
-              )}
+              {/* Company Filter */}
+              <div className="w-full sm:w-[210px]">
+                <CustomDropdown
+                  value={selectedCompanyFilter}
+                  onChange={(val) => {
+                    setSelectedCompanyFilter(val as 'ALL' | 'GI' | 'EV7');
+                    setSelectedBranchFilter('ALL');
+                  }}
+                  options={companyFilterOptions}
+                  icon={Building2}
+                  dropdownWidth="w-full sm:w-[240px]"
+                  placeholder="ทุกสังกัด"
+                />
+              </div>
+
+              {/* Branch Filter */}
+              <div className="w-full sm:w-[240px]">
+                <CustomDropdown
+                  value={effectiveBranchFilter}
+                  onChange={setSelectedBranchFilter}
+                  options={branchOptions}
+                  icon={Building2}
+                  dropdownWidth="w-full sm:w-[320px]"
+                  placeholder="เลือกสาขา"
+                />
+              </div>
 
               {/* Status Filter */}
               <div className="w-full sm:w-[190px]">
@@ -500,9 +585,17 @@ export default function VehicleStockPage() {
                           </td>
                           <td className="py-2 px-3 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-[#0f5238] font-bold text-[10px] border border-emerald-200/60 shrink-0">
-                                {vehicle.companyCode}
-                              </span>
+                              {(() => {
+                                const badge = getVehicleBranchBadge(vehicle);
+                                return (
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded font-bold text-[10px] shrink-0 border ${badge.badgeClass}`}
+                                    title={badge.title}
+                                  >
+                                    {badge.text}
+                                  </span>
+                                );
+                              })()}
                               <button
                                 type="button"
                                 onClick={() => setSelectedVehicle(vehicle)}
@@ -511,14 +604,6 @@ export default function VehicleStockPage() {
                               >
                                 {vehicle.vin}
                               </button>
-                              {vehicle.source === 'D365' && (
-                                <span
-                                  className="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-bold text-[9px] border border-sky-200 shrink-0"
-                                  title={vehicle.lastSyncedAt ? `Sync จาก D365 ล่าสุด: ${formatThaiDateTime(vehicle.lastSyncedAt)}` : 'ข้อมูลจาก D365'}
-                                >
-                                  D365
-                                </span>
-                              )}
                             </div>
                           </td>
                           <td className="py-2 px-3 whitespace-nowrap">

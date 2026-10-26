@@ -48,6 +48,14 @@ import {
 // Dynamic import to avoid SSR issues with Leaflet
 const MapPickerModal = dynamic(() => import('@/components/jobs/MapPickerModal'), { ssr: false });
 
+const getBranchShortLabel = (code?: string, name?: string) => {
+  if (code) {
+    if (code === 'GI06' || code.startsWith('EV7')) return 'EV7';
+    return code;
+  }
+  return name || 'ต่างสาขา';
+};
+
 export default function CreateVehicleSlidePage() {
   const router = useRouter();
   const { 
@@ -108,7 +116,6 @@ export default function CreateVehicleSlidePage() {
     };
 
     const list: DropdownOption[] = branches
-      .filter(b => availableBranches.some(ab => ab.id === b.id))
       .map(b => {
         const count = availableStockVehicles.filter(v => v.currentBranchId === b.id).length;
         return {
@@ -122,7 +129,7 @@ export default function CreateVehicleSlidePage() {
       });
 
     return [allOption, ...list];
-  }, [branches, availableBranches, availableStockVehicles]);
+  }, [branches, availableStockVehicles]);
 
   // Auto-switch branch when company changes
   useEffect(() => {
@@ -737,39 +744,53 @@ export default function CreateVehicleSlidePage() {
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        {/* Top row: VIN + License plate */}
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-mono font-bold text-xs text-gray-900 tracking-tight truncate">
-                            {v.vin}
-                          </p>
-                          {v.licensePlate && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-gray-200 text-gray-800 text-[10px] font-bold shadow-2xs shrink-0 whitespace-nowrap">
+                        {/* Top row: Primary Identifier (Plate / VIN) & Branch Badge */}
+                        <div className="flex items-center justify-between gap-1.5 min-w-0">
+                          {v.licensePlate ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-gray-300 text-gray-900 text-xs font-bold shadow-2xs shrink-0 tracking-tight">
                               {v.licensePlate}
                             </span>
+                          ) : (
+                            <span className="font-mono text-xs font-bold text-gray-900 truncate">
+                              {v.vin}
+                            </span>
                           )}
+
+                          {/* Branch badge */}
+                          {(() => {
+                            const branchCode = getBranchShortLabel(v.currentBranchCode, v.currentBranchName);
+                            const isEv7 = (v as any).companyCode === 'EV7' || branchCode === 'EV7';
+                            return (
+                              <span 
+                                className={`text-[9px] px-1.5 py-0.5 rounded-md font-semibold shrink-0 border ${
+                                  isEv7
+                                    ? 'bg-emerald-50 text-[#0f5238] border-emerald-300'
+                                    : 'bg-blue-50 text-blue-700 border-blue-200/80'
+                                }`}
+                                title={branchDisplay}
+                              >
+                                {branchCode}
+                              </span>
+                            );
+                          })()}
                         </div>
 
-                        {/* Model & Color */}
-                        <p className="text-[11px] font-medium text-gray-600 truncate mt-0.5">
-                          {v.model}
-                          {v.color && <span className="text-gray-400"> · {v.color}</span>}
-                        </p>
+                        {/* Secondary row: VIN (only shown if license plate exists above) */}
+                        {v.licensePlate && (
+                          <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                            <span className="text-[10px] font-medium text-gray-400 shrink-0">VIN:</span>
+                            <span className="font-mono text-[11px] font-semibold text-gray-600 truncate">
+                              {v.vin}
+                            </span>
+                          </div>
+                        )}
 
-                        {/* Location / Current Branch badge */}
-                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-500 font-medium">
-                          <Building2 className="w-3 h-3 text-emerald-700 shrink-0" />
-                          <span className="truncate">{branchDisplay}</span>
-                          {currentRole === 'BRANCH' && (
-                            isMyBranch ? (
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold shrink-0">
-                                สาขาของคุณ
-                              </span>
-                            ) : (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-[9px] font-medium border border-amber-200/60 shrink-0">
-                                สาขาอื่น
-                              </span>
-                            )
-                          )}
+                        {/* Model & Color */}
+                        <div className="flex items-center justify-between gap-1.5 mt-0.5">
+                          <p className="text-xs font-medium text-gray-700 truncate">
+                            {v.model}
+                            {v.color && <span className="text-gray-400 font-normal"> · {v.color}</span>}
+                          </p>
                         </div>
 
                         {/* Status tag */}
