@@ -9,6 +9,7 @@ export { SlideConfirmModal } from './SlideConfirmModal';
 export { SlideSuccessModal } from './SlideSuccessModal';
 export { WashConfirmModal } from './WashConfirmModal';
 export { WashOrderPrintModal } from './WashOrderPrintModal';
+export { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
 export { CancelJobConfirmModal } from './CancelJobConfirmModal';
 export { SupplierSelector } from './SupplierSelector';
 export { AddServiceVehicleModal } from './AddServiceVehicleModal';

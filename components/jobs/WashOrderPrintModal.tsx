@@ -7,6 +7,7 @@ import { Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { useTheme } from '@/hooks/useTheme';
 import { getWashServiceDisplay, getSupplierWashConfig, calculateWashOrderFinancials } from '@/lib/car-wash-rates';
+import { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
 
 export interface WashOrderPrintModalProps {
   createdJob: Job | null;
@@ -57,8 +58,11 @@ export function WashOrderPrintModal({
           </div>
         </div>
 
-        {/* Printable Document Sheet */}
-        <div className="print-work-order p-6 border border-gray-200 rounded-2xl bg-white text-gray-900 flex flex-col gap-4 print:border-none print:p-0">
+        {/* Official Document Print Portal */}
+        <WorkOrderPrintDocument job={createdJob} />
+
+        {/* On-Screen Preview Sheet */}
+        <div className="p-6 border border-gray-200 rounded-2xl bg-white text-gray-900 flex flex-col gap-4">
           {/* Document Top */}
           <div className="flex items-center justify-between border-b border-gray-200 pb-4">
             <div>
