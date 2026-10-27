@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma';
+import type { SupplierVendorCode } from '@prisma/client';
 import { getD365Config, getD365Token, D365Error } from './client';
 
-/** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน */
+/** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน (v1.1) */
 export const D365_SERVICE_ITEMS = {
   CAR_WASH: 'GI-0900832', // ค่าบริการล้างรถ
   VEHICLE_SLIDE: 'GI-0900833', // ค่าบริการรถสไลด์

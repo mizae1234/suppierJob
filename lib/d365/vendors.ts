@@ -1,8 +1,9 @@
 import { prisma } from '@/lib/prisma';
+import type { SupplierVendorCode } from '@prisma/client';
 import { d365FetchAll } from './client';
 
 /**
- * Lookup รหัสคู่ค้า (Vendor) ใน D365 ผ่าน OData entity VendorsV3
+ * Lookup รหัสคู่ค้า (Vendor) ใน D365 ผ่าน OData entity VendorsV3 (v1.1)
  *
  * - แต่ละบริษัท (Legal Entity = รหัสสาขาในระบบเรา เช่น GI, GI02) มีรหัส Vendor ของตัวเอง
  * - Vendor รายเดียวกันทุกบริษัทจะมี VendorPartyNumber (Global Address Book) เดียวกัน
