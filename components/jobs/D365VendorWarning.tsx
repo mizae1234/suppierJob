@@ -25,10 +25,14 @@ export function D365VendorWarning({ supplier, branch }: D365VendorWarningProps) 
       className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 -mt-2"
     >
       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
-      <span>
-        <b>{supplier.name}</b> ยังไม่มีรหัส Vendor D365 ของสาขา <b>{branch.code || branch.name || '-'}</b> —
-        สร้างใบงานได้ แต่ระบบจะเปิด PO ไม่ได้จนกว่า Admin จะเพิ่มรหัส (หน้า Supplier)
-      </span>
+      <div className="leading-relaxed">
+        <p className="font-bold text-amber-900">
+          ยังไม่มีรหัส Vendor D365 สำหรับสาขา {branch.code || branch.name || '-'}
+        </p>
+        <p className="text-amber-700">
+          สามารถสร้างใบงานได้ปกติ (กรุณาแจ้ง Admin เพื่อเปิด PO)
+        </p>
+      </div>
     </div>
   );
 }
