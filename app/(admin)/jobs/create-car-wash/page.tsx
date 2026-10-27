@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import TagSearch from '@/components/ui/TagSearch';
 import { CompanyCode, Job } from '@/types';
-import { WashConfirmModal, WashOrderPrintModal, CancelJobConfirmModal, SupplierSelector, AddServiceVehicleModal } from '@/components/jobs';
+import { WashConfirmModal, WashOrderPrintModal, CancelJobConfirmModal, SupplierSelector, AddServiceVehicleModal, D365VendorWarning } from '@/components/jobs';
 import { 
   getSupplierWashConfig, 
   getWashServiceDisplay, 
@@ -694,6 +694,7 @@ export default function CreateCarWashPage() {
             currentBranchCode={selectedBranch?.code}
             currentBranchName={selectedBranch?.name}
           />
+          <D365VendorWarning supplier={selectedSupplier} branch={selectedBranch} />
 
           {/* Step 2: Choose Car Category (รถใหม่ vs รถที่มา Service) */}
           <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-gray-200/90 shadow-xs flex flex-col gap-2.5">

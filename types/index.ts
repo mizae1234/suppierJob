@@ -81,7 +81,19 @@ export interface Supplier {
   vatRate?: number;
   showroomLabel?: string;
   rateItems?: SupplierRateItem[];
-  d365VendorCode?: string | null;
+  d365PartyNumber?: string | null;
+  vendorCodes?: SupplierVendorCodeInfo[]; // รหัส Vendor D365 แยกตามสาขา
+}
+
+/** รหัส Vendor ใน D365 ของ Supplier ต่อสาขา (สาขา = Legal Entity ใน D365) */
+export interface SupplierVendorCodeInfo {
+  branchId: string;
+  branchCode: string;
+  branchName?: string;
+  vendorCode: string;
+  vendorName?: string | null;
+  source?: string | null;
+  verifiedAt?: string | null;
 }
 
 export interface Vehicle {

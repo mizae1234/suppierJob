@@ -16,7 +16,7 @@ import {
   getBranchDefaultCoords,
   SlideCalculationResult,
 } from '@/lib/vehicle-slide-rates';
-import { SlideConfirmModal, SlideSuccessModal, CancelJobConfirmModal, SupplierSelector } from '@/components/jobs';
+import { SlideConfirmModal, SlideSuccessModal, CancelJobConfirmModal, SupplierSelector, D365VendorWarning } from '@/components/jobs';
 import dynamic from 'next/dynamic';
 import { 
   Truck, 
@@ -620,6 +620,11 @@ export default function CreateVehicleSlidePage() {
             themeColor="#0f5238"
             recommendedSupplierCode={supplierRecommendation?.recommendedCode}
             recommendationReason={supplierRecommendation?.reason}
+          />
+          {/* ใบงานสไลด์ผูกกับสาขาต้นทาง → PO เปิดในบริษัทของสาขาต้นทาง */}
+          <D365VendorWarning
+            supplier={selectedSupplier}
+            branch={branches.find(b => b.id === selectedOriginBranchId)}
           />
 
           {/* Step 2: Select VIN from any branch */}

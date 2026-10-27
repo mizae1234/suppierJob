@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Invoice, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, getSupplierVendorCode } from '@/lib/job-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { useApp } from '@/context/AppContext';
 import {
@@ -72,10 +72,13 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
     department: 'ฝ่ายบริหารยานพาหนะส่วนกลาง (Central Fleet Management)',
   };
 
+  // รหัส Vendor D365 แยกตามสาขา → ใช้สาขาของใบงานแรกในใบแจ้งหนี้
+  const invoiceBranchId = jobs.find(j => j.id === invoice.jobIds[0])?.branchId;
+
   const supplierInfo = {
     name: invoice.supplierName,
     code: currentSupplier?.code || '',
-    d365VendorCode: currentSupplier?.d365VendorCode || null,
+    d365VendorCode: getSupplierVendorCode(currentSupplier, { id: invoiceBranchId }),
     showroomLabel: currentSupplier?.showroomLabel || '',
     taxId: currentSupplier?.taxId || null,
     address: currentSupplier?.address || '',

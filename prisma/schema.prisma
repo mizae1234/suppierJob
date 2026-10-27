@@ -62,6 +62,7 @@ model Branch {
   jobs        Job[]     @relation("BranchJobs")
   originJobs  Job[]     @relation("OriginBranchJobs")
   destJobs    Job[]     @relation("DestBranchJobs")
+  supplierVendorCodes SupplierVendorCode[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -83,12 +84,13 @@ model Supplier {
   vatType       String             @default("NO_VAT") // VAT_7, NO_VAT
   vatRate       Float              @default(0.0)      // 0.07, 0.0
   showroomLabel String?            // สาขาโชว์รูมประจำ เช่น "ศาลายา", "เลียบด่วน รามอินทรา, วิภาวดี"
-  d365VendorCode String?           // รหัสคู่ค้าใน D365 FO เช่น V000342
+  d365PartyNumber String?          // เลข Party กลาง (Global Address Book) ใน D365 ใช้ดึงรหัส Vendor ทุกสาขา
   isActive      Boolean            @default(true)
   users         User[]
   jobs          Job[]
   invoices      Invoice[]
   rateItems     SupplierRateItem[]
+  vendorCodes   SupplierVendorCode[]
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 }
@@ -109,6 +111,24 @@ model SupplierRateItem {
 
   @@unique([supplierId, serviceCode])
   @@index([supplierId])
+}
+
+// รหัส Vendor ของ Supplier ใน D365 แยกตามสาขา (รหัสสาขา = Legal Entity ใน D365 เช่น GI, GI02)
+model SupplierVendorCode {
+  id          String    @id @default(uuid())
+  supplierId  String
+  supplier    Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  branchId    String
+  branch      Branch    @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vendorCode  String    // VendorAccountNumber เช่น V000357
+  vendorName  String?   // ชื่อ Vendor ใน D365 (ไว้ตรวจว่าตรงเจ้า)
+  source      String    @default("MANUAL") // MANUAL, D365_SYNC
+  verifiedAt  DateTime? // เวลาที่ยืนยันกับ D365 ล่าสุด
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([supplierId, branchId])
+  @@index([branchId])
 }
 
 // ข้อมูลรถยนต์ Interface มาจาก External Stock System

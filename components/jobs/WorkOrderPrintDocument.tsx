@@ -7,6 +7,7 @@ import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
+import { getSupplierVendorCode } from '@/lib/job-utils';
 import { STATUS_MAP } from './constants';
 
 export interface WorkOrderPrintDocumentProps {
@@ -48,7 +49,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
   const orderingBranchPhone = job.requesterPhone || branch?.phone || '';
 
   // Supplier info
-  const supplierCode = supplier?.d365VendorCode || supplier?.code || '';
+  const supplierCode = getSupplierVendorCode(supplier, { id: job.branchId, code: branch?.code }) || supplier?.code || '';
   const supplierTaxId = supplier?.taxId || '';
   const supplierAddress = supplier?.address || '';
   const supplierPhone = supplier?.phone || '';

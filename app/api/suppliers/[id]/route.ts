@@ -12,12 +12,9 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { d365VendorCode, phone, email, address, bankName, bankAccount, taxId } = body;
+    const { phone, email, address, bankName, bankAccount, taxId } = body;
 
     const dataToUpdate: any = {};
-    if (d365VendorCode !== undefined) {
-      dataToUpdate.d365VendorCode = d365VendorCode ? String(d365VendorCode).trim() : null;
-    }
     if (phone !== undefined) dataToUpdate.phone = phone;
     if (email !== undefined) dataToUpdate.email = email;
     if (address !== undefined) dataToUpdate.address = address;
@@ -36,7 +33,6 @@ export async function PATCH(
         id: updated.id,
         code: updated.code,
         name: updated.name,
-        d365VendorCode: updated.d365VendorCode,
         phone: updated.phone,
         email: updated.email,
         address: updated.address,

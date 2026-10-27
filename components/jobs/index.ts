@@ -13,4 +13,5 @@ export { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
 export { CancelJobConfirmModal } from './CancelJobConfirmModal';
 export { SupplierSelector } from './SupplierSelector';
 export { AddServiceVehicleModal } from './AddServiceVehicleModal';
+export { D365VendorWarning } from './D365VendorWarning';
 export { STATUS_MAP, KANBAN_COLUMNS, SAMPLE_PHOTOS } from './constants';

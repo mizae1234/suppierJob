@@ -1,4 +1,4 @@
-import { Job, JobStatus, JobType } from '@/types';
+import { Job, JobStatus, JobType, Supplier } from '@/types';
 
 /**
  * Short label for identifying a car in the UI.
@@ -8,6 +8,18 @@ export function getVehicleLabel(vin?: string | null, licensePlate?: string | nul
   const plate = licensePlate?.trim();
   if (plate && plate !== '-' && !plate.includes('ป้ายแดง')) return plate;
   return vin ? `VIN: ${vin.slice(-6)}` : '-';
+}
+
+/** หารหัส Vendor D365 ของ Supplier สำหรับสาขาที่ระบุ (แต่ละสาขามีรหัสต่างกัน — ไม่เจอคืน null) */
+export function getSupplierVendorCode(
+  supplier: Pick<Supplier, 'vendorCodes'> | null | undefined,
+  branch: { id?: string | null; code?: string | null } | null | undefined,
+): string | null {
+  if (!supplier?.vendorCodes || !branch) return null;
+  const match = supplier.vendorCodes.find(
+    (vc) => (!!branch.id && vc.branchId === branch.id) || (!!branch.code && vc.branchCode === branch.code),
+  );
+  return match?.vendorCode ?? null;
 }
 
 /**

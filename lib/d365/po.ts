@@ -83,10 +83,15 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     return { success: false, message: 'ไม่พบข้อมูลใบสั่งงาน' };
   }
 
-  // ตรวจสอบรหัสคู่ค้าใน D365
-  const vendorAccount = job.supplier?.d365VendorCode?.trim();
+  // ตรวจสอบรหัสคู่ค้าใน D365 ของสาขานี้ (แต่ละบริษัท/สาขามีรหัส Vendor ไม่เหมือนกัน — ไม่มีการใช้รหัสสาขาอื่นแทน)
+  const branchVendor = job.supplierId
+    ? await prisma.supplierVendorCode.findUnique({
+        where: { supplierId_branchId: { supplierId: job.supplierId, branchId: job.branchId } },
+      })
+    : null;
+  const vendorAccount = branchVendor?.vendorCode?.trim();
   if (!vendorAccount) {
-    const errorMsg = `Supplier "${job.supplier?.name || '-'}" ยังไม่ได้ระบุรหัสคู่ค้าใน D365 (Vendor Account)`;
+    const errorMsg = `Supplier "${job.supplier?.name || '-'}" ยังไม่มีรหัส Vendor D365 ของสาขา ${job.branch?.code || '-'}`;
     await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -123,9 +128,21 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     return { success: false, message: errorMsg };
   }
 
+  // เปิด PO ตามสาขา: Company และ SiteId ใช้รหัสสาขาเดียวกัน (เช่น GI02 = มีนบุรี)
+  // รหัสสาขาในระบบตรงกับรหัสบริษัท (Legal Entity) ใน D365
+  const d365Company = job.branch?.code?.trim();
+  if (!d365Company) {
+    const errorMsg = 'ใบงานนี้ไม่มีรหัสสาขา ไม่สามารถระบุบริษัทใน D365 ได้';
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { d365PoStatus: 'FAILED', d365PoMessage: errorMsg, d365PoSentAt: new Date() },
+    });
+    return { success: false, message: errorMsg };
+  }
+
   const payload: D365PurchaseOrderPayload = {
     Bank: '',
-    Company: job.company?.code || 'GI',
+    Company: d365Company,
     System: 'SupplierJob',
     DealerId: '',
     DeliveryDate: deliveryDateStr,
@@ -135,7 +152,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     PaymentType: 'Cash',
     PoDMS: vin,
     PoGiCore: job.jobNumber,
-    SiteId: job.branch?.code || 'GI',
+    SiteId: d365Company,
     VendorAccount: vendorAccount,
     WarehouseId: '',
     Admin: '',
@@ -168,7 +185,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     const token = await getD365Token();
     const url = `${cfg.baseUrl}/api/services/MIS_PurchImportSvcGroup/MIS_PurchImportSvc/createPurchaseOrder`;
 
-    console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price });
+    console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, company: d365Company, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price });
 
     const res = await fetch(url, {
       method: 'POST',

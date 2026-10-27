@@ -20,6 +20,9 @@ export async function GET(request: NextRequest) {
             where: { isActive: true },
             orderBy: { serviceCode: 'asc' },
           },
+          vendorCodes: {
+            include: { branch: { select: { code: true, name: true } } },
+          },
         },
         orderBy: { name: 'asc' },
       });
@@ -61,7 +64,18 @@ export async function GET(request: NextRequest) {
         vatRate: s.vatRate,
         showroomLabel: s.showroomLabel,
         rateItems: s.rateItems || [],
-        d365VendorCode: s.d365VendorCode,
+        d365PartyNumber: s.d365PartyNumber ?? null,
+        vendorCodes: (s.vendorCodes || [])
+          .map((vc: any) => ({
+            branchId: vc.branchId,
+            branchCode: vc.branch?.code,
+            branchName: vc.branch?.name,
+            vendorCode: vc.vendorCode,
+            vendorName: vc.vendorName,
+            source: vc.source,
+            verifiedAt: vc.verifiedAt,
+          }))
+          .sort((a: any, b: any) => String(a.branchCode).localeCompare(String(b.branchCode))),
       };
     });
 
