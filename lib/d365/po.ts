@@ -1,7 +1,16 @@
 import { prisma } from '@/lib/prisma';
 import { getD365Config, getD365Token, D365Error } from './client';
 
-export const D365_DEFAULT_SERVICE_ITEM = 'GI-0900832'; // รหัสงานบริการทดสอบใน UAT
+/** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน */
+export const D365_SERVICE_ITEMS = {
+  CAR_WASH: 'GI-0900832', // ค่าบริการล้างรถ
+  VEHICLE_SLIDE: 'GI-0900833', // ค่าบริการรถสไลด์
+  WINDOW_FILM: 'GI-0900834', // ค่าบริการติดฟิล์ม (ยังไม่มีประเภทงานนี้ในระบบ — เตรียมไว้สำหรับอนาคต)
+} as const;
+
+export function getD365ServiceItem(jobType: string): string | null {
+  return D365_SERVICE_ITEMS[jobType as keyof typeof D365_SERVICE_ITEMS] ?? null;
+}
 
 export interface D365PurchaseOrderLine {
   DiscountAmount?: number;
@@ -103,8 +112,16 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
   // กำหนดราคาค่าบริการ
   const price = job.actualCost ?? job.estimatedCost ?? 0;
 
-  // เลือกรหัสสินค้าบริการ (Service Item)
-  const serviceItemNumber = D365_DEFAULT_SERVICE_ITEM;
+  // เลือกรหัสสินค้าบริการ (Service Item) ตามประเภทงาน
+  const serviceItemNumber = getD365ServiceItem(job.jobType);
+  if (!serviceItemNumber) {
+    const errorMsg = `ไม่พบรหัสสินค้า D365 สำหรับประเภทงาน "${job.jobType}"`;
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { d365PoStatus: 'FAILED', d365PoMessage: errorMsg, d365PoSentAt: new Date() },
+    });
+    return { success: false, message: errorMsg };
+  }
 
   const payload: D365PurchaseOrderPayload = {
     Bank: '',
@@ -151,7 +168,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     const token = await getD365Token();
     const url = `${cfg.baseUrl}/api/services/MIS_PurchImportSvcGroup/MIS_PurchImportSvc/createPurchaseOrder`;
 
-    console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, vendorAccount, price });
+    console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price });
 
     const res = await fetch(url, {
       method: 'POST',
