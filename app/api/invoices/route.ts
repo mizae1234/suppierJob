@@ -199,7 +199,7 @@ export async function POST(request: NextRequest) {
           supplier: { select: { code: true, name: true, bankName: true, bankAccount: true } },
           company: { select: { code: true, name: true } },
           jobs: {
-            select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true },
+            select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true, d365PoNumber: true },
           },
         },
       });

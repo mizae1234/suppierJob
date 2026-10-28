@@ -88,6 +88,11 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     return { success: false, message: 'ไม่พบข้อมูลใบสั่งงาน' };
   }
 
+  // ป้องกันการสร้าง PO ซ้ำ หากใบงานนี้ได้รับเลข PO จาก D365 ไปเรียบร้อยแล้ว
+  if (job.d365PoNumber) {
+    return { success: true, purchId: job.d365PoNumber, message: `ใบงานนี้มีเลข PO แล้ว (${job.d365PoNumber})` };
+  }
+
   // ตรวจสอบรหัสคู่ค้าใน D365 ของสาขานี้ (แต่ละบริษัท/สาขามีรหัส Vendor ไม่เหมือนกัน — ไม่มีการใช้รหัสสาขาอื่นแทน)
   const branchVendor = job.supplierId
     ? await prisma.supplierVendorCode.findUnique({
@@ -190,6 +195,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
   const claimed = await prisma.job.updateMany({
     where: {
       id: jobId,
+      d365PoNumber: null,
       OR: [
         { d365PoStatus: null },
         { d365PoStatus: { not: 'PENDING' } },
