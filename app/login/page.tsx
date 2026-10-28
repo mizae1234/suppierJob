@@ -39,6 +39,27 @@ export default function LoginPage() {
   const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const passwordRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [dropdownOpen]);
 
   const startTransition = (newStep: 1 | 2) => {
     setIsTransitioning(true);
@@ -252,7 +273,7 @@ export default function LoginPage() {
                     </label>
                   </div>
 
-                  <div className="relative">
+                  <div ref={dropdownRef} className="relative">
                     <button
                       type="button"
                       onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -270,8 +291,7 @@ export default function LoginPage() {
                           return (
                             <>
                               <div className={`w-6 h-6 rounded-md flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${
-                                isEV7 ? 'bg-gradient-to-br from-emerald-600 to-emerald-800'
-                                : isGI ? 'bg-gradient-to-br from-blue-600 to-blue-800'
+                                isEV7 || isGI ? 'bg-gradient-to-br from-emerald-600 to-emerald-800'
                                 : 'bg-gradient-to-br from-amber-500 to-orange-600'
                               }`}>
                                 {isEV7 ? 'EV7' : isGI ? 'GI' : <Wrench className="w-3 h-3" />}
@@ -315,7 +335,7 @@ export default function LoginPage() {
                           onClick={() => { setCompany('GI'); setDropdownOpen(false); }}
                           className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer ${company === 'GI' ? 'bg-emerald-50' : ''}`}
                         >
-                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0f5238] to-[#2d6a4f] flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">GI</div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900">GI</p>
                             <p className="text-[10px] text-gray-500">โกลด์ อินทิเกรท (Gold Integrate)</p>
@@ -426,7 +446,7 @@ export default function LoginPage() {
                   {company && (
                     <>
                       <span className="text-gray-400">@</span>
-                      <span className={`text-xs font-bold ${company === 'EV7' ? 'text-emerald-700' : 'text-blue-700'}`}>
+                      <span className={`text-xs font-bold ${company === 'EV7' || company === 'GI' ? 'text-emerald-700' : 'text-amber-700'}`}>
                         {company}
                       </span>
                     </>
