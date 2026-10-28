@@ -134,7 +134,8 @@ export async function POST(
         (photoUrl.startsWith('/') && !photoUrl.startsWith('//') && !photoUrl.startsWith('/api/')) ||
         photoUrl.startsWith('https://');
 
-      if (!isSafeUrl || photoUrl.length > 1000) {
+      // จำกัด 800 ตัวอักษร: คอลัมน์ photoUrl มี index (SQL Server จำกัดขนาด key ของ index ~1700 bytes)
+      if (!isSafeUrl || photoUrl.length > 800) {
         return NextResponse.json(
           { error: 'รูปแบบ photoUrl ไม่ถูกต้องหรือไม่ปลอดภัย' },
           { status: 400 }

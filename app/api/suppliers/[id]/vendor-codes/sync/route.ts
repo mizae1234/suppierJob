@@ -15,10 +15,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const result = await syncSupplierVendorCodes(id);
     return NextResponse.json({ success: !!result.partyNumber, ...result });
-  } catch (error: any) {
+  } catch (error) {
     console.error(`POST /api/suppliers/${id}/vendor-codes/sync error:`, error);
     return NextResponse.json(
-      { error: 'ดึงรหัส Vendor จาก D365 ไม่สำเร็จ', details: error?.message || String(error) },
+      { error: 'ดึงรหัส Vendor จาก D365 ไม่สำเร็จ' },
       { status: 500 },
     );
   }

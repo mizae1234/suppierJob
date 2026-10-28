@@ -89,6 +89,8 @@ export const UrgentApprovalsSection: React.FC<UrgentApprovalsSectionProps> = ({
                       <img
                         src={evi.photoUrl}
                         alt={evi.caption}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover"
                       />
                     </div>

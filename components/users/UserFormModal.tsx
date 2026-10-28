@@ -16,13 +16,33 @@ import {
 } from 'lucide-react';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
+// สุ่มรหัสผ่านที่ผ่านนโยบายของระบบเสมอ (≥ 8 ตัว มีทั้งตัวอักษรและตัวเลข)
 function generatePassword(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$';
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const chars = letters + digits + '@#$';
+  const rand = new Uint32Array(10);
+  crypto.getRandomValues(rand);
   let pwd = '';
-  for (let i = 0; i < 8; i++) {
-    pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < rand.length; i++) {
+    const set = i === 0 ? letters : i === 1 ? digits : chars;
+    pwd += set.charAt(rand[i] % set.length);
   }
-  return pwd;
+  // สลับตำแหน่งเพื่อไม่ให้ตัวอักษร/ตัวเลขอยู่หน้าเสมอ
+  const arr = pwd.split('');
+  const swap = new Uint32Array(arr.length);
+  crypto.getRandomValues(swap);
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = swap[i] % (i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.join('');
+}
+
+function passwordPolicyError(pw: string): string | null {
+  if (!pw || pw.length < 8) return 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร';
+  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return 'รหัสผ่านต้องมีทั้งตัวอักษรและตัวเลข';
+  return null;
 }
 
 export interface UserFormModalProps {
@@ -175,8 +195,9 @@ export function UserFormModal({
           setFormSubmitting(false);
           return;
         }
-        if (!formData.password || formData.password.length < 6) {
-          showToast('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร', 'warning');
+        const policyError = passwordPolicyError(formData.password);
+        if (policyError) {
+          showToast(policyError, 'warning');
           setFormSubmitting(false);
           return;
         }

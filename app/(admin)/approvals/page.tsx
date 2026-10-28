@@ -522,6 +522,8 @@ function ApprovalsContent() {
                               <img
                                 src={evi.photoUrl}
                                 alt={evi.caption}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-80" />
@@ -580,6 +582,8 @@ function ApprovalsContent() {
                             <img
                               src={evi.photoUrl}
                               alt={evi.caption}
+                              loading="lazy"
+                              decoding="async"
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent opacity-90" />

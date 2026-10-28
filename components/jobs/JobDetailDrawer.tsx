@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
-import { Job } from '@/types';
+import { Job, JobActivity } from '@/types';
 import { getSlideDirection, getJobTotalCost } from '@/lib/job-utils';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { STATUS_MAP, SAMPLE_PHOTOS } from './constants';
@@ -128,8 +128,48 @@ export function JobDetailDrawer({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [job, hasPrevJob, hasNextJob, onPrevJob, onNextJob, onClose]);
 
+  // ─── Fetch full job detail (activities are no longer included in the /api/jobs list) ───
+  const contextJob = job ? (jobs.find(j => j.id === job.id) || job) : null;
+  const detailJobId = contextJob?.id;
+  // Re-fetch whenever the job changes in a way that may add new activities
+  const detailRefreshKey = contextJob
+    ? [
+        contextJob.status,
+        contextJob.updatedAt,
+        contextJob.d365PoStatus || '',
+        contextJob.evidences?.length ?? 0,
+        (contextJob.carWashItems || []).map(i => `${i.id}:${i.status}:${i.verifiedAt || ''}`).join(','),
+      ].join('|')
+    : '';
+  const [detailActivities, setDetailActivities] = useState<{ jobId: string; activities: JobActivity[] } | null>(null);
+
+  useEffect(() => {
+    if (!detailJobId) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/api/jobs/${detailJobId}`, { signal: controller.signal });
+        if (!res.ok) return; // keep fallback (prop activities) on 404/other errors
+        const data = await res.json();
+        if (controller.signal.aborted) return;
+        if (data?.job && Array.isArray(data.job.activities)) {
+          setDetailActivities({ jobId: detailJobId, activities: data.job.activities });
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error('Failed to fetch job detail:', err);
+      }
+    })();
+    return () => controller.abort();
+  }, [detailJobId, detailRefreshKey]);
+
   if (!job) return null;
   const activeJob = jobs.find(j => j.id === job.id) || job;
+  // Prefer freshly fetched activities for this job; fall back to whatever the prop/list has while loading
+  const activities: JobActivity[] | undefined =
+    detailActivities && detailActivities.jobId === activeJob.id
+      ? detailActivities.activities
+      : activeJob.activities;
 
   // Handlers for Admin / Branch cancelling job or single vehicle item
   const handleOpenCancelEntireJob = () => {
@@ -1081,6 +1121,8 @@ export function JobDetailDrawer({
                                     <img 
                                       src={evi.photoUrl} 
                                       alt={evi.caption} 
+                                      loading="lazy"
+                                      decoding="async"
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                                     />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -1125,6 +1167,8 @@ export function JobDetailDrawer({
                                     <img 
                                       src={evi.photoUrl} 
                                       alt={evi.caption} 
+                                      loading="lazy"
+                                      decoding="async"
                                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                                     />
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -1162,6 +1206,8 @@ export function JobDetailDrawer({
                             <img 
                               src={evi.photoUrl} 
                               alt={evi.caption} 
+                              loading="lazy"
+                              decoding="async"
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
                             />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
@@ -1185,7 +1231,7 @@ export function JobDetailDrawer({
               </div>
 
               {/* ─── Activity Timeline (Flex-based) ─── */}
-              {activeJob.activities && activeJob.activities.length > 0 && (
+              {activities && activities.length > 0 && (
                 <div>
                   <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-2">
                     <Clock className="w-3.5 h-3.5" />
@@ -1193,7 +1239,7 @@ export function JobDetailDrawer({
                   </h4>
 
                   <div className="flex flex-col">
-                    {activeJob.activities.map((activity, idx) => {
+                    {activities.map((activity, idx) => {
                       const dotColors: Record<string, string> = {
                         ITEM_COMPLETED: '#059669',
                         ITEM_VERIFIED: '#0f5238',
@@ -1209,7 +1255,7 @@ export function JobDetailDrawer({
                       const dotColor = dotColors[activity.action] || '#9ca3af';
                       const time = new Date(activity.createdAt);
                       const timeStr = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
-                      const isLast = idx === (activeJob.activities?.length || 0) - 1;
+                      const isLast = idx === (activities?.length || 0) - 1;
 
                       return (
                         <div key={activity.id} className="flex gap-3">

@@ -1,8 +1,12 @@
 import { prisma } from '@/lib/prisma';
-import type { SupplierVendorCode } from '@prisma/client';
-import { getD365Config, getD365Token, D365Error } from './client';
+import { getD365Config, getD365Token, D365Error, fetchWithTimeout } from './client';
 
-/** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน (v1.1) */
+/** เวลารอ D365 ตอบการสร้าง PO (ทำเบื้องหลังหลังอนุมัติ จึงไม่บล็อกผู้ใช้ — เผื่อเวลาให้ D365 ช้าได้ ลดโอกาสตัดทิ้งทั้งที่ D365 สร้าง PO แล้ว) */
+const PO_REQUEST_TIMEOUT_MS = 60_000;
+/** สถานะ PENDING ค้างนานเกินนี้ ถือว่าการส่งรอบนั้นหลุด (เช่น server restart) → ส่งใหม่ได้ */
+const PO_PENDING_STALE_MS = 3 * 60_000;
+
+/** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน */
 export const D365_SERVICE_ITEMS = {
   CAR_WASH: 'GI-0900832', // ค่าบริการล้างรถ
   VEHICLE_SLIDE: 'GI-0900833', // ค่าบริการรถสไลด์
@@ -181,6 +185,29 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     ],
   };
 
+  // จองสิทธิ์การส่ง (PENDING) แบบ atomic — กันส่ง PO ซ้ำ เมื่อการส่งอัตโนมัติหลังอนุมัติ (ทำเบื้องหลัง)
+  // ยังไม่เสร็จ แล้วมีคนกด "ลองส่ง PO อีกครั้ง" พร้อมกัน; ถ้าค้าง PENDING เกินเวลาที่กำหนดถือว่าหลุด ส่งใหม่ได้
+  const claimed = await prisma.job.updateMany({
+    where: {
+      id: jobId,
+      OR: [
+        { d365PoStatus: null },
+        { d365PoStatus: { not: 'PENDING' } },
+        { d365PoSentAt: null },
+        { d365PoSentAt: { lt: new Date(Date.now() - PO_PENDING_STALE_MS) } },
+      ],
+    },
+    data: {
+      d365PoStatus: 'PENDING',
+      d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+      d365PoSentAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) {
+    return { success: false, message: 'ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่แล้วรีเฟรชหน้าจอ' };
+  }
+
+  let poRequestSent = false;
   try {
     const cfg = getD365Config();
     const token = await getD365Token();
@@ -188,7 +215,8 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
 
     console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, company: d365Company, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price });
 
-    const res = await fetch(url, {
+    poRequestSent = true;
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -196,7 +224,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
         Accept: 'application/json',
       },
       body: JSON.stringify(payload),
-    });
+    }, PO_REQUEST_TIMEOUT_MS);
 
     const json: D365PurchaseOrderResponse = await res.json().catch(() => ({
       Status: 'Failed',
@@ -229,7 +257,11 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
       return { success: false, message: errMsg };
     }
   } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
+    let errMsg = err instanceof Error ? err.message : String(err);
+    if (poRequestSent && err instanceof D365Error && err.timedOut) {
+      // POST หมดเวลา ≠ D365 ไม่ได้สร้าง PO — เตือนให้ตรวจก่อนส่งซ้ำ กันเปิด PO ซ้ำ
+      errMsg += ' — D365 อาจสร้าง PO ไปแล้ว กรุณาตรวจสอบใน D365 ก่อนกดส่งซ้ำ';
+    }
     console.error(`[D365 PO] เกิดข้อผิดพลาดในการเชื่อมต่อ: ${errMsg}`);
     await prisma.job.update({
       where: { id: jobId },

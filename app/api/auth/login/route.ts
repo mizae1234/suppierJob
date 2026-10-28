@@ -4,10 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE, type SessionUser } from '@/lib/session';
 import { logAudit } from '@/lib/audit-log';
 import { rateLimit, resetRateLimit, getClientIp } from '@/lib/rate-limit';
+import { DUMMY_PASSWORD_HASH } from '@/lib/password';
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS_PER_USER = 5;   // ผิด 5 ครั้ง / 15 นาที ต่อ username+IP
 const MAX_ATTEMPTS_PER_IP = 30; // กันการไล่เดา username จำนวนมากจาก IP เดียว
+const MAX_ATTEMPTS_PER_USERNAME = 20; // กันเดารหัสของ user คนเดียวจากหลาย IP (ไม่ผูกกับ IP)
 
 function tooMany(retryAfterSec: number) {
   return NextResponse.json(
@@ -36,6 +38,10 @@ export async function POST(request: NextRequest) {
     const failState = rateLimit(failKey, MAX_FAILS_PER_USER, WINDOW_MS);
     if (!failState.allowed) return tooMany(failState.retryAfterSec);
 
+    const userKey = `login-user:${username.toLowerCase()}`;
+    const userState = rateLimit(userKey, MAX_ATTEMPTS_PER_USERNAME, WINDOW_MS);
+    if (!userState.allowed) return tooMany(userState.retryAfterSec);
+
     // Find user by username
     const user = await prisma.user.findUnique({
       where: { username },
@@ -48,16 +54,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (!user || !user.isActive) {
-      return NextResponse.json(
-        { error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
-        { status: 401 }
-      );
-    }
-
-    // Verify password
-    const isValid = await bcrypt.compare(password, user.password);
-    if (!isValid) {
+    // Verify password — รัน bcrypt เสมอ (ใช้ dummy hash เมื่อไม่พบ user / ถูกปิดใช้งาน) เพื่อให้เวลาตอบสนองเท่ากัน
+    const canLogin = !!user && user.isActive;
+    const isValid = await bcrypt.compare(password, canLogin ? user.password : DUMMY_PASSWORD_HASH);
+    if (!user || !canLogin || !isValid) {
       return NextResponse.json(
         { error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
         { status: 401 }
@@ -66,9 +66,10 @@ export async function POST(request: NextRequest) {
 
     // สำเร็จ → ล้างตัวนับความผิดพลาด
     resetRateLimit(failKey);
+    resetRateLimit(userKey);
 
-    // Check company match for non-admin users
-    if (companyCode && user.role !== 'ADMIN') {
+    // Check company match for non-admin users (MASTER ไม่ผูกบริษัท → ไม่ต้องตรวจ)
+    if (companyCode && user.role !== 'ADMIN' && user.role !== 'MASTER') {
       const userCompanyCode = user.company?.code || user.branch?.company?.code;
       if (userCompanyCode && userCompanyCode !== companyCode) {
         return NextResponse.json(
@@ -96,6 +97,7 @@ export async function POST(request: NextRequest) {
       supplierId: user.supplierId,
       supplierName: user.supplier?.name || null,
       mustChangePassword: user.role === 'SUPPLIER' ? false : user.mustChangePassword,
+      sessionVersion: user.sessionVersion ?? 0,
     };
 
     // Set cryptographically signed session cookie

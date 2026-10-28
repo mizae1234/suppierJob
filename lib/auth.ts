@@ -7,7 +7,7 @@ export { createSessionToken, verifySessionToken, SESSION_COOKIE, SESSION_MAX_AGE
 
 // ─── DB-backed session validation (with short cache) ─────────────
 // ป้องกันกรณี user ถูกปิดใช้งาน / เปลี่ยนสิทธิ์ แต่ cookie เดิมยังใช้ได้
-type DbState = { isActive: boolean; role: string; companyId: string | null; supplierId: string | null; branchId: string | null; mustChangePassword: boolean };
+type DbState = { isActive: boolean; role: string; companyId: string | null; supplierId: string | null; branchId: string | null; mustChangePassword: boolean; sessionVersion: number };
 const CACHE_TTL_MS = 30_000;
 const userStateCache = new Map<string, { state: DbState | null; expires: number }>();
 
@@ -24,7 +24,8 @@ async function getUserState(userId: string): Promise<DbState | null> {
       supplierId: true,
       branchId: true,
       mustChangePassword: true,
-    } as any,
+      sessionVersion: true,
+    },
   })) as DbState | null;
   userStateCache.set(userId, { state, expires: Date.now() + CACHE_TTL_MS });
   if (userStateCache.size > 5000) userStateCache.clear();
@@ -50,6 +51,8 @@ export async function getSessionUser(request: NextRequest): Promise<SessionUser 
   if (
     !state ||
     !state.isActive ||
+    // session ถูกเพิกถอน (เปลี่ยน/รีเซ็ตรหัสผ่าน) — token เก่าที่ไม่มี sessionVersion ถือเป็น 0
+    (state.sessionVersion ?? 0) !== (user.sessionVersion ?? 0) ||
     state.role !== user.role ||
     state.supplierId !== user.supplierId ||
     state.branchId !== user.branchId ||

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
@@ -299,17 +299,17 @@ export async function PATCH(
     }
 
     // ─── Trigger D365 Purchase Order Creation ───
+    // ส่งเบื้องหลังหลังตอบกลับแล้ว (after) — ไม่ให้ D365 ที่ช้า/ล่ม บล็อกการกดอนุมัติ
+    // ผลลัพธ์ (เลข PO / สถานะ) ถูกบันทึกลง Job โดย sendJobToD365PurchaseOrder เอง
     if (status === 'APPROVED') {
-      try {
-        const poResult = await sendJobToD365PurchaseOrder(id);
-        if (poResult.success && poResult.purchId) {
-          (updatedJob as any).d365PoNumber = poResult.purchId;
-          (updatedJob as any).d365PoStatus = 'SUCCESS';
-          (updatedJob as any).d365PoMessage = poResult.message;
+      after(async () => {
+        try {
+          const poResult = await sendJobToD365PurchaseOrder(id);
+          console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, poResult);
+        } catch (poErr) {
+          console.error('Trigger D365 PO creation error:', poErr);
         }
-      } catch (poErr) {
-        console.error('Trigger D365 PO creation error:', poErr);
-      }
+      });
     }
 
     return NextResponse.json({ success: true, job: updatedJob });

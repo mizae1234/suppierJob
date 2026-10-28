@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import TagSearch from '@/components/ui/TagSearch';
 import { Vehicle, Job, VehicleSlideLog } from '@/types';
 import { formatThaiDateTime } from '@/lib/date-utils';
@@ -28,7 +29,7 @@ import {
 import VehicleImportModal from '@/components/vehicles/VehicleImportModal';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
-export const BRANCH_SHORT_NAMES: Record<string, string> = {
+const BRANCH_SHORT_NAMES: Record<string, string> = {
   GI: 'สำนักงานใหญ่',
   GI01: 'บางแค',
   GI02: 'มีนบุรี',
@@ -44,7 +45,7 @@ export const BRANCH_SHORT_NAMES: Record<string, string> = {
   GI12: 'เชียงใหม่',
 };
 
-export const getVehicleBranchBadge = (v: Vehicle) => {
+const getVehicleBranchBadge = (v: Vehicle) => {
   if (v.companyCode === 'EV7') {
     return {
       text: 'EV7',
@@ -233,30 +234,40 @@ export default function VehicleStockPage() {
     });
   }, [selectedVehicle, jobs]);
 
-  // Fetch slide movement logs
-  const fetchSlideLogs = useCallback(async () => {
+  // Fetch slide movement logs (search is debounced; stale requests are aborted)
+  const debouncedSlideSearchQuery = useDebouncedValue(slideSearchQuery, 300);
+  const slideLogsAbortRef = useRef<AbortController | null>(null);
+
+  const fetchSlideLogs = useCallback(async (query: string = debouncedSlideSearchQuery) => {
+    slideLogsAbortRef.current?.abort();
+    const controller = new AbortController();
+    slideLogsAbortRef.current = controller;
     setLoadingSlideLogs(true);
     try {
       const params = new URLSearchParams();
       if (selectedCompanyFilter !== 'ALL') params.set('companyId', selectedCompanyFilter);
-      if (slideSearchQuery.trim()) params.set('q', slideSearchQuery.trim());
-      const res = await fetch(`/api/vehicles/slide-logs?${params.toString()}`);
+      if (query.trim()) params.set('q', query.trim());
+      const res = await fetch(`/api/vehicles/slide-logs?${params.toString()}`, { signal: controller.signal });
       const data = await res.json();
+      if (controller.signal.aborted) return;
       if (data.success && Array.isArray(data.logs)) {
         setSlideLogs(data.logs);
       }
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error('Error fetching slide logs:', err);
     } finally {
-      setLoadingSlideLogs(false);
+      if (slideLogsAbortRef.current === controller) setLoadingSlideLogs(false);
     }
-  }, [selectedCompanyFilter, slideSearchQuery]);
+  }, [selectedCompanyFilter, debouncedSlideSearchQuery]);
 
   useEffect(() => {
     if (activeTab === 'SLIDE_LOGS') {
       fetchSlideLogs();
     }
   }, [activeTab, fetchSlideLogs]);
+
+  useEffect(() => () => slideLogsAbortRef.current?.abort(), []);
 
   // Load slide logs for selected vehicle modal
   useEffect(() => {
@@ -725,7 +736,7 @@ export default function VehicleStockPage() {
                 type="text"
                 value={slideSearchQuery}
                 onChange={(e) => setSlideSearchQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') fetchSlideLogs(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') fetchSlideLogs(slideSearchQuery); }}
                 placeholder="ค้นหาตามเลข VIN, เลขใบงาน, ต้นทาง, ปลายทาง, ผู้รับจ้าง... (กด Enter)"
                 className="w-full h-10 pl-9 pr-4 rounded-xl bg-[#f4f9f5] border border-gray-200 text-xs font-semibold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0f5238]"
               />
@@ -745,7 +756,7 @@ export default function VehicleStockPage() {
 
               <button
                 type="button"
-                onClick={() => fetchSlideLogs()}
+                onClick={() => fetchSlideLogs(slideSearchQuery)}
                 disabled={loadingSlideLogs}
                 className="h-10 px-3.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs shrink-0"
                 title="รีเฟรชข้อมูล"

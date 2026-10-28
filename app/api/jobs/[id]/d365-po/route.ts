@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { prisma } from '@/lib/prisma';
+import { canViewJob } from '@/lib/job-access';
 
 // POST: ส่งเปิด Purchase Order (PO) ใน D365 ซ้ำ (Manual Trigger / Retry)
 export async function POST(
@@ -21,10 +22,20 @@ export async function POST(
     const { id } = await params;
     const job = await prisma.job.findUnique({
       where: { id },
-      select: { id: true, status: true, d365PoNumber: true },
+      select: {
+        id: true,
+        status: true,
+        d365PoNumber: true,
+        companyId: true,
+        branchId: true,
+        originBranchId: true,
+        destBranchId: true,
+        supplierId: true,
+      },
     });
 
-    if (!job) {
+    // ADMIN ต้องอยู่ในขอบเขตบริษัทของงาน (ตอบ 404 เหมือนไม่พบ เพื่อไม่เปิดเผยว่ามีงานนี้อยู่)
+    if (!job || !canViewJob(user, job)) {
       return NextResponse.json({ error: 'ไม่พบข้อมูลใบสั่งงาน' }, { status: 404 });
     }
 
@@ -52,10 +63,10 @@ export async function POST(
         { status: 400 }
       );
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('POST /api/jobs/[id]/d365-po error:', error);
     return NextResponse.json(
-      { error: 'เกิดข้อผิดพลาดในการส่งข้อมูลไป D365', details: error?.message || String(error) },
+      { error: 'เกิดข้อผิดพลาดในการส่งข้อมูลไป D365' },
       { status: 500 }
     );
   }

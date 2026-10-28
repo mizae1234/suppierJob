@@ -40,16 +40,13 @@ export async function GET(request: NextRequest) {
 
   // 1. Try free OSRM Driving Route API
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000); // 4s timeout
-
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=full&geometries=geojson`;
     const res = await fetch(osrmUrl, {
-      signal: controller.signal,
+      // 4s timeout (ครอบทั้งการรอ header และการอ่าน body)
+      signal: AbortSignal.timeout(4000),
       headers: { 'User-Agent': 'SupplierJobApp/1.0' },
       cache: 'no-store',
     });
-    clearTimeout(timeout);
 
     if (res.ok) {
       const data = await res.json();

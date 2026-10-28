@@ -255,7 +255,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                           {hero && (
                             <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shrink-0 relative">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={hero.photoUrl} alt="evidence" className="w-full h-full object-cover" />
+                              <img src={hero.photoUrl} alt="evidence" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                               {card.photos.length > 1 && (
                                 <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/60 text-white text-[9px] font-bold">
                                   {card.photos.length}

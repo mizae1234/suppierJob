@@ -41,10 +41,10 @@ export async function PATCH(
         taxId: updated.taxId,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(`PATCH /api/suppliers/${id} error:`, error);
     return NextResponse.json(
-      { error: 'ไม่สามารถอัปเดตข้อมูล Supplier ได้', details: error?.message || String(error) },
+      { error: 'ไม่สามารถอัปเดตข้อมูล Supplier ได้' },
       { status: 500 }
     );
   }

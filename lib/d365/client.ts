@@ -12,7 +12,7 @@ const MAX_RETRIES = 2;
 const MAX_PAGES = 500; // กัน loop ไม่รู้จบหาก nextLink ผิดปกติ
 
 export class D365Error extends Error {
-  constructor(message: string, public status?: number) {
+  constructor(message: string, public status?: number, public timedOut = false) {
     super(message);
     this.name = 'D365Error';
   }
@@ -92,14 +92,18 @@ export async function getD365Token(): Promise<string> {
 }
 
 // ── HTTP helpers ───────────────────────────────────────
-async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS
+): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err: unknown) {
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new D365Error(`D365 ไม่ตอบกลับภายใน ${REQUEST_TIMEOUT_MS / 1000} วินาที`);
+      throw new D365Error(`D365 ไม่ตอบกลับภายใน ${timeoutMs / 1000} วินาที`, undefined, true);
     }
     throw new D365Error(`เชื่อมต่อ D365 ไม่ได้: ${err instanceof Error ? err.message : String(err)}`);
   } finally {

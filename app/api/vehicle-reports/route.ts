@@ -44,44 +44,6 @@ export async function GET(request: NextRequest) {
 
     itemWhere.job = jobWhere;
 
-    const carWashItems = await prisma.carWashItem.findMany({
-      where: itemWhere,
-      include: {
-        job: {
-          select: {
-            id: true,
-            jobNumber: true,
-            jobType: true,
-            status: true,
-            companyId: true,
-            branchId: true,
-            supplierId: true,
-            invoiceId: true,
-            estimatedCost: true,
-            actualCost: true,
-            createdAt: true,
-            completedAt: true,
-            approvedAt: true,
-            company: { select: { code: true, name: true } },
-            branch: { select: { code: true, name: true } },
-            supplier: { select: { code: true, name: true } },
-            invoice: { select: { invoiceNumber: true, status: true } },
-          },
-        },
-        vehicle: {
-          select: {
-            vin: true,
-            model: true,
-            color: true,
-            licensePlate: true,
-            vehicleType: true,
-          },
-        },
-      },
-      orderBy: { actualWashDate: 'desc' },
-      take: 500,
-    });
-
     // ─── 2. Query single-vehicle VEHICLE_SLIDE jobs (those without carWashItems) ───
     const slideJobWhere: Prisma.JobWhereInput = {
       ...jobWhere,
@@ -91,26 +53,66 @@ export async function GET(request: NextRequest) {
     };
     if (vin) slideJobWhere.vin = vin;
 
-    const slideJobs = await prisma.job.findMany({
-      where: slideJobWhere,
-      include: {
-        company: { select: { code: true, name: true } },
-        branch: { select: { code: true, name: true } },
-        supplier: { select: { code: true, name: true } },
-        invoice: { select: { invoiceNumber: true, status: true } },
-        vehicle: {
-          select: {
-            vin: true,
-            model: true,
-            color: true,
-            licensePlate: true,
-            vehicleType: true,
+    // 2 query ไม่ขึ้นต่อกัน → รันพร้อมกัน
+    const [carWashItems, slideJobs] = await Promise.all([
+      prisma.carWashItem.findMany({
+        where: itemWhere,
+        include: {
+          job: {
+            select: {
+              id: true,
+              jobNumber: true,
+              jobType: true,
+              status: true,
+              companyId: true,
+              branchId: true,
+              supplierId: true,
+              invoiceId: true,
+              estimatedCost: true,
+              actualCost: true,
+              createdAt: true,
+              completedAt: true,
+              approvedAt: true,
+              company: { select: { code: true, name: true } },
+              branch: { select: { code: true, name: true } },
+              supplier: { select: { code: true, name: true } },
+              invoice: { select: { invoiceNumber: true, status: true } },
+            },
+          },
+          vehicle: {
+            select: {
+              vin: true,
+              model: true,
+              color: true,
+              licensePlate: true,
+              vehicleType: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
+        orderBy: { actualWashDate: 'desc' },
+        take: 500,
+      }),
+      prisma.job.findMany({
+        where: slideJobWhere,
+        include: {
+          company: { select: { code: true, name: true } },
+          branch: { select: { code: true, name: true } },
+          supplier: { select: { code: true, name: true } },
+          invoice: { select: { invoiceNumber: true, status: true } },
+          vehicle: {
+            select: {
+              vin: true,
+              model: true,
+              color: true,
+              licensePlate: true,
+              vehicleType: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }),
+    ]);
 
     // ─── 3. Normalize all records into a flat per-vehicle list ───
     interface VehicleReportItem {

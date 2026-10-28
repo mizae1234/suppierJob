@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { findVendorInCompany, normalizeVendorCode } from '@/lib/d365/vendors';
+import type { SessionUser } from '@/lib/session';
 
 /**
  * รหัส Vendor D365 ของ Supplier แยกตามสาขา (ADMIN/MASTER)
@@ -9,6 +10,12 @@ import { findVendorInCompany, normalizeVendorCode } from '@/lib/d365/vendors';
  * PUT    → { branchId, vendorCode } ตรวจกับ D365 ก่อนบันทึก
  * DELETE → ?branchId=
  */
+
+/** MASTER แก้ได้ทุกสาขา; ADMIN ที่ผูกกับบริษัทแก้ได้เฉพาะสาขาในบริษัทของตน */
+function canManageBranch(user: SessionUser, branchCompanyId: string | null): boolean {
+  if (user.role === 'MASTER') return true;
+  return !user.companyId || branchCompanyId === user.companyId;
+}
 
 async function listVendorCodes(supplierId: string) {
   const [branches, codes] = await Promise.all([
@@ -56,10 +63,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const [supplier, branch] = await Promise.all([
       prisma.supplier.findUnique({ where: { id }, select: { id: true, d365PartyNumber: true } }),
-      prisma.branch.findUnique({ where: { id: branchId }, select: { id: true, code: true } }),
+      prisma.branch.findUnique({ where: { id: branchId }, select: { id: true, code: true, companyId: true } }),
     ]);
     if (!supplier) return NextResponse.json({ error: 'ไม่พบ Supplier' }, { status: 404 });
     if (!branch) return NextResponse.json({ error: 'ไม่พบสาขา' }, { status: 404 });
+    if (!canManageBranch(auth.user, branch.companyId)) {
+      return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขรหัส Vendor ของสาขานอกบริษัทของคุณ' }, { status: 403 });
+    }
 
     // ตรวจกับ D365 ว่ารหัสนี้มีอยู่จริงในบริษัทของสาขานี้
     const vendor = await findVendorInCompany(branch.code, vendorCode);
@@ -96,10 +106,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       vendor,
       vendorCodes: await listVendorCodes(id),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error(`PUT /api/suppliers/${id}/vendor-codes error:`, error);
     return NextResponse.json(
-      { error: 'บันทึกรหัส Vendor ไม่สำเร็จ', details: error?.message || String(error) },
+      { error: 'บันทึกรหัส Vendor ไม่สำเร็จ' },
       { status: 500 },
     );
   }
@@ -112,6 +122,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   const branchId = request.nextUrl.searchParams.get('branchId');
   if (!branchId) return NextResponse.json({ error: 'กรุณาระบุสาขา' }, { status: 400 });
+
+  if (auth.user.role !== 'MASTER') {
+    const branch = await prisma.branch.findUnique({ where: { id: branchId }, select: { companyId: true } });
+    if (!branch) return NextResponse.json({ error: 'ไม่พบสาขา' }, { status: 404 });
+    if (!canManageBranch(auth.user, branch.companyId)) {
+      return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขรหัส Vendor ของสาขานอกบริษัทของคุณ' }, { status: 403 });
+    }
+  }
 
   await prisma.supplierVendorCode.deleteMany({ where: { supplierId: id, branchId } });
   return NextResponse.json({ success: true, vendorCodes: await listVendorCodes(id) });

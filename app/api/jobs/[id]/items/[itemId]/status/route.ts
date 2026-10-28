@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
@@ -387,25 +387,23 @@ export async function PATCH(
 
     // ─── Trigger D365 Purchase Order Integration ──────────────
     // เมื่อทุกรายการผ่านการ Approve (หรือปฏิเสธครบ) และปิดใบงานเป็น APPROVED
-    let d365PoNumber: string | undefined;
+    // ส่งเบื้องหลังหลังตอบกลับแล้ว (after) — ผลลัพธ์ถูกบันทึกลง Job (d365PoNumber/d365PoStatus) โดย po.ts
     if (result.progress.allApproved) {
-      try {
-        console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
-        const poResult = await sendJobToD365PurchaseOrder(jobId);
-        console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, poResult);
-        if (poResult.success && poResult.purchId) {
-          d365PoNumber = poResult.purchId;
+      after(async () => {
+        try {
+          console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
+          const poResult = await sendJobToD365PurchaseOrder(jobId);
+          console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, poResult);
+        } catch (poError) {
+          console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);
         }
-      } catch (poError) {
-        console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);
-      }
+      });
     }
 
     return NextResponse.json({
       success: true,
       item: result.item,
       progress: result.progress,
-      d365PoNumber,
     });
   } catch (error) {
     console.error('PATCH /api/jobs/[id]/items/[itemId]/status error:', error);

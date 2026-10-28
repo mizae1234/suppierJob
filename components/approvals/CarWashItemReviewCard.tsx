@@ -62,6 +62,8 @@ export function CarWashItemReviewCard({
             <img
               src={hero.photoUrl}
               alt={hero.caption}
+              loading="lazy"
+              decoding="async"
               className={`w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-300 ${isItemCancelled ? 'grayscale' : ''}`}
             />
           </button>
@@ -109,7 +111,7 @@ export function CarWashItemReviewCard({
               className={`w-5 h-5 rounded overflow-hidden border shrink-0 cursor-zoom-in transition-all ${idx === 0 ? 'border-emerald-600 ring-1 ring-emerald-400' : 'border-gray-200 hover:opacity-80'}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={evi.photoUrl} alt={evi.caption} className="w-full h-full object-cover" />
+              <img src={evi.photoUrl} alt={evi.caption} loading="lazy" decoding="async" className="w-full h-full object-cover" />
             </button>
           ))}
         </div>

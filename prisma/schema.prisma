@@ -26,6 +26,7 @@ model User {
   supplier    Supplier? @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   isActive    Boolean   @default(true)
   mustChangePassword Boolean @default(false) // บังคับเปลี่ยนรหัสผ่านตอน login ครั้งถัดไป
+  sessionVersion     Int     @default(0)     // เพิ่มค่าเมื่อเปลี่ยน/รีเซ็ตรหัสผ่าน → session เก่าทุกเครื่องใช้ไม่ได้ทันที
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -241,6 +242,8 @@ model Job {
 
   @@index([companyId, status])
   @@index([supplierId, status])
+  @@index([companyId, createdAt])
+  @@index([supplierId, createdAt])
   @@index([branchId])
   @@index([originBranchId])
   @@index([destBranchId])
@@ -271,6 +274,8 @@ model CarWashItem {
 
   @@index([jobId])
   @@index([vin])
+  @@index([vin, status])
+  @@index([actualWashDate])
 }
 
 // รูปภาพหลักฐานงาน
@@ -285,6 +290,7 @@ model JobEvidence {
   uploadedAt   DateTime @default(now())
 
   @@index([jobId])
+  @@index([photoUrl]) // /api/files ค้นหาหลักฐานจาก URL ทุกครั้งที่โหลดรูป
 }
 
 // บันทึกกิจกรรม / Timeline ของงาน
@@ -392,6 +398,9 @@ model VehicleSlideLog {
   @@index([jobNumber])
   @@index([action])
   @@index([createdAt])
+  @@index([supplierId])
+  @@index([originBranchId])
+  @@index([destBranchId])
 }
 
 // ประวัติการ Sync รถจาก D365 (ใช้เป็น lock กันรันซ้อนด้วย)

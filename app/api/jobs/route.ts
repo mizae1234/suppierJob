@@ -3,10 +3,89 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { logAuditFromUser } from '@/lib/audit-log';
-import { getActiveJobsByVin } from '@/lib/active-jobs';
+import { getActiveJobsByVin, type ActiveJobRef } from '@/lib/active-jobs';
 import { getVehicleLabel } from '@/lib/job-utils';
 import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-wash-rates';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
+import { buildJobInclude, serializeJob } from '@/lib/job-serializer';
+
+/** เพดานจำนวนงานเมื่อไม่ส่ง page (กันหน่วยความจำ/response ใหญ่เกิน) */
+const MAX_UNPAGED_JOBS = 5000;
+const CREATE_JOB_TX_TIMEOUT_MS = 20_000;
+
+/** ข้อผิดพลาดที่ตอบกลับ client ได้ตรง ๆ (เช่น รถถูกจองไปแล้ว) — throw ใน transaction เพื่อ rollback */
+class JobCreateConflict extends Error {
+  constructor(public body: Record<string, unknown>, public status = 409) {
+    super(String(body.error));
+    this.name = 'JobCreateConflict';
+  }
+}
+
+async function buildBusyConflictBody(
+  busy: Map<string, ActiveJobRef>,
+  client: Pick<Prisma.TransactionClient, 'vehicle'>
+) {
+  const plates = await client.vehicle.findMany({
+    where: { vin: { in: [...busy.keys()] } },
+    select: { vin: true, licensePlate: true },
+  });
+  const plateOf = new Map(plates.map(p => [p.vin, p.licensePlate]));
+  const lines = [...busy.entries()].map(([v, j]) =>
+    `${getVehicleLabel(v, plateOf.get(v))} (ใบงาน ${j.jobNumber})`
+  );
+  return {
+    error: `รถต่อไปนี้มีงานที่ยังไม่เสร็จสิ้น สั่งงานซ้ำไม่ได้: ${lines.join(', ')}`,
+    busyVins: [...busy.keys()],
+  };
+}
+
+function buildOutOfStockBody(outOfStock: { vin: string; licensePlate: string | null }[]) {
+  return {
+    error: `รถต่อไปนี้ไม่อยู่ในสต็อกแล้ว (ตามข้อมูล D365) สั่งงานไม่ได้: ${outOfStock.map(v => getVehicleLabel(v.vin, v.licensePlate)).join(', ')}`,
+    outOfStockVins: outOfStock.map(v => v.vin),
+  };
+}
+
+/**
+ * จองรถภายใน transaction (กัน race เมื่อสั่งงานรถคันเดียวกันพร้อมกัน):
+ * 1) เปลี่ยนสถานะรถแบบมีเงื่อนไข (ไม่ใช่ OUT_OF_STOCK เว้นแต่อนุญาต) → แถว Vehicle ถูกล็อกจน commit
+ * 2) ตรวจงานค้างซ้ำหลังได้ล็อก — คำขอที่มาทีหลังจะรอจนคำขอแรก commit แล้วเห็นใบงานใหม่ → 409
+ */
+async function reserveVehiclesInTx(
+  tx: Prisma.TransactionClient,
+  vins: string[],
+  newStatus: 'IN_WASH' | 'IN_TRANSIT',
+  allowsOutOfStock: boolean
+) {
+  const uniqueVins = [...new Set(vins.filter(Boolean))];
+  if (uniqueVins.length === 0) return;
+
+  const res = await tx.vehicle.updateMany({
+    where: {
+      vin: { in: uniqueVins },
+      ...(allowsOutOfStock ? {} : { status: { not: 'OUT_OF_STOCK' } }),
+    },
+    data: { status: newStatus },
+  });
+
+  if (res.count !== uniqueVins.length) {
+    const rows = await tx.vehicle.findMany({
+      where: { vin: { in: uniqueVins } },
+      select: { vin: true, licensePlate: true, status: true },
+    });
+    const outOfStock = allowsOutOfStock ? [] : rows.filter(r => r.status === 'OUT_OF_STOCK');
+    if (outOfStock.length > 0) throw new JobCreateConflict(buildOutOfStockBody(outOfStock));
+    const found = new Set(rows.map(r => r.vin.toUpperCase()));
+    const missing = uniqueVins.filter(v => !found.has(v.toUpperCase()));
+    throw new JobCreateConflict(
+      { error: `ไม่พบข้อมูลรถในระบบ: ${missing.join(', ') || uniqueVins.join(', ')}` },
+      400
+    );
+  }
+
+  const busy = await getActiveJobsByVin(uniqueVins, tx);
+  if (busy.size > 0) throw new JobCreateConflict(await buildBusyConflictBody(busy, tx));
+}
 
 // GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
@@ -80,153 +159,42 @@ export async function GET(request: NextRequest) {
     }
 
     // Pagination
-    const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
-    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10))) : (page ? 20 : 150);
+    // ไม่ส่ง page → คืนงานทั้งหมดในขอบเขตสิทธิ์ (Dashboard/รายงานคำนวณฝั่ง client ต้องได้ครบ) โดยมีเพดานกันพัง
+    const parsedPage = pageParam ? parseInt(pageParam, 10) : NaN;
+    const page = pageParam ? Math.max(1, Number.isFinite(parsedPage) ? parsedPage : 1) : null;
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(100, Math.max(1, parsedLimit))
+      : (page ? 20 : MAX_UNPAGED_JOBS);
     const skip = page ? (page - 1) * limit : undefined;
+
+    // activities (timeline) หนักและใช้แค่ในหน้ารายละเอียด → โหลดเมื่อขอ ?include=activities เท่านั้น
+    const includeActivities = (searchParams.get('include') || '')
+      .split(',')
+      .map(s => s.trim())
+      .includes('activities');
 
     const [total, jobs] = await Promise.all([
       prisma.job.count({ where }),
       prisma.job.findMany({
         where,
-        include: {
-          company: { select: { code: true, name: true } },
-          branch: { select: { code: true, name: true } },
-          supplier: { select: { code: true, name: true } },
-          vehicle: true,
-          originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-          destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-          carWashItems: {
-            include: {
-              vehicle: { select: { model: true, color: true, licensePlate: true } },
-            },
-          },
-          evidences: true,
-          activities: { orderBy: { createdAt: 'asc' as const } },
-          invoice: { select: { invoiceNumber: true } },
-        } as any,
+        include: buildJobInclude(includeActivities),
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
-      }) as unknown as any[],
+      }),
     ]);
 
     // Format for frontend compatibility
-    const formatted = jobs.map((job: any) => ({
-      id: job.id,
-      jobNumber: job.jobNumber,
-      jobType: job.jobType,
-      status: job.status,
-      companyId: job.companyId,
-      companyCode: job.company.code,
-      branchId: job.branchId,
-      branchName: job.branch.name,
-      supplierId: job.supplierId,
-      supplierName: job.supplier.name,
-      // Vehicle Slide
-      vin: job.vin,
-      vehicle: job.vehicle,
-      originBranchId: job.originBranchId,
-      originBranchName: job.originBranch?.name,
-      originBranchAddress: job.originBranch?.address || undefined,
-      originBranchLat: job.originBranch?.latitude ?? undefined,
-      originBranchLng: job.originBranch?.longitude ?? undefined,
-      destBranchId: job.destBranchId,
-      destBranchName: job.destBranch?.name,
-      destBranchAddress: job.destBranch?.address || undefined,
-      destBranchLat: job.destBranch?.latitude ?? undefined,
-      destBranchLng: job.destBranch?.longitude ?? undefined,
-      customDestAddress: job.customDestAddress || undefined,
-      customDestLat: job.customDestLat ?? undefined,
-      customDestLng: job.customDestLng ?? undefined,
-      customOriginAddress: job.customOriginAddress || undefined,
-      customOriginLat: job.customOriginLat ?? undefined,
-      customOriginLng: job.customOriginLng ?? undefined,
-      pickupDateTime: job.pickupDateTime?.toISOString(),
-      deliveryDateTime: job.deliveryDateTime?.toISOString(),
-      contactPerson: job.contactPerson,
-      contactPhone: job.contactPhone,
-      transferReason: job.transferReason,
-      // Car Wash
-      carWashItems: job.carWashItems.map((item: any) => ({
-        id: item.id,
-        jobId: item.jobId,
-        vin: item.vin,
-        vehicleModel: item.vehicle.model,
-        vehicleColor: item.vehicle.color,
-        licensePlate: item.vehicle.licensePlate,
-        actualWashDate: item.actualWashDate.toISOString().slice(0, 10),
-        washType: item.washType,
-        unitPrice: item.unitPrice,
-        status: item.status,
-        remarks: item.remarks,
-        verifiedAt: item.verifiedAt?.toISOString(),
-        verifiedBy: item.verifiedBy || undefined,
-        verifyMethod: item.verifyMethod || undefined,
-      })),
-      // Approval — Requester Snapshot
-      requestedById: job.requestedById || '',
-      requestedBy: job.requestedBy || '',
-      requesterPosition: job.requesterPosition || '',
-      requesterPhone: job.requesterPhone || '',
-      completedAt: job.completedAt?.toISOString(),
-      approvedAt: job.approvedAt?.toISOString(),
-      approvedBy: job.approvedBy,
-      rejectReason: job.rejectReason,
-      verifiedAt: job.verifiedAt?.toISOString(),
-      verifiedBy: job.verifiedBy || undefined,
-      // Evidence
-      evidences: job.evidences.map((e: any) => ({
-        id: e.id,
-        jobId: e.jobId,
-        vin: e.vin,
-        photoUrl: e.photoUrl,
-        caption: e.caption || '',
-        evidenceType: e.evidenceType,
-        uploadedAt: e.uploadedAt.toISOString(),
-      })),
-      // Cost
-      estimatedCost: job.estimatedCost || 0,
-      actualCost: (() => {
-        if (job.status === 'CANCELLED') return 0;
-        if (job.carWashItems && job.carWashItems.length > 0) {
-          const hasCancelled = job.carWashItems.some((i: any) => i.status === 'CANCELLED');
-          if (hasCancelled) {
-            const validItems = job.carWashItems.filter((i: any) => i.status !== 'CANCELLED');
-            return validItems.reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
-          }
-        }
-        return job.actualCost;
-      })(),
-      invoiceId: job.invoiceId,
-      invoiceNumber: job.invoice?.invoiceNumber,
-      // D365 PO Integration
-      d365PoNumber: job.d365PoNumber,
-      d365PoStatus: job.d365PoStatus,
-      d365PoMessage: job.d365PoMessage,
-      d365PoSentAt: job.d365PoSentAt?.toISOString(),
-      // Activities / Timeline
-      activities: (job.activities || []).map((a: any) => ({
-        id: a.id,
-        jobId: a.jobId,
-        action: a.action,
-        actor: a.actor,
-        actorRole: a.actorRole,
-        itemId: a.itemId,
-        vin: a.vin,
-        description: a.description,
-        metadata: a.metadata,
-        createdAt: a.createdAt.toISOString(),
-      })),
-      // Timestamps
-      createdAt: job.createdAt.toISOString(),
-      updatedAt: job.updatedAt.toISOString(),
-    }));
+    const formatted = jobs.map(serializeJob);
 
     return NextResponse.json({
       jobs: formatted,
       total,
       page: page || 1,
       totalPages: Math.ceil(total / limit),
+      // true = มีงานมากกว่าที่ส่งกลับ (ชนเพดาน หรือมีหน้าถัดไป)
+      truncated: (skip ?? 0) + formatted.length < total,
     });
   } catch (error) {
     console.error('GET /api/jobs error:', error);
@@ -334,21 +302,7 @@ export async function POST(request: NextRequest) {
 
     const busy = await getActiveJobsByVin(requestedVins);
     if (busy.size > 0) {
-      const plates = await prisma.vehicle.findMany({
-        where: { vin: { in: [...busy.keys()] } },
-        select: { vin: true, licensePlate: true },
-      });
-      const plateOf = new Map(plates.map(p => [p.vin, p.licensePlate]));
-      const lines = [...busy.entries()].map(([v, j]) =>
-        `${getVehicleLabel(v, plateOf.get(v))} (ใบงาน ${j.jobNumber})`
-      );
-      return NextResponse.json(
-        {
-          error: `รถต่อไปนี้มีงานที่ยังไม่เสร็จสิ้น สั่งงานซ้ำไม่ได้: ${lines.join(', ')}`,
-          busyVins: [...busy.keys()],
-        },
-        { status: 409 }
-      );
+      return NextResponse.json(await buildBusyConflictBody(busy, prisma), { status: 409 });
     }
 
     // ─── Guard: รถที่ไม่อยู่ในสต็อก D365 แล้ว สั่งสไลด์ / ล้างรถใหม่ไม่ได้ (ล้างรถ Service ยังได้) ───
@@ -359,13 +313,7 @@ export async function POST(request: NextRequest) {
         select: { vin: true, licensePlate: true },
       });
       if (outOfStock.length > 0) {
-        return NextResponse.json(
-          {
-            error: `รถต่อไปนี้ไม่อยู่ในสต็อกแล้ว (ตามข้อมูล D365) สั่งงานไม่ได้: ${outOfStock.map(v => getVehicleLabel(v.vin, v.licensePlate)).join(', ')}`,
-            outOfStockVins: outOfStock.map(v => v.vin),
-          },
-          { status: 409 }
-        );
+        return NextResponse.json(buildOutOfStockBody(outOfStock), { status: 409 });
       }
     }
 
@@ -393,13 +341,29 @@ export async function POST(request: NextRequest) {
       const financials = calculateWashOrderFinancials(items, washConfig.vatType);
       const totalCost = typeof estimatedCost === 'number' && estimatedCost > 0 ? estimatedCost : financials.grandTotal;
 
-      // Ensure all vehicles exist in Vehicle table (e.g. customer service vehicles not previously in branch stock)
-      for (const it of items) {
-        if (it.vin) {
-          const existing = await prisma.vehicle.findUnique({ where: { vin: it.vin } });
-          if (!existing) {
-            await prisma.vehicle.create({
-              data: {
+      const vins: string[] = items.map((it: { vin: string }) => it.vin);
+
+      // ทุกขั้นตอนที่เขียน DB อยู่ใน transaction เดียว — ถ้าล้มกลางทาง รถจะไม่ค้างสถานะ IN_WASH
+      const job = await prisma.$transaction(async (tx) => {
+        // Ensure all vehicles exist in Vehicle table (e.g. customer service vehicles not previously in branch stock)
+        const itemsWithVin = items.filter((it: { vin?: string }) => it.vin);
+        if (itemsWithVin.length > 0) {
+          const existingRows = await tx.vehicle.findMany({
+            where: { vin: { in: itemsWithVin.map((it: { vin: string }) => it.vin) } },
+            select: { vin: true },
+          });
+          // SQL Server เทียบ VIN แบบไม่สนตัวพิมพ์ → เทียบแบบ upper-case ให้ตรงกับ DB
+          const known = new Set(existingRows.map(r => r.vin.toUpperCase()));
+          const toCreate: { vin: string; model?: string; color?: string; licensePlate?: string }[] = [];
+          for (const it of itemsWithVin) {
+            const key = String(it.vin).toUpperCase();
+            if (known.has(key)) continue;
+            known.add(key);
+            toCreate.push(it);
+          }
+          if (toCreate.length > 0) {
+            await tx.vehicle.createMany({
+              data: toCreate.map(it => ({
                 vin: it.vin,
                 model: it.model || 'รถลูกค้า Service',
                 color: it.color || '-',
@@ -408,45 +372,41 @@ export async function POST(request: NextRequest) {
                 currentBranchId: branchId,
                 vehicleType: 'CUSTOMER_SERVICE',
                 status: 'IN_WASH',
-              },
+              })),
             });
           }
         }
-      }
 
-      const job = await prisma.job.create({
-        data: {
-          jobNumber,
-          jobType: 'CAR_WASH',
-          status: 'IN_PROGRESS',
-          companyId,
-          branchId,
-          supplierId,
-          transferReason: transferReason || (carCategory === 'SERVICE' ? 'รถ Service (ศูนย์บริการ)' : 'รถใหม่ (Stock / PDI)'),
-          requestedById: user.id,
-          requestedBy: snapshotName,
-          requesterPosition: snapshotPosition,
-          requesterPhone: snapshotPhone,
-          estimatedCost: totalCost,
-          carWashItems: {
-            create: items.map((it: { vin: string; actualWashDate: string; washType?: string; unitPrice?: number; remarks?: string }) => ({
-              vin: it.vin,
-              actualWashDate: new Date(it.actualWashDate),
-              washType: it.washType || 'STANDARD',
-              unitPrice: it.unitPrice || 150,
-              remarks: it.remarks,
-            })),
+        // Update vehicle status to IN_WASH (จองรถ + ตรวจงานค้างซ้ำภายใต้ล็อก กันสั่งรถคันเดียวกันพร้อมกัน)
+        await reserveVehiclesInTx(tx, vins, 'IN_WASH', allowsOutOfStock);
+
+        return tx.job.create({
+          data: {
+            jobNumber,
+            jobType: 'CAR_WASH',
+            status: 'IN_PROGRESS',
+            companyId,
+            branchId,
+            supplierId,
+            transferReason: transferReason || (carCategory === 'SERVICE' ? 'รถ Service (ศูนย์บริการ)' : 'รถใหม่ (Stock / PDI)'),
+            requestedById: user.id,
+            requestedBy: snapshotName,
+            requesterPosition: snapshotPosition,
+            requesterPhone: snapshotPhone,
+            estimatedCost: totalCost,
+            carWashItems: {
+              create: items.map((it: { vin: string; actualWashDate: string; washType?: string; unitPrice?: number; remarks?: string }) => ({
+                vin: it.vin,
+                actualWashDate: new Date(it.actualWashDate),
+                washType: it.washType || 'STANDARD',
+                unitPrice: it.unitPrice || 150,
+                remarks: it.remarks,
+              })),
+            },
           },
-        },
-        include: { carWashItems: true },
-      });
-
-      // Update vehicle status to IN_WASH
-      const vins = items.map((it: { vin: string }) => it.vin);
-      await prisma.vehicle.updateMany({
-        where: { vin: { in: vins } },
-        data: { status: 'IN_WASH' },
-      });
+          include: { carWashItems: true },
+        });
+      }, { timeout: CREATE_JOB_TX_TIMEOUT_MS });
 
       // Audit Log: CREATE_JOB (Car Wash)
       logAuditFromUser(user, {
@@ -504,68 +464,82 @@ export async function POST(request: NextRequest) {
         customOriginLng: customOriginLng ? parseFloat(customOriginLng) : null,
       };
 
-      const job = await prisma.job.create({
-        data: {
-          jobNumber,
-          jobType: 'VEHICLE_SLIDE',
-          status: 'IN_PROGRESS',
-          companyId,
-          branchId: originBranchId,
-          supplierId,
-          vin: vinsList[0],
-          originBranchId,
-          destBranchId: destBranchId || null,
-          customDestAddress: customDestAddress || null,
-          customDestLat: customDestLat ? parseFloat(customDestLat) : null,
-          customDestLng: customDestLng ? parseFloat(customDestLng) : null,
-          ...customOriginPin,
-          pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
-          deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
-          contactPerson,
-          contactPhone,
-          transferReason: finalTransferReason,
-          requestedById: user.id,
-          requestedBy: snapshotName,
-          requesterPosition: snapshotPosition,
-          requesterPhone: snapshotPhone,
-          estimatedCost: totalEstimatedCost,
-          actualCost: totalEstimatedCost,
-          carWashItems: {
-            create: vinsList.map((v) => ({
-              vin: v,
-              actualWashDate: pickupDateTime ? new Date(pickupDateTime) : new Date(),
-              washType: 'VEHICLE_SLIDE',
-              unitPrice: costPerCar,
-              status: 'PENDING',
-            })),
-          },
-        },
-        include: {
-          originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-          destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-          supplier: { select: { name: true } },
-          carWashItems: {
-            include: {
-              vehicle: { select: { model: true, color: true, licensePlate: true } },
+      // ทุกขั้นตอนที่เขียน DB อยู่ใน transaction เดียว — ถ้าล้มกลางทาง รถจะไม่ค้างสถานะ IN_TRANSIT
+      const { job, originName, destName } = await prisma.$transaction(async (tx) => {
+        // Update vehicle status to IN_TRANSIT (จองรถ + ตรวจงานค้างซ้ำภายใต้ล็อก กันสั่งรถคันเดียวกันพร้อมกัน)
+        await reserveVehiclesInTx(tx, vinsList, 'IN_TRANSIT', allowsOutOfStock);
+
+        const createdJob = await tx.job.create({
+          data: {
+            jobNumber,
+            jobType: 'VEHICLE_SLIDE',
+            status: 'IN_PROGRESS',
+            companyId,
+            branchId: originBranchId,
+            supplierId,
+            vin: vinsList[0],
+            originBranchId,
+            destBranchId: destBranchId || null,
+            customDestAddress: customDestAddress || null,
+            customDestLat: customDestLat ? parseFloat(customDestLat) : null,
+            customDestLng: customDestLng ? parseFloat(customDestLng) : null,
+            ...customOriginPin,
+            pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
+            deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
+            contactPerson,
+            contactPhone,
+            transferReason: finalTransferReason,
+            requestedById: user.id,
+            requestedBy: snapshotName,
+            requesterPosition: snapshotPosition,
+            requesterPhone: snapshotPhone,
+            estimatedCost: totalEstimatedCost,
+            actualCost: totalEstimatedCost,
+            carWashItems: {
+              create: vinsList.map((v) => ({
+                vin: v,
+                actualWashDate: pickupDateTime ? new Date(pickupDateTime) : new Date(),
+                washType: 'VEHICLE_SLIDE',
+                unitPrice: costPerCar,
+                status: 'PENDING',
+              })),
             },
           },
-        },
-      });
+          include: {
+            originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+            destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+            supplier: { select: { name: true } },
+            carWashItems: {
+              include: {
+                vehicle: { select: { model: true, color: true, licensePlate: true } },
+              },
+            },
+          },
+        });
 
-      const { originName, destName } = getSlideRouteLabels({
-        originBranch: job.originBranch,
-        destBranch: job.destBranch,
-        customOriginAddress: job.customOriginAddress,
-        customDestAddress: job.customDestAddress,
-      });
+        const labels = getSlideRouteLabels({
+          originBranch: createdJob.originBranch,
+          destBranch: createdJob.destBranch,
+          customOriginAddress: createdJob.customOriginAddress,
+          customDestAddress: createdJob.customDestAddress,
+        });
 
-      // Update vehicle status to IN_TRANSIT
-      await prisma.vehicle.updateMany({
-        where: { vin: { in: vinsList } },
-        data: { status: 'IN_TRANSIT' },
-      });
+        // Timeline activity for job creation
+        await tx.jobActivity.create({
+          data: {
+            jobId: createdJob.id,
+            action: 'JOB_CREATED',
+            actor: snapshotName,
+            actorRole: user.role,
+            description: `สร้างคำสั่งรถสไลด์ ขนส่งจาก ${labels.originName} ➔ ไปยัง ${labels.destName} (${vinsList.length} คัน)`,
+            metadata: JSON.stringify({ originName: labels.originName, destName: labels.destName, distance, vins: vinsList }),
+          },
+        });
 
-      // Record Vehicle Slide Movement Log for all vehicles
+        return { job: createdJob, ...labels };
+      }, { timeout: CREATE_JOB_TX_TIMEOUT_MS });
+
+      // Record Vehicle Slide Movement Log for all vehicles (fire-and-forget หลัง commit)
       recordVehicleSlideLog({
         jobId: job.id,
         jobNumber,
@@ -588,18 +562,6 @@ export async function POST(request: NextRequest) {
         actorName: snapshotName,
         actorRole: user.role,
         remarks: finalTransferReason || undefined,
-      });
-
-      // Timeline activity for job creation
-      await prisma.jobActivity.create({
-        data: {
-          jobId: job.id,
-          action: 'JOB_CREATED',
-          actor: snapshotName,
-          actorRole: user.role,
-          description: `สร้างคำสั่งรถสไลด์ ขนส่งจาก ${originName} ➔ ไปยัง ${destName} (${vinsList.length} คัน)`,
-          metadata: JSON.stringify({ originName, destName, distance, vins: vinsList }),
-        },
       });
 
       // Audit Log: CREATE_JOB (Vehicle Slide)
@@ -629,6 +591,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'jobType ไม่ถูกต้อง' }, { status: 400 });
   } catch (error) {
+    if (error instanceof JobCreateConflict) {
+      return NextResponse.json(error.body, { status: error.status });
+    }
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === 'P2002' || error.code === 'P2034')
+    ) {
+      // ชน unique key / deadlock จากคำขอที่สร้างพร้อมกัน (เช่น รถคันเดียวกัน หรือ VIN รถลูกค้าใหม่คันเดียวกัน)
+      return NextResponse.json(
+        { error: 'มีการสั่งงานรถคันนี้พร้อมกันจากอีกคำขอหนึ่ง กรุณารีเฟรชแล้วลองใหม่' },
+        { status: 409 }
+      );
+    }
     console.error('POST /api/jobs error:', error);
     return NextResponse.json(
       { error: 'ไม่สามารถสร้างงานได้' },

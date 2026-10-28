@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   UserRole, 
   CompanyCode, 
@@ -141,23 +141,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
-  // ─── Fetch all data from API ─────────────────────
-  const fetchData = useCallback(async () => {
+  // ─── Fetch data from API (split so mutations refresh only what they affect) ───
+  // Master data: companies (+ flattened branches) and suppliers
+  const fetchMasterData = useCallback(async () => {
     try {
-      const [companiesRes, suppliersRes, vehiclesRes, jobsRes, invoicesRes] = await Promise.all([
+      const [companiesRes, suppliersRes] = await Promise.all([
         fetch('/api/companies'),
         fetch('/api/suppliers'),
-        fetch('/api/vehicles?scope=all'),
-        fetch('/api/jobs'),
-        fetch('/api/invoices'),
       ]);
-
-      const [companiesData, suppliersData, vehiclesData, jobsData, invoicesData] = await Promise.all([
+      const [companiesData, suppliersData] = await Promise.all([
         companiesRes.json(),
         suppliersRes.json(),
-        vehiclesRes.json(),
-        jobsRes.json(),
-        invoicesRes.json(),
       ]);
 
       if (companiesData.companies) {
@@ -169,15 +163,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setBranches(allBranches);
       }
       if (suppliersData.suppliers) setSuppliers(suppliersData.suppliers);
-      if (vehiclesData.vehicles) setVehicles(vehiclesData.vehicles);
-      if (jobsData.jobs) setJobs(jobsData.jobs);
-      if (invoicesData.invoices) setInvoices(invoicesData.invoices);
     } catch (e) {
-      console.error('Failed to fetch data:', e);
+      console.error('Failed to fetch master data:', e);
+    }
+  }, []);
+
+  const fetchVehicles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/vehicles?scope=all');
+      const data = await res.json();
+      if (data.vehicles) setVehicles(data.vehicles);
+    } catch (e) {
+      console.error('Failed to fetch vehicles:', e);
+    }
+  }, []);
+
+  const fetchJobs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/jobs');
+      const data = await res.json();
+      if (data.jobs) setJobs(data.jobs);
+    } catch (e) {
+      console.error('Failed to fetch jobs:', e);
+    }
+  }, []);
+
+  const fetchInvoices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/invoices');
+      const data = await res.json();
+      if (data.invoices) setInvoices(data.invoices);
+    } catch (e) {
+      console.error('Failed to fetch invoices:', e);
+    }
+  }, []);
+
+  // Full reload of everything (initial load + refreshData)
+  const fetchData = useCallback(async () => {
+    try {
+      await Promise.all([fetchMasterData(), fetchVehicles(), fetchJobs(), fetchInvoices()]);
     } finally {
       setIsLoaded(true);
     }
-  }, []);
+  }, [fetchMasterData, fetchVehicles, fetchJobs, fetchInvoices]);
+
+  // Job create / status changes can lock or release vehicles → refresh both
+  const fetchJobsAndVehicles = useCallback(async () => {
+    await Promise.all([fetchJobs(), fetchVehicles()]);
+  }, [fetchJobs, fetchVehicles]);
+
+  // ─── ติดตามสถานะ PO ที่กำลังส่งไป D365 เบื้องหลัง ─────
+  // หลังอนุมัติ ระบบส่ง PO แบบ background (after()) → งานจะอยู่สถานะ PENDING ชั่วครู่
+  // ดึงเฉพาะงานนั้นทุก 5 วินาที (สูงสุด ~1 นาที) จนได้ผลลัพธ์ แล้วอัปเดตเฉพาะงานนั้นใน state
+  const pendingPoJobIds = useMemo(
+    () => jobs.filter(j => j.d365PoStatus === 'PENDING').map(j => j.id).sort().join(','),
+    [jobs]
+  );
+
+  useEffect(() => {
+    if (!pendingPoJobIds) return;
+    const ids = pendingPoJobIds.split(',');
+    let attempts = 0;
+    let cancelled = false;
+
+    const timer = setInterval(async () => {
+      attempts++;
+      if (attempts >= 12) clearInterval(timer);
+      const results = await Promise.all(
+        ids.map(id =>
+          fetch(`/api/jobs/${id}`)
+            .then(res => (res.ok ? res.json() : null))
+            .catch(() => null)
+        )
+      );
+      if (cancelled) return;
+      const settled = new Map<string, Job>();
+      for (const r of results) {
+        if (r?.job && r.job.d365PoStatus !== 'PENDING') settled.set(r.job.id, r.job as Job);
+      }
+      if (settled.size > 0) {
+        setJobs(prev => prev.map(j => settled.get(j.id) ?? j));
+      }
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [pendingPoJobIds]);
 
   // ─── Sync user auth data to context ─────────────
   useEffect(() => {
@@ -211,12 +284,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchData();
   }, [isAuthenticated, user, selectedCompany, fetchData]);
 
-  const activeBranch = branches.find(b => b.id === currentBranchId);
+  const activeBranch = useMemo(
+    () => branches.find(b => b.id === currentBranchId),
+    [branches, currentBranchId]
+  );
   const effectiveSupplierId = user?.role === 'SUPPLIER' ? (user.supplierId || '') : currentSupplierId;
-  const activeSupplier = suppliers.find(s => s.id === effectiveSupplierId);
+  const activeSupplier = useMemo(
+    () => suppliers.find(s => s.id === effectiveSupplierId),
+    [suppliers, effectiveSupplierId]
+  );
+
+  const userRole = user?.role;
+  const userSupplierId = user?.supplierId;
 
   // ─── Filtered data ──────────────────────────────
-  const filteredJobs = jobs.filter(job => {
+  const filteredJobs = useMemo(() => jobs.filter(job => {
     if (currentRole === 'BRANCH') {
       // Branch user sees all jobs involving their branch (requester, origin, or destination)
       // regardless of company code (e.g. EV7 transfers car to GI-อยุธยา)
@@ -230,25 +312,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     }
-    if (currentRole === 'SUPPLIER' || user?.role === 'SUPPLIER') {
-      const sId = user?.supplierId || currentSupplierId;
+    if (currentRole === 'SUPPLIER' || userRole === 'SUPPLIER') {
+      const sId = userSupplierId || currentSupplierId;
       if (!sId) return false;
       return job.supplierId === sId;
     }
     return true;
-  });
+  }), [jobs, currentRole, currentBranchId, currentCompany, userRole, userSupplierId, currentSupplierId]);
 
-  const filteredVehicles = vehicles.filter(v => {
+  const filteredVehicles = useMemo(() => vehicles.filter(v => {
     if (currentCompany !== 'ALL' && v.companyCode !== currentCompany) return false;
     if (currentRole === 'MASTER' && currentBranchId) return v.currentBranchId === currentBranchId;
     if (currentRole === 'BRANCH') return v.currentBranchId === currentBranchId;
     return true;
-  });
+  }), [vehicles, currentCompany, currentRole, currentBranchId]);
 
-  const waitingApprovalCount = filteredJobs.filter(j => j.status === 'WAITING_APPROVAL').length;
+  const waitingApprovalCount = useMemo(
+    () => filteredJobs.filter(j => j.status === 'WAITING_APPROVAL').length,
+    [filteredJobs]
+  );
 
   // ─── Action: Create Car Wash Job (via API) ──────
-  const createCarWashJob = async (params: CreateCarWashParams): Promise<Job | null> => {
+  const createCarWashJob = useCallback(async (params: CreateCarWashParams): Promise<Job | null> => {
     const company = companies.find(c => c.code === params.companyCode);
     try {
       const res = await fetch('/api/jobs', {
@@ -270,20 +355,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (data.success) {
-        await fetchData(); // Refresh all data
+        await fetchJobsAndVehicles(); // New job + vehicles locked to it
         return data.job;
       }
       throw new Error(data.error || 'ไม่สามารถสร้างใบงานได้');
     } catch (e) {
       console.error('Create car wash job failed:', e);
       // Refresh so the form sees which cars just became busy
-      fetchData();
+      fetchJobsAndVehicles();
       throw e;
     }
-  };
+  }, [companies, fetchJobsAndVehicles]);
 
   // ─── Action: Create Vehicle Slide Job (via API) ─
-  const createVehicleSlideJob = async (params: CreateVehicleSlideParams): Promise<Job | null> => {
+  const createVehicleSlideJob = useCallback(async (params: CreateVehicleSlideParams): Promise<Job | null> => {
     const company = companies.find(c => c.code === params.companyCode);
     try {
       const res = await fetch('/api/jobs', {
@@ -318,19 +403,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (data.success) {
-        await fetchData();
+        await fetchJobsAndVehicles();
         return data.job;
       }
       throw new Error(data.error || 'ไม่สามารถสร้างใบงานได้');
     } catch (e) {
       console.error('Create vehicle slide job failed:', e);
-      fetchData();
+      fetchJobsAndVehicles();
       throw e;
     }
-  };
+  }, [companies, fetchJobsAndVehicles]);
 
   // ─── Action: Update Job Status (via API) ────────
-  const updateJobStatus = async (
+  const updateJobStatus = useCallback(async (
     jobId: string, 
     status: JobStatus, 
     options?: { rejectReason?: string; approvedBy?: string }
@@ -349,16 +434,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'ไม่สามารถอัปเดตสถานะงานได้' };
       }
-      await fetchData();
+      // Approve / cancel / reject can release or move vehicles → refresh jobs + vehicles
+      await fetchJobsAndVehicles();
       return { success: true };
     } catch (e: any) {
       console.error('Update job status failed:', e);
       return { success: false, error: e?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ' };
     }
-  };
+  }, [fetchJobsAndVehicles]);
 
   // ─── Action: Update CarWashItem Status (per-VIN) ─
-  const updateCarWashItemStatus = async (
+  const updateCarWashItemStatus = useCallback(async (
     jobId: string,
     itemId: string,
     status: CarWashItemStatus,
@@ -372,31 +458,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (data.success) {
-        await fetchData();
+        // Item cancel / approve releases the vehicle → refresh jobs + vehicles
+        await fetchJobsAndVehicles();
         return { ...data.progress, allCompleted: !!data.progress?.allResolved };
       }
     } catch (e) {
       console.error('Update car wash item status failed:', e);
     }
     return null;
-  };
+  }, [fetchJobsAndVehicles]);
 
   // ─── Action: Add Job Evidence (via API) ─────────
-  const addJobEvidence = async (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => {
+  const addJobEvidence = useCallback(async (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => {
     try {
       await fetch(`/api/jobs/${jobId}/evidence`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(evidence),
       });
-      await fetchData();
+      // Evidence only adds a photo to the job → jobs only
+      await fetchJobs();
     } catch (e) {
       console.error('Add evidence failed:', e);
     }
-  };
+  }, [fetchJobs]);
 
   // ─── Action: Create Invoice (via API) ───────────
-  const createInvoice = async (params: CreateInvoiceParams) => {
+  const createInvoice = useCallback(async (params: CreateInvoiceParams) => {
     const company = companies.find(c => c.code === params.companyCode);
     try {
       const res = await fetch('/api/invoices', {
@@ -412,7 +500,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        await fetchData();
+        // Jobs become INVOICED + new invoice → refresh jobs + invoices
+        await Promise.all([fetchJobs(), fetchInvoices()]);
         return { success: true, invoice: data.invoice };
       }
       return { success: false, error: data.error || 'สร้าง Invoice ไม่สำเร็จ' };
@@ -420,15 +509,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('Create invoice failed:', e);
       return { success: false, error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' };
     }
-  };
+  }, [companies, fetchJobs, fetchInvoices]);
 
   // ─── Refresh Data ───────────────────────────────
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     await fetchData();
-  };
+  }, [fetchData]);
 
   // ─── Reset Data ─────────────────────────────────
-  const resetToDefaultData = () => {
+  const resetToDefaultData = useCallback(() => {
     setJobs([]);
     setVehicles([]);
     setInvoices([]);
@@ -436,41 +525,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentCompany('ALL');
     setCurrentBranchId('');
     setCurrentSupplierId('');
-  };
+  }, [setCurrentSupplierId]);
+
+  // Memoize the context value so the 29+ consumers only re-render when something they read changes
+  const value = useMemo<AppContextType>(() => ({
+    isLoaded,
+    currentRole,
+    setCurrentRole,
+    currentCompany,
+    setCurrentCompany,
+    currentBranchId,
+    setCurrentBranchId,
+    currentSupplierId,
+    setCurrentSupplierId,
+    companies,
+    branches,
+    suppliers,
+    vehicles,
+    jobs,
+    invoices,
+    activeBranch,
+    activeSupplier,
+    filteredJobs,
+    filteredVehicles,
+    waitingApprovalCount,
+    createCarWashJob,
+    createVehicleSlideJob,
+    updateJobStatus,
+    updateCarWashItemStatus,
+    addJobEvidence,
+    createInvoice,
+    refreshData,
+    resetToDefaultData,
+  }), [
+    isLoaded,
+    currentRole,
+    currentCompany,
+    currentBranchId,
+    currentSupplierId,
+    setCurrentSupplierId,
+    companies,
+    branches,
+    suppliers,
+    vehicles,
+    jobs,
+    invoices,
+    activeBranch,
+    activeSupplier,
+    filteredJobs,
+    filteredVehicles,
+    waitingApprovalCount,
+    createCarWashJob,
+    createVehicleSlideJob,
+    updateJobStatus,
+    updateCarWashItemStatus,
+    addJobEvidence,
+    createInvoice,
+    refreshData,
+    resetToDefaultData,
+  ]);
 
   return (
-    <AppContext.Provider
-      value={{
-        isLoaded,
-        currentRole,
-        setCurrentRole,
-        currentCompany,
-        setCurrentCompany,
-        currentBranchId,
-        setCurrentBranchId,
-        currentSupplierId,
-        setCurrentSupplierId,
-        companies,
-        branches,
-        suppliers,
-        vehicles,
-        jobs,
-        invoices,
-        activeBranch,
-        activeSupplier,
-        filteredJobs,
-        filteredVehicles,
-        waitingApprovalCount,
-        createCarWashJob,
-        createVehicleSlideJob,
-        updateJobStatus,
-        updateCarWashItemStatus,
-        addJobEvidence,
-        createInvoice,
-        refreshData,
-        resetToDefaultData,
-      }}
-    >
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );

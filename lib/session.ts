@@ -20,6 +20,8 @@ export interface SessionUser {
   supplierId: string | null;
   supplierName: string | null;
   mustChangePassword?: boolean;
+  /** ต้องตรงกับ User.sessionVersion ใน DB (token เก่าที่ไม่มีค่านี้ถือเป็น 0) — เพิ่มค่าเพื่อเพิกถอน session */
+  sessionVersion?: number;
 }
 
 interface SessionPayload extends SessionUser {
@@ -33,22 +35,45 @@ export const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 const encoder = new TextEncoder();
 let cachedKey: Promise<CryptoKey> | null = null;
 
-const DEFAULT_FALLBACK_SECRET = 'supplier-job-mgmt-secret-salt-key-2026-production-stg-secure';
+const MIN_SECRET_LENGTH = 32;
+// ใช้แยกโดเมนของ key ที่ derive มาจาก DATABASE_URL (เปลี่ยน v1 → v2 เพื่อบังคับ logout ทุกคน)
+const DERIVED_KEY_LABEL = 'supplier-job/session-hmac/v1';
+
+/**
+ * หา secret สำหรับเซ็น session:
+ * 1) SESSION_SECRET (แนะนำ — ยาวอย่างน้อย 32 ตัวอักษร)
+ * 2) ถ้าไม่ได้ตั้ง → derive จาก DATABASE_URL (มีรหัสผ่าน DB ซึ่งเป็นความลับที่มีอยู่แล้วบน server)
+ *    ไม่มีค่า secret ใดฝังอยู่ใน source code อีกต่อไป
+ *    หมายเหตุ: ถ้าเปลี่ยนรหัสผ่าน/URL ของ DB ผู้ใช้ทุกคนจะต้อง login ใหม่
+ */
+async function resolveSecretBytes(): Promise<Uint8Array<ArrayBuffer>> {
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (sessionSecret && sessionSecret.length >= MIN_SECRET_LENGTH) {
+    return encoder.encode(sessionSecret);
+  }
+
+  const databaseUrl = process.env.DATABASE_URL;
+  if (databaseUrl && databaseUrl.length >= MIN_SECRET_LENGTH) {
+    if (sessionSecret) {
+      console.warn(`[session] SESSION_SECRET สั้นกว่า ${MIN_SECRET_LENGTH} ตัวอักษร — ใช้ key ที่ derive จาก DATABASE_URL แทน`);
+    }
+    const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`${DERIVED_KEY_LABEL}|${databaseUrl}`));
+    return new Uint8Array(digest);
+  }
+
+  throw new Error('SESSION_SECRET is not configured (ต้องตั้ง SESSION_SECRET อย่างน้อย 32 ตัวอักษร หรือ DATABASE_URL)');
+}
 
 function getHmacKey(): Promise<CryptoKey> {
   if (!cachedKey) {
-    let secret = process.env.SESSION_SECRET;
-    // หากไม่ได้กำหนด SESSION_SECRET หรือความยาวไม่ถึง 32 ตัวอักษร ให้ fallback อัตโนมัติเพื่อป้องกัน Error 500
-    if (!secret || secret.length < 32) {
-      secret = DEFAULT_FALLBACK_SECRET;
-    }
-    cachedKey = crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign', 'verify']
-    );
+    cachedKey = resolveSecretBytes()
+      .then((secret) =>
+        crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
+      )
+      .catch((err) => {
+        cachedKey = null; // ให้ลองใหม่ได้เมื่อแก้ env แล้ว
+        throw err;
+      });
   }
   return cachedKey;
 }

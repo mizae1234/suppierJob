@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthUser {
@@ -122,19 +122,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     router.replace('/login');
   }, [router]);
 
+  // Memoize so consumers only re-render when auth state actually changes
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    isLoading,
+    isAuthenticated: !!user,
+    selectedCompany,
+    setSelectedCompany,
+    login,
+    logout,
+    setUser,
+  }), [user, isLoading, selectedCompany, login, logout]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        selectedCompany,
-        setSelectedCompany,
-        login,
-        logout,
-        setUser,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -6,7 +6,6 @@ import { LogIn, Eye, EyeOff, Truck, Sparkles, ArrowRight, ArrowLeft, Check, Buil
 
 interface CheckedUser {
   displayName: string;
-  role: string;
 }
 
 interface SupplierOption {
@@ -129,7 +128,8 @@ export default function LoginPage() {
     setError('');
     setIsSubmitting(true);
 
-    const isMasterUser = username.trim().toLowerCase() === 'master' || checkedUser?.role === 'MASTER' || company === 'MASTER';
+    // check-user ไม่คืน role แล้ว — ฝั่ง server ข้ามการตรวจบริษัทให้ MASTER เอง
+    const isMasterUser = username.trim().toLowerCase() === 'master' || company === 'MASTER';
     // For company codes (EV7/GI), pass as company. For master or supplier codes, don't pass company.
     const isCompanyCode = !isMasterUser && (company === 'EV7' || company === 'GI');
     const selectedCompany = isCompanyCode ? (company as 'EV7' | 'GI') : undefined;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
-import bcrypt from 'bcryptjs';
+import { validatePasswordStrength, hashPassword } from '@/lib/password';
 
 // GET: ดึงรายการผู้ใช้งานทั้งหมด (เฉพาะ MASTER เท่านั้น)
 export async function GET(request: NextRequest) {
@@ -145,8 +145,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ชื่อผู้ใช้ต้องมีความยาวอย่างน้อย 3 ตัวอักษร' }, { status: 400 });
     }
 
-    if (!password || password.length < 6) {
-      return NextResponse.json({ error: 'รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร' }, { status: 400 });
+    const passwordError = validatePasswordStrength(password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
     if (!displayName || !displayName.trim()) {
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
 
     // 4. Create user
     const newUser = await prisma.user.create({

@@ -39,13 +39,13 @@ import {
   X
 } from 'lucide-react';
 
-export const CAR_WASH_REASONS = [
+const CAR_WASH_REASONS = [
   { value: 'ก่อนส่งมอบให้ลูกค้า', label: 'ก่อนส่งมอบให้ลูกค้า', icon: '🚗' },
   { value: 'หลังการซ่อมบำรุง', label: 'หลังการซ่อมบำรุง', icon: '🔧' },
   { value: 'ตามมาตรฐานบริษัท', label: 'ตามมาตรฐานบริษัท', icon: '🏢' },
 ];
 
-export const getWashReasonItem = (val?: string) => {
+const getWashReasonItem = (val?: string) => {
   if (!val) return CAR_WASH_REASONS[0];
   const direct = CAR_WASH_REASONS.find(r => r.value === val);
   if (direct) return direct;

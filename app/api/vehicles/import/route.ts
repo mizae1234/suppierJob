@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import type { Prisma } from '@prisma/client';
+
+const MAX_IMPORT_ROWS = 5000;
+const VIN_LOOKUP_CHUNK = 1000; // SQL Server จำกัด parameter ~2100 ต่อ query
+const CREATE_CHUNK = 150;      // ~13 คอลัมน์/แถว → ไม่เกิน 2100 parameter ต่อ INSERT
+const UPDATE_CHUNK = 200;      // จำนวนคำสั่ง update ต่อ 1 transaction
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 interface ImportVehicleItem {
   vin: string;
@@ -39,6 +51,12 @@ export async function POST(request: NextRequest) {
 
     if (!Array.isArray(vehicles) || vehicles.length === 0) {
       return NextResponse.json({ error: 'ไม่พบรายการข้อมูลรถที่ต้องการนำเข้า' }, { status: 400 });
+    }
+    if (vehicles.length > MAX_IMPORT_ROWS) {
+      return NextResponse.json(
+        { error: `นำเข้าได้สูงสุดครั้งละ ${MAX_IMPORT_ROWS.toLocaleString()} คัน กรุณาแบ่งไฟล์` },
+        { status: 400 }
+      );
     }
 
     // Fetch master companies and branches for lookup
@@ -169,52 +187,91 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Process in transaction
-    await prisma.$transaction(async (tx) => {
-      for (const item of sanitizedItems) {
-        const existing = await tx.vehicle.findUnique({
-          where: { vin: item.vin },
-        });
+    // Process in batches (ไม่ query ทีละแถวใน interactive transaction ที่หมดเวลาใน 5 วินาที)
+    // รถที่มีอยู่แล้วต้องอยู่ในขอบเขตสิทธิ์ของผู้นำเข้า ถึงจะแก้ไข/ย้ายเจ้าของได้ (กันการยึดรถของบริษัท/สาขาอื่น)
+    const canModifyExisting = (existing: { companyId: string; currentBranchId: string | null }) => {
+      if (user.role === 'MASTER') return true;
+      if (isBranchUser) {
+        if (user.branchId) return existing.currentBranchId === user.branchId;
+        return !!user.companyId && existing.companyId === user.companyId;
+      }
+      if (user.role === 'ADMIN') return !user.companyId || existing.companyId === user.companyId;
+      return false;
+    };
 
-        if (existing) {
-          if (duplicateAction === 'SKIP') {
-            skippedCount++;
-            continue;
-          } else {
-            // Update existing vehicle info
-            await tx.vehicle.update({
-              where: { vin: item.vin },
-              data: {
-                model: item.model,
-                color: item.color,
-                vehicleType: item.vehicleType,
-                licensePlate: item.licensePlate || existing.licensePlate,
-                mileage: item.mileage !== null ? item.mileage : existing.mileage,
-                currentBranchId: item.currentBranchId,
-                companyId: item.companyId,
-              },
-            });
-            updatedCount++;
-          }
+    // ดึงรถที่มีอยู่แล้วทีเดียว (แบ่งก้อนตามเพดาน parameter ของ SQL Server) แทนการ query ทีละแถว
+    // SQL Server เทียบ VIN แบบไม่สนตัวพิมพ์ → ใช้ key แบบ upper-case
+    const existingByVin = new Map<string, {
+      companyId: string;
+      currentBranchId: string | null;
+      licensePlate: string | null;
+      mileage: number | null;
+    }>();
+    for (const vins of chunk(sanitizedItems.map(i => i.vin), VIN_LOOKUP_CHUNK)) {
+      const rows = await prisma.vehicle.findMany({
+        where: { vin: { in: vins } },
+        select: { vin: true, companyId: true, currentBranchId: true, licensePlate: true, mileage: true },
+      });
+      for (const r of rows) existingByVin.set(r.vin.toUpperCase(), r);
+    }
+
+    const toCreate: Prisma.VehicleCreateManyInput[] = [];
+    const toUpdate: { vin: string; data: Prisma.VehicleUncheckedUpdateInput }[] = [];
+
+    for (const item of sanitizedItems) {
+      const existing = existingByVin.get(item.vin.toUpperCase());
+
+      if (existing) {
+        if (duplicateAction === 'SKIP') {
+          skippedCount++;
+          continue;
+        } else if (!canModifyExisting(existing)) {
+          skippedCount++;
+          errors.push(`${item.vin}: มีรถคันนี้อยู่แล้วในสาขา/บริษัทอื่น — ไม่มีสิทธิ์แก้ไข`);
+          continue;
         } else {
-          // Create new vehicle
-          await tx.vehicle.create({
+          // Update existing vehicle info
+          toUpdate.push({
+            vin: item.vin,
             data: {
-              vin: item.vin,
               model: item.model,
               color: item.color,
               vehicleType: item.vehicleType,
-              licensePlate: item.licensePlate,
-              mileage: item.mileage,
-              status: item.status,
-              companyId: item.companyId,
+              licensePlate: item.licensePlate || existing.licensePlate,
+              mileage: item.mileage !== null ? item.mileage : existing.mileage,
               currentBranchId: item.currentBranchId,
+              companyId: item.companyId,
             },
           });
-          createdCount++;
         }
+      } else {
+        // Create new vehicle
+        toCreate.push({
+          vin: item.vin,
+          model: item.model,
+          color: item.color,
+          vehicleType: item.vehicleType,
+          licensePlate: item.licensePlate,
+          mileage: item.mileage,
+          status: item.status,
+          companyId: item.companyId,
+          currentBranchId: item.currentBranchId,
+        });
       }
-    });
+    }
+
+    // เขียนแบบ batch: createMany เป็นก้อน + update หลายคำสั่งต่อ 1 transaction
+    // (แต่ละก้อนเป็น transaction ของตัวเอง — ไม่ถือ transaction ยาวจนหมดเวลาเหมือนเดิม)
+    for (const batch of chunk(toCreate, CREATE_CHUNK)) {
+      await prisma.vehicle.createMany({ data: batch });
+      createdCount += batch.length;
+    }
+    for (const batch of chunk(toUpdate, UPDATE_CHUNK)) {
+      await prisma.$transaction(
+        batch.map(u => prisma.vehicle.update({ where: { vin: u.vin }, data: u.data }))
+      );
+      updatedCount += batch.length;
+    }
 
     return NextResponse.json({
       success: true,

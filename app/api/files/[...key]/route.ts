@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { canViewJob } from '@/lib/job-access';
-import { FILES_ROUTE_PREFIX, isSafeStorageKey, mimeFromKey, readFromStorage } from '@/lib/s3';
+import { FILES_ROUTE_PREFIX, isSafeStorageKey, mimeFromKey, openStorageStream } from '@/lib/s3';
 
 /**
  * GET /api/files/<key>
@@ -35,19 +35,20 @@ export async function GET(
     return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 404 });
   }
 
-  const data = await readFromStorage(key);
-  if (!data) {
+  // stream ตรงจาก S3 / disk — ไม่โหลดทั้งไฟล์เข้า memory ของ server
+  const file = await openStorageStream(key);
+  if (!file) {
     return NextResponse.json({ error: 'ไม่พบไฟล์' }, { status: 404 });
   }
 
-  return new NextResponse(new Uint8Array(data), {
-    headers: {
-      'Content-Type': mimeFromKey(key),
-      'Content-Length': String(data.length),
-      // ไฟล์ไม่เปลี่ยน (ชื่อมี timestamp) → cache ฝั่ง browser ได้ แต่ห้าม shared cache
-      'Cache-Control': 'private, max-age=86400, immutable',
-      'Content-Disposition': 'inline',
-      'X-Content-Type-Options': 'nosniff',
-    },
-  });
+  const headers: Record<string, string> = {
+    'Content-Type': mimeFromKey(key),
+    // ไฟล์ไม่เปลี่ยน (ชื่อมี timestamp) → cache ฝั่ง browser ได้ แต่ห้าม shared cache
+    'Cache-Control': 'private, max-age=86400, immutable',
+    'Content-Disposition': 'inline',
+    'X-Content-Type-Options': 'nosniff',
+  };
+  if (file.contentLength !== undefined) headers['Content-Length'] = String(file.contentLength);
+
+  return new NextResponse(file.body, { headers });
 }

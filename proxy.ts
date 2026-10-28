@@ -6,9 +6,6 @@ const PUBLIC_API = [
   '/api/auth/login',
   '/api/auth/logout',
   '/api/auth/check-user',
-  '/api/openapi.json',
-  '/api/swagger.json',
-  '/api/docs',
 ];
 const STATIC_FILE = /\.(png|jpe?g|svg|webp|gif|ico)$/i;
 

@@ -1,27 +1,17 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { openApiSpec } from '@/lib/openapi-spec';
+import { requireAuth } from '@/lib/auth';
 
-// GET /api/swagger.json (Alias ของ /api/openapi.json)
-export async function GET() {
+// GET /api/swagger.json (Alias ของ /api/openapi.json) — ต้อง login เป็น MASTER/ADMIN
+export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request, ['MASTER', 'ADMIN']);
+  if (auth.response) return auth.response;
+
   return NextResponse.json(openApiSpec, {
     status: 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Cache-Control': 'public, max-age=60',
-    },
-  });
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Cache-Control': 'private, max-age=60',
     },
   });
 }

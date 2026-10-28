@@ -1,8 +1,21 @@
 import type { Metadata } from 'next';
+import { Prompt } from 'next/font/google';
 import './globals.css';
 import { AppProvider } from '@/context/AppContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/components/ui/Toast';
+
+// Self-hosted via next/font (no render-blocking request to fonts.googleapis.com).
+// The generated class sets font-family on <body>, overriding the 'Prompt' rule in globals.css (@layer base).
+// preload is off: 5 weights × 2 styles × 2 subsets would preload ~20 files; browsers fetch only the faces actually used.
+const prompt = Prompt({
+  subsets: ['thai', 'latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  style: ['normal', 'italic'],
+  display: 'swap',
+  preload: false,
+  fallback: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+});
 
 export const metadata: Metadata = {
   title: 'ระบบจัดการงาน Supplier (EV7 & GI)',
@@ -29,14 +42,8 @@ export default function RootLayout({
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link rel="alternate icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon.png" />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link 
-          href="https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&display=swap" 
-          rel="stylesheet" 
-        />
       </head>
-      <body className="min-h-full flex flex-col antialiased text-[#002114] bg-[#f4f9f5]">
+      <body className={`${prompt.className} min-h-full flex flex-col antialiased text-[#002114] bg-[#f4f9f5]`}>
         <AuthProvider>
           <AppProvider>
             <ToastProvider>

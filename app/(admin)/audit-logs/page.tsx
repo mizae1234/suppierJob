@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 import {
   Shield,
@@ -82,34 +83,45 @@ export default function AuditLogsPage() {
   const [filterDateTo, setFilterDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  const fetchLogs = useCallback(async () => {
+  // Debounce typing so we don't hit the API on every keystroke; abort stale requests
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
+  const logsAbortRef = useRef<AbortController | null>(null);
+
+  const fetchLogs = useCallback(async (query: string = debouncedSearchQuery) => {
+    logsAbortRef.current?.abort();
+    const controller = new AbortController();
+    logsAbortRef.current = controller;
     setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('page', String(page));
       params.set('limit', '30');
-      if (searchQuery) params.set('q', searchQuery);
+      if (query) params.set('q', query);
       if (filterAction) params.set('action', filterAction);
       if (filterDateFrom) params.set('from', filterDateFrom);
       if (filterDateTo) params.set('to', filterDateTo);
 
-      const res = await fetch(`/api/audit-logs?${params.toString()}`);
+      const res = await fetch(`/api/audit-logs?${params.toString()}`, { signal: controller.signal });
       if (res.ok) {
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setLogs(data.logs || []);
         setTotal(data.total || 0);
         setTotalPages(data.totalPages || 1);
       }
     } catch (err) {
+      if (controller.signal.aborted) return;
       console.error('Failed to fetch audit logs:', err);
     } finally {
-      setLoading(false);
+      if (logsAbortRef.current === controller) setLoading(false);
     }
-  }, [page, searchQuery, filterAction, filterDateFrom, filterDateTo]);
+  }, [page, debouncedSearchQuery, filterAction, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  useEffect(() => () => logsAbortRef.current?.abort(), []);
 
   const formatTime = (isoStr: string) => {
     const d = new Date(isoStr);
@@ -134,7 +146,7 @@ export default function AuditLogsPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
-    fetchLogs();
+    fetchLogs(searchQuery);
   };
 
   const actionDropdownOptions: DropdownOption[] = useMemo(() => [

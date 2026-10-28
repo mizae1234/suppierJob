@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, invalidateUserSession } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
-import bcrypt from 'bcryptjs';
+import { validatePasswordStrength, hashPassword } from '@/lib/password';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -19,11 +19,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await request.json();
     const { newPassword } = body;
 
-    if (!newPassword || newPassword.length < 6) {
-      return NextResponse.json(
-        { error: 'รหัสผ่านใหม่ต้องมีความยาวอย่างน้อย 6 ตัวอักษร' },
-        { status: 400 }
-      );
+    const passwordError = validatePasswordStrength(newPassword);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
 
     const existingUser = await prisma.user.findUnique({
@@ -35,12 +33,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'ไม่พบผู้ใช้งานนี้ในระบบ' }, { status: 404 });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await hashPassword(newPassword);
 
     await prisma.user.update({
       where: { id },
       // รหัสผ่านที่ MASTER ตั้งให้เป็นรหัสชั่วคราว → ยกเว้น SUPPLIER ที่ไม่ต้องบังคับเปลี่ยน
-      data: { password: hashedPassword, mustChangePassword: existingUser.role === 'SUPPLIER' ? false : true },
+      // sessionVersion + 1 → session เดิมของผู้ใช้นี้ทุกเครื่องใช้ไม่ได้ทันที
+      data: {
+        password: hashedPassword,
+        mustChangePassword: existingUser.role === 'SUPPLIER' ? false : true,
+        sessionVersion: { increment: 1 },
+      },
     });
     invalidateUserSession(id);
 

@@ -394,6 +394,9 @@ async function main() {
         companyId: u.companyId,
         branchId: u.branchId,
         supplierId: u.supplierId,
+        // รหัสผ่าน seed เดาง่าย → บังคับเปลี่ยนตอน login ครั้งแรก (SUPPLIER ยกเว้นตามนโยบายระบบ)
+        // ตั้งเฉพาะตอนสร้าง: ไม่บังคับซ้ำกับ user เดิมที่เปลี่ยนรหัสไปแล้ว
+        mustChangePassword: u.role !== 'SUPPLIER',
       },
     });
     console.log(`  ✅ ${u.username} (${u.role}) — ${u.firstName} ${u.lastName} / ${u.position}`);

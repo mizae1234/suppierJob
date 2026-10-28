@@ -5,12 +5,7 @@ import { getSessionUser, invalidateUserSession } from '@/lib/auth';
 import { createSessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from '@/lib/session';
 import { rateLimit } from '@/lib/rate-limit';
 import { logAuditFromUser } from '@/lib/audit-log';
-
-export function validatePasswordStrength(pw: string): string | null {
-  if (pw.length < 8) return 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร';
-  if (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return 'รหัสผ่านต้องมีทั้งตัวอักษรและตัวเลข';
-  return null;
-}
+import { validatePasswordStrength, hashPassword } from '@/lib/password';
 
 // POST: ผู้ใช้เปลี่ยนรหัสผ่านของตัวเอง (ใช้ได้แม้อยู่ในสถานะ mustChangePassword)
 export async function POST(request: NextRequest) {
@@ -41,9 +36,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม' }, { status: 400 });
     }
 
-    await prisma.user.update({
+    // sessionVersion + 1 → session บนเครื่องอื่นทั้งหมดใช้ไม่ได้ทันที แล้วออก cookie ใหม่ให้เครื่องนี้
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { password: await bcrypt.hash(newPassword, 10), mustChangePassword: false },
+      data: {
+        password: await hashPassword(newPassword),
+        mustChangePassword: false,
+        sessionVersion: { increment: 1 },
+      },
+      select: { sessionVersion: true },
     });
     invalidateUserSession(user.id);
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
       request,
     });
 
-    const sessionUser = { ...user, mustChangePassword: false };
+    const sessionUser = { ...user, mustChangePassword: false, sessionVersion: updated.sessionVersion };
     const response = NextResponse.json({ success: true, user: sessionUser });
     response.cookies.set(SESSION_COOKIE, await createSessionToken(sessionUser), {
       httpOnly: true,

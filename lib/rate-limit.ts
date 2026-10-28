@@ -26,10 +26,19 @@ export function resetRateLimit(key: string) {
   buckets.delete(key);
 }
 
+/**
+ * IP ของ client สำหรับ rate limit / audit log
+ * X-Forwarded-For ค่า "ซ้ายสุด" client ปลอมเองได้ → ใช้ค่าที่ reverse proxy ของเราเป็นคนต่อท้าย (นับจากขวา)
+ * TRUSTED_PROXY_HOPS = จำนวน proxy ที่อยู่หน้าแอป (ค่าเริ่มต้น 1 เช่น Load Balancer / Nginx ตัวเดียว)
+ */
 export function getClientIp(headers: Headers): string {
-  return (
-    headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-    headers.get('x-real-ip') ||
-    'unknown'
-  );
+  const hops = Math.max(1, Number(process.env.TRUSTED_PROXY_HOPS) || 1);
+  const forwarded = (headers.get('x-forwarded-for') || '')
+    .split(',')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  if (forwarded.length > 0) {
+    return forwarded[Math.max(0, forwarded.length - hops)];
+  }
+  return headers.get('x-real-ip')?.trim() || 'unknown';
 }

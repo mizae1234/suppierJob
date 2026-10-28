@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 
 // Environment variables (names match the .NET side; legacy names kept as fallback)
 const S3_ENDPOINT = process.env.S3_SERVICE_URL || process.env.S3_ENDPOINT || 'https://sgp1.digitaloceanspaces.com';
@@ -183,6 +184,44 @@ export async function readFromStorage(key: string): Promise<Buffer | null> {
   const localTarget = path.resolve(baseDir, key);
   if (!localTarget.startsWith(baseDir + path.sep) || !fs.existsSync(localTarget)) return null;
   return fs.promises.readFile(localTarget);
+}
+
+/**
+ * เปิดไฟล์ที่เก็บไว้ (S3 หรือ local) แบบ stream — ไม่โหลดทั้งไฟล์เข้า memory
+ * Returns null if not found.
+ */
+export async function openStorageStream(
+  key: string
+): Promise<{ body: ReadableStream<Uint8Array>; contentLength?: number } | null> {
+  if (!isSafeStorageKey(key)) return null;
+
+  if (s3Client) {
+    try {
+      const obj = await s3Client.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: key }));
+      if (!obj.Body) return null;
+      return {
+        body: obj.Body.transformToWebStream() as ReadableStream<Uint8Array>,
+        contentLength: typeof obj.ContentLength === 'number' ? obj.ContentLength : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  const baseDir = path.resolve(process.cwd(), UPLOAD_DIR);
+  const localTarget = path.resolve(baseDir, key);
+  if (!localTarget.startsWith(baseDir + path.sep)) return null;
+  try {
+    const stat = await fs.promises.stat(localTarget);
+    if (!stat.isFile()) return null;
+    const nodeStream = fs.createReadStream(localTarget);
+    return {
+      body: Readable.toWeb(nodeStream) as unknown as ReadableStream<Uint8Array>,
+      contentLength: stat.size,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

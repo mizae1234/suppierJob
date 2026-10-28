@@ -1,8 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 
 // GET /api/docs
 // หน้าเว็บแสดงผล Swagger UI แบบ Interactive โดยดึงสเปกจาก /api/openapi.json
-export async function GET() {
+// ต้อง login เป็น MASTER/ADMIN
+export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request, ['MASTER', 'ADMIN']);
+  if (auth.response) return auth.response;
+
   const html = `<!DOCTYPE html>
 <html lang="th">
 <head>
@@ -105,7 +110,7 @@ export async function GET() {
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=300',
+      'Cache-Control': 'private, max-age=300',
     },
   });
 }

@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { logAudit } from '@/lib/audit-log';
 import { d365FetchAll } from './client';
@@ -52,7 +54,7 @@ export interface SyncSummary {
   issues: MapIssue[];
 }
 
-const chunk = <T,>(arr: T[], size: number): T[][] => {
+export const chunk = <T,>(arr: T[], size: number): T[][] => {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
@@ -98,17 +100,26 @@ async function acquireRunLock(trigger: SyncTrigger, triggeredBy: string | null):
     data: { status: 'FAILED', finishedAt: new Date(), errors: JSON.stringify([{ message: 'หมดเวลา (ค้างเกิน 30 นาที)' }]) },
   });
 
-  const running = await prisma.d365SyncRun.findFirst({
-    where: { status: 'RUNNING', startedAt: { gte: staleBefore } },
-    select: { id: true },
-  });
-  if (running) return null;
-
-  const run = await prisma.d365SyncRun.create({
-    data: { trigger, triggeredBy, status: 'RUNNING' },
-    select: { id: true },
-  });
-  return run.id;
+  // ตรวจ + สร้างรอบ RUNNING ในคำสั่งเดียว (atomic แม้รันหลาย instance):
+  // UPDLOCK + HOLDLOCK ล็อกช่วงข้อมูลที่ตรวจไว้จนจบคำสั่ง → อีก instance ต้องรอ แล้วจะเห็นรอบนี้และไม่ insert ซ้ำ
+  // เวลาใช้ SYSUTCDATETIME() ให้ตรงกับที่ Prisma เก็บ DateTime เป็น UTC
+  const id = randomUUID();
+  const staleSeconds = Math.round(LOCK_TIMEOUT_MS / 1000);
+  let inserted: number;
+  try {
+    inserted = await prisma.$executeRaw`
+      INSERT INTO [dbo].[D365SyncRun] ([id], [trigger], [triggeredBy], [status], [startedAt])
+      SELECT ${id}, ${trigger}, ${triggeredBy}, 'RUNNING', SYSUTCDATETIME()
+      WHERE NOT EXISTS (
+        SELECT 1 FROM [dbo].[D365SyncRun] WITH (UPDLOCK, HOLDLOCK)
+        WHERE [status] = 'RUNNING' AND [startedAt] >= DATEADD(SECOND, -CAST(${staleSeconds} AS INT), SYSUTCDATETIME())
+      )`;
+  } catch (err: unknown) {
+    // ชนกับอีก instance จน SQL Server เลือกเป็น deadlock victim → ถือว่ามีรอบอื่นกำลังรัน
+    if (err instanceof Error && /deadlock/i.test(err.message)) return null;
+    throw err;
+  }
+  return inserted > 0 ? id : null;
 }
 
 // ── Main ──────────────────────────────────────────────
@@ -190,33 +201,85 @@ export async function runD365VehicleSync(options: SyncOptions): Promise<SyncSumm
 }
 
 // ── Upsert ────────────────────────────────────────────
+/** ฟิลด์ของรถใน DB ที่ sync เขียนทับได้ (ใช้เทียบว่ามีอะไรเปลี่ยนจริงไหม) */
+export interface SyncComparableVehicle {
+  status: string;
+  model: string;
+  color: string;
+  companyId: string;
+  currentBranchId: string;
+  source: string;
+  d365ItemId: string | null;
+  d365SiteId: string | null;
+  d365WarehouseId: string | null;
+  d365Reserved: boolean;
+}
+
+/** ข้อมูลที่ sync จะเขียนลงรถคันที่มีอยู่แล้ว (ไม่รวม lastSyncedAt) — กติกาเดียวกับเดิม */
+export function buildSyncUpdateData(current: Pick<SyncComparableVehicle, 'status'>, v: MappedVehicle) {
+  const d365Fields = {
+    source: 'D365',
+    d365ItemId: v.d365ItemId,
+    d365SiteId: v.d365SiteId,
+    d365WarehouseId: v.d365WarehouseId,
+    d365Reserved: v.d365Reserved,
+  };
+  // ไม่เขียนทับชื่อรุ่น/สีที่ดีอยู่แล้วด้วยรหัสสินค้า กรณีหา ProductName ไม่เจอ
+  const nameFields = v.nameResolved ? { model: v.model, color: v.color } : {};
+
+  if (current.status === VEHICLE_STATUS_OUT_OF_STOCK) {
+    return {
+      ...nameFields, ...d365Fields,
+      status: 'AVAILABLE', outOfStockAt: null,
+      companyId: v.companyId, currentBranchId: v.currentBranchId,
+    };
+  }
+  if (current.status === 'AVAILABLE') {
+    return { ...nameFields, ...d365Fields, companyId: v.companyId, currentBranchId: v.currentBranchId };
+  }
+  // IN_WASH / IN_TRANSIT ฯลฯ — ระบบเราเป็นตัวหลัก ไม่แตะสถานะและสาขา
+  return { ...nameFields, ...d365Fields };
+}
+
+/** true = มีอย่างน้อย 1 ฟิลด์ที่ต่างจากค่าใน DB (ต้อง UPDATE จริง) */
+export function hasSyncChanges(current: object, data: object): boolean {
+  const currentValues = current as Record<string, unknown>;
+  return Object.entries(data).some(([key, value]) => {
+    const before = currentValues[key] ?? null;
+    const after = value ?? null;
+    if (before instanceof Date || after instanceof Date) {
+      return !(before instanceof Date && after instanceof Date && before.getTime() === after.getTime());
+    }
+    return before !== after;
+  });
+}
+
 async function upsertVehicles(vehicles: MappedVehicle[]) {
   const result = { created: 0, updated: 0, restocked: 0 };
   if (vehicles.length === 0) return result;
 
-  const existing = new Map<string, { status: string }>();
+  // SQL Server เทียบ VIN แบบไม่สนตัวพิมพ์ → ใช้ key แบบ upper-case
+  const existing = new Map<string, SyncComparableVehicle>();
   for (const vins of chunk(vehicles.map(v => v.vin), IN_CLAUSE_CHUNK)) {
-    const rows = await prisma.vehicle.findMany({ where: { vin: { in: vins } }, select: { vin: true, status: true } });
-    rows.forEach(r => existing.set(r.vin, { status: r.status }));
+    const rows = await prisma.vehicle.findMany({
+      where: { vin: { in: vins } },
+      select: {
+        vin: true, status: true, model: true, color: true, companyId: true, currentBranchId: true,
+        source: true, d365ItemId: true, d365SiteId: true, d365WarehouseId: true, d365Reserved: true,
+      },
+    });
+    rows.forEach(r => existing.set(r.vin.toUpperCase(), r));
   }
 
   const now = new Date();
-  const ops = vehicles.map(v => {
-    const d365Fields = {
-      source: 'D365',
-      d365ItemId: v.d365ItemId,
-      d365SiteId: v.d365SiteId,
-      d365WarehouseId: v.d365WarehouseId,
-      d365Reserved: v.d365Reserved,
-      lastSyncedAt: now,
-    };
-    // ไม่เขียนทับชื่อรุ่น/สีที่ดีอยู่แล้วด้วยรหัสสินค้า กรณีหา ProductName ไม่เจอ
-    const nameFields = v.nameResolved ? { model: v.model, color: v.color } : {};
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+  const unchangedVins: string[] = []; // ข้อมูลเหมือนเดิม → อัปเดตแค่ lastSyncedAt แบบ bulk
 
-    const current = existing.get(v.vin);
+  for (const v of vehicles) {
+    const current = existing.get(v.vin.toUpperCase());
     if (!current) {
       result.created++;
-      return prisma.vehicle.create({
+      ops.push(prisma.vehicle.create({
         data: {
           vin: v.vin,
           model: v.model,
@@ -225,37 +288,33 @@ async function upsertVehicles(vehicles: MappedVehicle[]) {
           status: 'AVAILABLE',
           companyId: v.companyId,
           currentBranchId: v.currentBranchId,
-          ...d365Fields,
+          source: 'D365',
+          d365ItemId: v.d365ItemId,
+          d365SiteId: v.d365SiteId,
+          d365WarehouseId: v.d365WarehouseId,
+          d365Reserved: v.d365Reserved,
+          lastSyncedAt: now,
         },
-      });
+      }));
+      continue;
     }
 
-    if (current.status === VEHICLE_STATUS_OUT_OF_STOCK) {
-      result.restocked++;
-      return prisma.vehicle.update({
-        where: { vin: v.vin },
-        data: {
-          ...nameFields, ...d365Fields,
-          status: 'AVAILABLE', outOfStockAt: null,
-          companyId: v.companyId, currentBranchId: v.currentBranchId,
-        },
-      });
-    }
+    if (current.status === VEHICLE_STATUS_OUT_OF_STOCK) result.restocked++;
+    else result.updated++;
 
-    result.updated++;
-    if (current.status === 'AVAILABLE') {
-      return prisma.vehicle.update({
-        where: { vin: v.vin },
-        data: { ...nameFields, ...d365Fields, companyId: v.companyId, currentBranchId: v.currentBranchId },
-      });
+    const data = buildSyncUpdateData(current, v);
+    if (current.status !== VEHICLE_STATUS_OUT_OF_STOCK && !hasSyncChanges(current, data)) {
+      unchangedVins.push(v.vin);
+      continue;
     }
-
-    // IN_WASH / IN_TRANSIT ฯลฯ — ระบบเราเป็นตัวหลัก ไม่แตะสถานะและสาขา
-    return prisma.vehicle.update({ where: { vin: v.vin }, data: { ...nameFields, ...d365Fields } });
-  });
+    ops.push(prisma.vehicle.update({ where: { vin: v.vin }, data: { ...data, lastSyncedAt: now } }));
+  }
 
   for (const batch of chunk(ops, WRITE_BATCH_SIZE)) {
     await prisma.$transaction(batch);
+  }
+  for (const vins of chunk(unchangedVins, IN_CLAUSE_CHUNK)) {
+    await prisma.vehicle.updateMany({ where: { vin: { in: vins } }, data: { lastSyncedAt: now } });
   }
   return result;
 }

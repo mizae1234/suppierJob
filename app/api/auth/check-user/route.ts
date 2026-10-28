@@ -26,10 +26,7 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({
       where: { username },
       select: {
-        id: true,
         displayName: true,
-        role: true,
-        username: true,
       },
     });
 
@@ -40,11 +37,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ไม่คืน role/id เพื่อลดข้อมูลที่คนนอกไล่เดาได้ (คืนเฉพาะชื่อที่ใช้ทักทายในหน้า login)
     return NextResponse.json({ 
       success: true, 
       user: {
         displayName: user.displayName,
-        role: user.role,
       }
     });
   } catch (error) {

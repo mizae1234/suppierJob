@@ -5,6 +5,21 @@ import { getSessionUser } from '@/lib/auth';
 export async function GET(request: NextRequest) {
   const user = await getSessionUser(request);
 
+  // ผู้ที่ยังไม่ login (หน้า Login ใช้เลือก Supplier) → ส่งเฉพาะ id/code/name
+  // ห้ามส่งข้อมูลติดต่อ, ตารางราคา, รหัส Vendor D365 ให้คนนอก
+  if (!user) {
+    try {
+      const suppliers = await prisma.supplier.findMany({
+        where: { isActive: true },
+        select: { id: true, code: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      return NextResponse.json({ suppliers });
+    } catch (error) {
+      console.error('GET /api/suppliers (public) error:', error);
+      return NextResponse.json({ error: 'ไม่สามารถดึงข้อมูล Supplier ได้' }, { status: 500 });
+    }
+  }
   try {
     const whereCondition: any = { isActive: true };
     if (user && user.role === 'SUPPLIER') {
@@ -83,7 +98,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('GET /api/suppliers error:', error);
     return NextResponse.json(
-      { error: 'ไม่สามารถดึงข้อมูล Supplier ได้', details: error?.message || String(error) },
+      { error: 'ไม่สามารถดึงข้อมูล Supplier ได้' },
       { status: 500 }
     );
   }

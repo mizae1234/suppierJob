@@ -17,6 +17,75 @@ export interface PlaceResult {
   type?: 'map_link' | 'osm' | 'google' | 'gemini';
 }
 
+// ─── Cache ผลค้นหาในหน่วยความจำ (LRU + TTL) — ลดการยิง API ภายนอกซ้ำ ๆ ด้วยคำค้นเดิม ───
+const SEARCH_CACHE_MAX = 200;
+const SEARCH_CACHE_TTL_MS = 10 * 60_000;
+type SearchPayload = { provider: string; results: PlaceResult[] };
+const searchCache = new Map<string, { expiresAt: number; payload: SearchPayload }>();
+
+function searchCacheKey(q: string, lat?: number, lng?: number): string {
+  // ไม่แปลงตัวพิมพ์ — ลิงก์ย่อ Google Maps (เช่น maps.app.goo.gl/AbC) แยกตัวพิมพ์เล็ก/ใหญ่
+  const norm = q.normalize('NFC').replace(/\s+/g, ' ').trim();
+  // ผล Google/Gemini อิงพิกัดอ้างอิง → รวมพิกัด (ปัด ~1 กม.) ไว้ใน key
+  const near = Number.isFinite(lat) && Number.isFinite(lng) ? `${lat!.toFixed(2)},${lng!.toFixed(2)}` : '';
+  return `${norm}|${near}`;
+}
+
+function getCachedSearch(key: string): SearchPayload | null {
+  const hit = searchCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    searchCache.delete(key);
+    return null;
+  }
+  // ย้ายไปท้าย Map = ใช้ล่าสุด (LRU)
+  searchCache.delete(key);
+  searchCache.set(key, hit);
+  return hit.payload;
+}
+
+/** เก็บเฉพาะผลที่พบ (ไม่ cache ผลว่างที่อาจเกิดจาก timeout ชั่วคราว) แล้วคืน response */
+function respondAndCache(key: string, payload: SearchPayload) {
+  if (payload.results.length > 0) {
+    searchCache.delete(key);
+    searchCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, payload });
+    while (searchCache.size > SEARCH_CACHE_MAX) {
+      const oldest = searchCache.keys().next().value;
+      if (oldest === undefined) break;
+      searchCache.delete(oldest);
+    }
+  }
+  return NextResponse.json(payload);
+}
+
+/**
+ * โดเมนที่อนุญาตให้เซิร์ฟเวอร์ยิง request ไปได้ (กัน SSRF — ห้ามยิงไป IP ภายใน / metadata / โดเมนอื่น)
+ * ตรวจทุกครั้งรวมถึงปลายทางของ redirect
+ */
+const ALLOWED_MAP_HOSTS = new Set([
+  'maps.app.goo.gl',
+  'goo.gl',
+  'google.com',
+  'www.google.com',
+  'maps.google.com',
+  'google.co.th',
+  'www.google.co.th',
+  'maps.google.co.th',
+]);
+
+function toAllowedMapUrl(raw: string): URL | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (url.username || url.password || url.port) return null;
+    if (!ALLOWED_MAP_HOSTS.has(url.hostname.toLowerCase())) return null;
+    url.protocol = 'https:'; // บังคับ HTTPS เสมอ
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * ติดตาม Redirect ของ Google Maps Short Link (maps.app.goo.gl / goo.gl/maps)
  * และดึงพิกัด lat, lng จาก URL ปลายทางหรือเนื้อหา HTML
@@ -43,10 +112,14 @@ async function resolveGoogleMapsUrl(rawUrl: string): Promise<PlaceResult | null>
 
       if (!currentUrl.startsWith('http')) break;
 
-      const res = await fetch(currentUrl, {
+      const safeUrl = toAllowedMapUrl(currentUrl);
+      if (!safeUrl) break;
+
+      const res = await fetch(safeUrl, {
         method: 'GET',
         redirect: 'manual',
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        signal: AbortSignal.timeout(5000),
       });
 
       const location = res.headers.get('location');
@@ -113,6 +186,7 @@ async function searchGoogle(q: string, apiKey: string, lat?: number, lng?: numbe
     },
     body: JSON.stringify(body),
     cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
   });
 
   if (!res.ok) {
@@ -147,6 +221,7 @@ async function fetchNominatim(q: string): Promise<PlaceResult[]> {
     {
       headers: { 'User-Agent': 'GoldIntegrate-SupplierJobApp/2.0 (contact@goldintegrate.co.th)' },
       cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
     }
   );
   if (!res.ok) return [];
@@ -286,11 +361,15 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  const cacheKey = searchCacheKey(q, lat, lng);
+  const cached = getCachedSearch(cacheKey);
+  if (cached) return NextResponse.json(cached);
+
   // 2. ตรวจสอบลิงก์ Google Maps (เช่น maps.app.goo.gl, goo.gl/maps, google.com/maps)
   if (q.includes('maps.app.goo.gl') || q.includes('goo.gl/maps') || q.includes('google.com/maps') || q.includes('maps.google.com')) {
     const resolved = await resolveGoogleMapsUrl(q);
     if (resolved) {
-      return NextResponse.json({
+      return respondAndCache(cacheKey, {
         provider: 'google_url',
         results: [resolved],
       });
@@ -303,7 +382,7 @@ export async function GET(request: NextRequest) {
     try {
       const results = await searchGoogle(q, apiKey, lat, lng);
       if (results.length > 0) {
-        return NextResponse.json({ provider: 'google', results });
+        return respondAndCache(cacheKey, { provider: 'google', results });
       }
     } catch (error) {
       console.warn('Google Places search failed, falling back:', error);
@@ -314,7 +393,7 @@ export async function GET(request: NextRequest) {
   try {
     const osmResults = await searchOsmProgressive(q);
     if (osmResults.length > 0) {
-      return NextResponse.json({ provider: 'osm', results: osmResults });
+      return respondAndCache(cacheKey, { provider: 'osm', results: osmResults });
     }
   } catch (error) {
     console.warn('OSM search failed, attempting Gemini AI fallback:', error);
@@ -326,7 +405,7 @@ export async function GET(request: NextRequest) {
     try {
       const geminiResults = await searchGemini(q, geminiKey, lat, lng);
       if (geminiResults.length > 0) {
-        return NextResponse.json({ provider: 'gemini', results: geminiResults });
+        return respondAndCache(cacheKey, { provider: 'gemini', results: geminiResults });
       }
     } catch (error) {
       console.warn('Gemini search failed:', error);

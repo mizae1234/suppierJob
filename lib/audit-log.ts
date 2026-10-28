@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest } from 'next/server';
+import { getClientIp } from '@/lib/rate-limit';
 
 /**
  * Audit Log Action Types
@@ -80,10 +81,8 @@ export function logAudit(params: AuditLogParams): void {
   let userAgent: string | null = null;
 
   if (request) {
-    ipAddress =
-      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      request.headers.get('x-real-ip') ||
-      null;
+    const ip = getClientIp(request.headers);
+    ipAddress = ip === 'unknown' ? null : ip;
     userAgent = request.headers.get('user-agent')?.substring(0, 255) || null;
   }
 

@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('POST /api/integrations/d365/sync error:', error);
     return NextResponse.json(
-      { error: 'Sync ข้อมูลจาก D365 ไม่สำเร็จ', details: error instanceof Error ? error.message : String(error) },
+      { error: 'Sync ข้อมูลจาก D365 ไม่สำเร็จ' },
       { status: 500 }
     );
   }
