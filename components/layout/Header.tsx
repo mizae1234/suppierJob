@@ -16,7 +16,9 @@ import {
   ChevronDown,
   X,
   Smartphone,
-  LogOut
+  LogOut,
+  Truck,
+  Sparkles
 } from 'lucide-react';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
@@ -164,10 +166,11 @@ export const Header: React.FC = () => {
       {/* Mobile Brand (visible only on mobile/tablet when sidebar is hidden) */}
       <div className="flex lg:hidden items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
         <div
-          className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white shadow-xs font-bold shrink-0"
-          style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})` }}
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center gap-0.5 shadow-xs font-bold shrink-0 border border-emerald-400/25"
+          style={{ background: 'linear-gradient(135deg, #2f684e, #22533c)' }}
         >
-          <Building className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-white" />
+          <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-300" />
+          <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-200" />
         </div>
         <div 
           className="flex flex-col min-w-0 flex-1"

@@ -138,13 +138,14 @@ export const SupplierSidebar: React.FC = () => {
         >
           <Link href="/vendor" className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-md text-white shrink-0 transition-transform duration-200 hover:scale-105"
+              className="w-10 h-10 rounded-2xl flex items-center justify-center gap-0.5 shadow-md shrink-0 transition-transform duration-200 hover:scale-105 border border-emerald-400/25"
               style={{
-                background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryLight})`,
+                background: 'linear-gradient(135deg, #2f684e, #22533c)',
                 boxShadow: theme.activeNavShadow,
               }}
             >
-              <Store className="w-5 h-5 text-white" />
+              <Truck className="w-4 h-4 text-emerald-300" />
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
