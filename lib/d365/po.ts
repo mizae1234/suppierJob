@@ -159,7 +159,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     DueDate: dueDateStr,
     ValueDate: deliveryDateStr,
     FloorPlanId: '',
-    PaymentType: 'Cash',
+    PaymentType: '', // เว้นว่างเพื่อให้ D365 ดึง Terms of payment (15D, 30D, Cash) และ Method of payment (Transfer) ตาม Vendor อัตโนมัติ
     PoDMS: vin,
     PoGiCore: job.jobNumber,
     SiteId: d365Company,

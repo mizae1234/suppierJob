@@ -299,17 +299,15 @@ export async function PATCH(
     }
 
     // ─── Trigger D365 Purchase Order Creation ───
-    // ส่งเบื้องหลังหลังตอบกลับแล้ว (after) — ไม่ให้ D365 ที่ช้า/ล่ม บล็อกการกดอนุมัติ
-    // ผลลัพธ์ (เลข PO / สถานะ) ถูกบันทึกลง Job โดย sendJobToD365PurchaseOrder เอง
+    // รอให้สร้าง PO ใน D365 เสร็จก่อนตอบกลับ เพื่อให้หน้าจอแสดงเลข PO และพิมพ์ใบสั่งงานได้ทันทีหลังกดอนุมัติครั้งแรก
+    // (หาก D365 ล่มหรือเกิดข้อผิดพลาด จะถูกจับใน try/catch โดยไม่ทำให้การอนุมัติใบงานล้มเหลว)
     if (status === 'APPROVED') {
-      after(async () => {
-        try {
-          const poResult = await sendJobToD365PurchaseOrder(id);
-          console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, poResult);
-        } catch (poErr) {
-          console.error('Trigger D365 PO creation error:', poErr);
-        }
-      });
+      try {
+        const poResult = await sendJobToD365PurchaseOrder(id);
+        console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, poResult);
+      } catch (poErr) {
+        console.error('Trigger D365 PO creation error:', poErr);
+      }
     }
 
     return NextResponse.json({ success: true, job: updatedJob });

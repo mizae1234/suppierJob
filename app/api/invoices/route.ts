@@ -111,9 +111,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate collision-free invoice number
-    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    const [company, supplier] = await Promise.all([
+      prisma.company.findUnique({ where: { id: companyId } }),
+      prisma.supplier.findUnique({ where: { id: supplierId }, select: { id: true, vatType: true, vatRate: true } }),
+    ]);
     if (!company) {
       return NextResponse.json({ error: 'ไม่พบบริษัทนี้' }, { status: 404 });
+    }
+    if (!supplier) {
+      return NextResponse.json({ error: 'ไม่พบข้อมูล Supplier นี้' }, { status: 404 });
     }
 
     const dateSeq = new Date().toISOString().slice(2, 7).replace('-', '');
@@ -160,7 +166,8 @@ export async function POST(request: NextRequest) {
         }
         return sum + (j.actualCost || j.estimatedCost || 0);
       }, 0);
-      const vatAmount = Number((subtotal * 0.07).toFixed(2));
+      const effectiveVatRate = supplier.vatType === 'VAT_7' ? (supplier.vatRate || 0.07) : 0;
+      const vatAmount = Number((subtotal * effectiveVatRate).toFixed(2));
       const totalAmount = Number((subtotal + vatAmount).toFixed(2));
 
       // 2. Atomically verify and lock all target jobs to INVOICED

@@ -69,9 +69,11 @@ export function CreateInvoiceModal({
   }, [jobs, invoiceCompany, invoiceSupplierId]);
 
   // Calculate selected jobs total
+  const selectedSupplier = suppliers.find(s => s.id === invoiceSupplierId);
+  const hasVat = selectedSupplier?.vatType === 'VAT_7';
   const selectedJobs = jobs.filter(j => selectedJobIds.includes(j.id));
   const subtotal = selectedJobs.reduce((sum, j) => sum + getJobTotalCost(j), 0);
-  const vat = Number((subtotal * 0.07).toFixed(2));
+  const vat = hasVat ? Number((subtotal * 0.07).toFixed(2)) : 0;
   const total = Number((subtotal + vat).toFixed(2));
 
   if (!isOpen) return null;
@@ -283,8 +285,10 @@ export function CreateInvoiceModal({
               <span className="font-mono font-bold">฿{subtotal.toLocaleString()}</span>
             </div>
             <div className="flex justify-between text-gray-600">
-              <span>ภาษีมูลค่าเพิ่ม 7% (VAT):</span>
-              <span className="font-mono font-bold">฿{vat.toLocaleString()}</span>
+              <span>{hasVat ? 'ภาษีมูลค่าเพิ่ม 7% (VAT):' : 'ภาษีมูลค่าเพิ่ม (VAT):'}</span>
+              <span className="font-mono font-bold">
+                {hasVat ? `฿${vat.toLocaleString()}` : '฿0.00 (ไม่มี VAT)'}
+              </span>
             </div>
             <div className="flex justify-between text-base font-bold text-[#0f5238] pt-2 border-t border-gray-200">
               <span>ยอดรวมสุทธิทั้งสิ้น (Total):</span>

@@ -387,17 +387,15 @@ export async function PATCH(
 
     // ─── Trigger D365 Purchase Order Integration ──────────────
     // เมื่อทุกรายการผ่านการ Approve (หรือปฏิเสธครบ) และปิดใบงานเป็น APPROVED
-    // ส่งเบื้องหลังหลังตอบกลับแล้ว (after) — ผลลัพธ์ถูกบันทึกลง Job (d365PoNumber/d365PoStatus) โดย po.ts
+    // รอให้สร้าง PO ใน D365 เสร็จก่อนตอบกลับ เพื่อให้หน้าจอแสดงเลข PO และพิมพ์ใบสั่งงานได้ทันทีหลังกดอนุมัติครั้งแรก
     if (result.progress.allApproved) {
-      after(async () => {
-        try {
-          console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
-          const poResult = await sendJobToD365PurchaseOrder(jobId);
-          console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, poResult);
-        } catch (poError) {
-          console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);
-        }
-      });
+      try {
+        console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
+        const poResult = await sendJobToD365PurchaseOrder(jobId);
+        console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, poResult);
+      } catch (poError) {
+        console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);
+      }
     }
 
     return NextResponse.json({
