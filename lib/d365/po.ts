@@ -150,6 +150,9 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     return { success: false, message: errorMsg };
   }
 
+  // ประเภท VAT ตามคู่ค้า (Supplier): มี VAT (VAT_7) = '1', ไม่มี VAT (NO_VAT) = '0'
+  const inclTax = job.supplier?.vatType === 'VAT_7' ? '1' : '0';
+
   const payload: D365PurchaseOrderPayload = {
     Bank: '',
     Company: d365Company,
@@ -169,7 +172,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     Buyer: '',
     Inspector: '',
     Approval: job.approvedBy || '',
-    InclTax: '1',
+    InclTax: inclTax,
     Lines: [
       {
         DiscountAmount: 0,
@@ -219,7 +222,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     const token = await getD365Token();
     const url = `${cfg.baseUrl}/api/services/MIS_PurchImportSvcGroup/MIS_PurchImportSvc/createPurchaseOrder`;
 
-    console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, company: d365Company, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price });
+    console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, company: d365Company, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price, inclTax });
 
     poRequestSent = true;
     const res = await fetchWithTimeout(url, {
