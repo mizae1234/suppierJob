@@ -1,10 +1,101 @@
 import { prisma } from '@/lib/prisma';
 import { getD365Config, getD365Token, D365Error, fetchWithTimeout } from './client';
 
-/** เวลารอ D365 ตอบการสร้าง PO (ทำเบื้องหลังหลังอนุมัติ จึงไม่บล็อกผู้ใช้ — เผื่อเวลาให้ D365 ช้าได้ ลดโอกาสตัดทิ้งทั้งที่ D365 สร้าง PO แล้ว) */
-const PO_REQUEST_TIMEOUT_MS = 60_000;
+/** เวลารอ D365 ตอบการสร้าง PO (ทำเบื้องหลังหลังอนุมัติ จึงไม่บล็อกผู้ใช้ — เผื่อเวลาให้ D365 Sandbox cold-start + Confirm PO ได้สูงสุด 120 วินาที) */
+const PO_REQUEST_TIMEOUT_MS = 120_000;
 /** สถานะ PENDING ค้างนานเกินนี้ ถือว่าการส่งรอบนั้นหลุด (เช่น server restart) → ส่งใหม่ได้ */
-const PO_PENDING_STALE_MS = 3 * 60_000;
+const PO_PENDING_STALE_MS = 4 * 60_000;
+
+/**
+ * ค้นหา PO ใน D365 OData ที่อาจถูกสร้างไปแล้วแต่การเชื่อมต่อตัดก่อน (Timeout)
+ * จับคู่ด้วย: บริษัท (dataAreaId) + รหัสคู่ค้า + เลขตัวถัง (VendorOrderReference) + วันที่ + รหัสสินค้าบริการ + ราคา
+ * และตรวจสอบว่าเลข PO นั้นยังไม่เคยผูกกับใบงานอื่นในระบบของเรา
+ */
+async function findUnlinkedPoInD365(params: {
+  company: string;
+  vendorAccount: string;
+  vin: string;
+  accountingDatePrefix: string; // YYYY-MM-DD
+  serviceItemNumber: string;
+  price: number;
+}): Promise<string | null> {
+  const { company, vendorAccount, vin, accountingDatePrefix, serviceItemNumber, price } = params;
+  if (!vin) return null;
+
+  try {
+    const cfg = getD365Config();
+    const token = await getD365Token();
+    const dataArea = company.toLowerCase().replace(/'/g, "''");
+    const safeVendor = vendorAccount.replace(/'/g, "''");
+    const safeVin = vin.replace(/'/g, "''");
+
+    const filter = encodeURIComponent(
+      `dataAreaId eq '${dataArea}' and OrderVendorAccountNumber eq '${safeVendor}' and VendorOrderReference eq '${safeVin}'`
+    );
+    const headersUrl = `${cfg.baseUrl}/data/PurchaseOrderHeadersV2?cross-company=true&$filter=${filter}&$top=5&$orderby=PurchaseOrderNumber%20desc&$select=PurchaseOrderNumber,AccountingDate`;
+    const headersRes = await fetchWithTimeout(
+      headersUrl,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      },
+      20_000
+    );
+    if (!headersRes.ok) return null;
+
+    const headersJson = (await headersRes.json().catch(() => ({}))) as {
+      value?: Array<{ PurchaseOrderNumber?: string; AccountingDate?: string }>;
+    };
+    const candidates = (headersJson.value || []).filter(
+      (h) =>
+        h.PurchaseOrderNumber &&
+        typeof h.AccountingDate === 'string' &&
+        h.AccountingDate.startsWith(accountingDatePrefix)
+    );
+
+    for (const candidate of candidates) {
+      const poNumber = candidate.PurchaseOrderNumber!;
+      // ข้ามถ้าเลข PO นี้ผูกกับใบงานอื่นในระบบไปแล้ว
+      const alreadyLinked = await prisma.job.findFirst({
+        where: { d365PoNumber: poNumber },
+        select: { id: true },
+      });
+      if (alreadyLinked) continue;
+
+      // ตรวจสอบรายการสินค้าและราคาใน PurchaseOrderLinesV2 ให้ตรงกัน
+      const safePo = poNumber.replace(/'/g, "''");
+      const lineFilter = encodeURIComponent(
+        `dataAreaId eq '${dataArea}' and PurchaseOrderNumber eq '${safePo}'`
+      );
+      const linesUrl = `${cfg.baseUrl}/data/PurchaseOrderLinesV2?cross-company=true&$filter=${lineFilter}&$select=ItemNumber,PurchasePrice,LineAmount`;
+      const linesRes = await fetchWithTimeout(
+        linesUrl,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        },
+        20_000
+      );
+      if (!linesRes.ok) continue;
+
+      const linesJson = (await linesRes.json().catch(() => ({}))) as {
+        value?: Array<{ ItemNumber?: string; PurchasePrice?: number; LineAmount?: number }>;
+      };
+      const lines = linesJson.value || [];
+      const matchingLine = lines.some(
+        (l) =>
+          l.ItemNumber === serviceItemNumber &&
+          Math.abs((l.PurchasePrice ?? l.LineAmount ?? 0) - price) < 0.01
+      );
+      if (matchingLine) {
+        return poNumber;
+      }
+    }
+  } catch (err) {
+    console.warn('[D365 PO] ไม่สามารถตรวจสอบ PO ตกค้างจาก OData ได้:', err);
+  }
+  return null;
+}
 
 /** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน */
 export const D365_SERVICE_ITEMS = {
@@ -216,8 +307,35 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     return { success: false, message: 'ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่แล้วรีเฟรชหน้าจอ' };
   }
 
+  const accountingDatePrefix = deliveryDateStr.slice(0, 10);
+
   let poRequestSent = false;
   try {
+    // หากเป็นการกดส่งซ้ำหลังจากครั้งก่อนเคยล้มเหลว/Timeout → เช็กใน D365 OData ก่อนว่ามี PO ที่สร้างสำเร็จไปแล้วแต่ไม่ได้รับเลขกลับมาหรือไม่
+    if (job.d365PoStatus === 'FAILED') {
+      const existingPurchId = await findUnlinkedPoInD365({
+        company: d365Company,
+        vendorAccount,
+        vin,
+        accountingDatePrefix,
+        serviceItemNumber,
+        price,
+      });
+      if (existingPurchId) {
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            d365PoNumber: existingPurchId,
+            d365PoStatus: 'SUCCESS',
+            d365PoMessage: `Created & confirmed PO ${existingPurchId} (ซิงค์จาก D365)`,
+            d365PoSentAt: new Date(),
+          },
+        });
+        console.log(`[D365 PO] พบ PO เดิมใน D365 สำหรับใบงาน ${job.jobNumber}: ${existingPurchId}`);
+        return { success: true, purchId: existingPurchId, message: `ซิงค์เลข PO ${existingPurchId} จาก D365 สำเร็จ` };
+      }
+    }
+
     const cfg = getD365Config();
     const token = await getD365Token();
     const url = `${cfg.baseUrl}/api/services/MIS_PurchImportSvcGroup/MIS_PurchImportSvc/createPurchaseOrder`;
@@ -268,6 +386,30 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
   } catch (err: unknown) {
     let errMsg = err instanceof Error ? err.message : String(err);
     if (poRequestSent && err instanceof D365Error && err.timedOut) {
+      // รอให้ D365 ประมวลผลจบสักครู่ แล้วเช็ก OData ว่า PO ถูกสร้างสำเร็จไปแล้วหรือไม่
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      const recoveredPurchId = await findUnlinkedPoInD365({
+        company: d365Company,
+        vendorAccount,
+        vin,
+        accountingDatePrefix,
+        serviceItemNumber,
+        price,
+      });
+      if (recoveredPurchId) {
+        await prisma.job.update({
+          where: { id: jobId },
+          data: {
+            d365PoNumber: recoveredPurchId,
+            d365PoStatus: 'SUCCESS',
+            d365PoMessage: `Created & confirmed PO ${recoveredPurchId}`,
+            d365PoSentAt: new Date(),
+          },
+        });
+        console.log(`[D365 PO] กู้คืน PO หลัง Timeout สำเร็จ! ใบงาน ${job.jobNumber} ได้รับ PO: ${recoveredPurchId}`);
+        return { success: true, purchId: recoveredPurchId, message: `สร้าง PO สำเร็จ (${recoveredPurchId})` };
+      }
+
       // POST หมดเวลา ≠ D365 ไม่ได้สร้าง PO — เตือนให้ตรวจก่อนส่งซ้ำ กันเปิด PO ซ้ำ
       errMsg += ' — D365 อาจสร้าง PO ไปแล้ว กรุณาตรวจสอบใน D365 ก่อนกดส่งซ้ำ';
     }
