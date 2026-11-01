@@ -174,7 +174,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
             <div className="text-[10px] font-black text-gray-900 border-b border-gray-200 pb-1 mb-1.5 uppercase flex items-center justify-between">
               <span>ข้อมูลสาขาผู้ว่าจ้าง (ORDERING BRANCH)</span>
               <span className="font-mono text-[9px] bg-gray-100 px-1.5 py-0.5 border border-gray-300">
-                {job.companyCode}
+                {job.companyCode || company?.code || '-'}
               </span>
             </div>
             <div>
@@ -214,7 +214,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
             </div>
             <div>
               <span className="text-gray-600">ชื่อผู้รับจ้าง: </span>
-              <strong className="text-gray-950 font-bold">{job.supplierName}</strong>
+              <strong className="text-gray-950 font-bold">{job.supplierName || supplier?.name || '-'}</strong>
             </div>
             {supplierAddress && (
               <div className="text-[10px] text-gray-600 leading-snug">
@@ -350,6 +350,10 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
               {isCarWash && job.carWashItems && job.carWashItems.map((item, idx) => {
                 const isItemCancelled = item.status === 'CANCELLED';
                 const serviceDisplay = getWashServiceDisplay(item.washType);
+                const matchedVehicle = vehicles.find(v => v.vin.toUpperCase() === item.vin.toUpperCase()) || (item as any).vehicle;
+                const vModel = item.vehicleModel || matchedVehicle?.model || '-';
+                const vColor = item.vehicleColor || matchedVehicle?.color || '';
+                const vPlate = item.licensePlate || matchedVehicle?.licensePlate || '-';
 
                 return (
                   <tr key={item.id || idx} className={`border-b border-gray-300 ${isItemCancelled ? 'bg-red-50/50 text-gray-500' : idx % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
@@ -360,11 +364,11 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                       {item.vin}
                     </td>
                     <td className="py-1.5 px-2 border-r border-gray-300 text-gray-900">
-                      <span>{item.vehicleModel || '-'}</span>
-                      {item.vehicleColor && <span className="text-gray-500 ml-1">({item.vehicleColor})</span>}
+                      <span>{vModel}</span>
+                      {vColor && vColor !== '-' && <span className="text-gray-500 ml-1">({vColor})</span>}
                     </td>
                     <td className="py-1.5 px-2 border-r border-gray-300 text-center font-bold text-gray-900">
-                      {item.licensePlate || '-'}
+                      {vPlate}
                     </td>
                     <td className="py-1.5 px-2 border-r border-gray-300 text-gray-900">
                       <div className="font-semibold">{serviceDisplay.name}</div>
@@ -411,6 +415,10 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                         : isItemDone
                           ? 'ส่งแล้ว'
                           : 'รอดำเนินการ';
+                    const matchedVehicle = vehicles.find(v => v.vin.toUpperCase() === item.vin.toUpperCase()) || (item as any).vehicle;
+                    const vModel = item.vehicleModel || matchedVehicle?.model || '-';
+                    const vColor = item.vehicleColor || matchedVehicle?.color || '';
+                    const vPlate = item.licensePlate || matchedVehicle?.licensePlate || '-';
 
                     return (
                       <tr key={item.id || idx} className={`border-b border-gray-300 ${isItemCancelled ? 'bg-red-50/50 text-gray-500' : idx % 2 === 1 ? 'bg-gray-50/40' : 'bg-white'}`}>
@@ -419,11 +427,11 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                           {item.vin}
                         </td>
                         <td className="py-1.5 px-2 border-r border-gray-300 text-gray-900">
-                          <span>{item.vehicleModel || '-'}</span>
-                          {item.vehicleColor && <span className="text-gray-500 ml-1">({item.vehicleColor})</span>}
+                          <span>{vModel}</span>
+                          {vColor && vColor !== '-' && <span className="text-gray-500 ml-1">({vColor})</span>}
                         </td>
                         <td className="py-1.5 px-2 border-r border-gray-300 text-center font-bold text-gray-900">
-                          {item.licensePlate || '-'}
+                          {vPlate}
                         </td>
                         <td className="py-1.5 px-2 border-r border-gray-300 text-gray-900">
                           {(job.originBranchName || job.branchName)} → {(job.destBranchName || job.customDestAddress || '-')}

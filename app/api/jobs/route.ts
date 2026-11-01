@@ -404,7 +404,7 @@ export async function POST(request: NextRequest) {
               })),
             },
           },
-          include: { carWashItems: true },
+          include: buildJobInclude(false),
         });
       }, { timeout: CREATE_JOB_TX_TIMEOUT_MS });
 
@@ -418,7 +418,7 @@ export async function POST(request: NextRequest) {
         request,
       });
 
-      return NextResponse.json({ success: true, job }, { status: 201 });
+      return NextResponse.json({ success: true, job: serializeJob(job) }, { status: 201 });
 
     } else if (jobType === 'VEHICLE_SLIDE') {
       // ─── Vehicle Slide ────────────────
@@ -505,16 +505,7 @@ export async function POST(request: NextRequest) {
               })),
             },
           },
-          include: {
-            originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-            destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-            supplier: { select: { name: true } },
-            carWashItems: {
-              include: {
-                vehicle: { select: { model: true, color: true, licensePlate: true } },
-              },
-            },
-          },
+          include: buildJobInclude(false),
         });
 
         const labels = getSlideRouteLabels({
@@ -584,7 +575,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ 
         success: true, 
-        job, 
+        job: serializeJob(job), 
         count: vinsList.length 
       }, { status: 201 });
     }
