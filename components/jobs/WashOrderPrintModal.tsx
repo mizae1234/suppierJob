@@ -30,20 +30,30 @@ export function WashOrderPrintModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-3xl max-w-2xl w-full p-6 max-h-[95vh] overflow-y-auto shadow-2xl flex flex-col gap-4">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-gray-100 pb-3 no-print">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5" style={{ color: theme.primary }} />
-            <h3 className="text-base font-bold text-gray-900">
-              บันทึกคำสั่งล้างรถสำเร็จ (Car Wash Order Created)
-            </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4 no-print">
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${theme.primary}15`, color: theme.primary }}
+            >
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-bold text-gray-900 leading-tight">
+                บันทึกคำสั่งล้างรถสำเร็จ
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Car Wash Order Created • แจ้งเตือนไปยัง Supplier เรียบร้อยแล้ว
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-bold hover:opacity-90 transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-bold hover:opacity-90 transition-colors whitespace-nowrap cursor-pointer"
               style={{ backgroundColor: theme.primary }}
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="w-4 h-4 shrink-0" />
               <span>พิมพ์ / Export PDF</span>
             </button>
             <button
@@ -51,7 +61,7 @@ export function WashOrderPrintModal({
                 if (onClose) onClose();
                 router.push('/jobs');
               }}
-              className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-semibold hover:bg-gray-200"
+              className="px-3.5 py-2 rounded-xl bg-gray-100 text-gray-700 text-xs font-semibold hover:bg-gray-200 transition-colors whitespace-nowrap cursor-pointer"
             >
               ไปยังหน้ารวมงาน
             </button>
