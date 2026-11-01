@@ -301,16 +301,17 @@ export async function PATCH(
     // ─── Trigger D365 Purchase Order Creation ───
     // รอให้สร้าง PO ใน D365 เสร็จก่อนตอบกลับ เพื่อให้หน้าจอแสดงเลข PO และพิมพ์ใบสั่งงานได้ทันทีหลังกดอนุมัติครั้งแรก
     // (หาก D365 ล่มหรือเกิดข้อผิดพลาด จะถูกจับใน try/catch โดยไม่ทำให้การอนุมัติใบงานล้มเหลว)
+    let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
     if (status === 'APPROVED') {
       try {
-        const poResult = await sendJobToD365PurchaseOrder(id);
-        console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, poResult);
+        d365Po = await sendJobToD365PurchaseOrder(id);
+        console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
       } catch (poErr) {
         console.error('Trigger D365 PO creation error:', poErr);
       }
     }
 
-    return NextResponse.json({ success: true, job: updatedJob });
+    return NextResponse.json({ success: true, job: updatedJob, d365Po });
   } catch (error) {
     console.error('PATCH /api/jobs/[id]/status error:', error);
     return NextResponse.json(

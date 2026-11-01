@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Job, UserRole, CarWashItem, JobEvidence, JobStatus } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
 import { useApp } from '@/context/AppContext';
-import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2 } from 'lucide-react';
+import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2, Loader2 } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
 
 interface JobKanbanBoardProps {
@@ -16,9 +16,9 @@ interface JobKanbanBoardProps {
   onViewDetail: (job: Job) => void;
   onAcceptJob: (jobId: string) => void;
   onCompleteJob: (job: Job) => void;
-  onApproveJob: (jobId: string) => void;
+  onApproveJob: (jobId: string) => Promise<void> | void;
   onRejectJob: (job: Job) => void;
-  onApproveItem?: (job: Job, item: CarWashItem) => void;
+  onApproveItem?: (job: Job, item: CarWashItem) => Promise<void> | void;
   onRejectItem?: (job: Job, item: CarWashItem) => void;
 }
 
@@ -115,11 +115,13 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
   onRejectItem,
 }) => {
   const { activeBranch, currentBranchId, currentCompany } = useApp();
+  const [approvingKey, setApprovingKey] = useState<string | null>(null);
   const vehicleCards = useMemo(() => toVehicleCards(jobs), [jobs]);
   const isReviewer = currentRole !== 'SUPPLIER';
 
   const renderActions = (card: VehicleCard) => {
     const { job, item } = card;
+    const isApproving = approvingKey === card.key;
 
     if (currentRole === 'SUPPLIER' && job.status === 'PENDING_SUPPLIER') {
       return (
@@ -143,17 +145,36 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
         <>
           <button
             onClick={() => onRejectItem(job, item)}
+            disabled={isApproving}
             title="ตีกลับคันนี้"
-            className="p-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 transition-colors"
+            className="p-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 transition-colors disabled:opacity-50"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => onApproveItem(job, item)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity"
+            onClick={async () => {
+              if (isApproving) return;
+              setApprovingKey(card.key);
+              try {
+                await onApproveItem(job, item);
+              } finally {
+                setApprovingKey(null);
+              }
+            }}
+            disabled={isApproving}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-70 cursor-pointer"
             style={{ backgroundColor: theme.primary }}
           >
-            <Check className="w-3.5 h-3.5" /> อนุมัติ
+            {isApproving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>กำลังอนุมัติ...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5" /> อนุมัติ
+              </>
+            )}
           </button>
         </>
       );
@@ -170,21 +191,40 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
         <>
           <button
             onClick={() => onRejectJob(job)}
+            disabled={isApproving}
             title="ตีกลับ"
-            className="p-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 transition-colors"
+            className="p-1.5 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 transition-colors disabled:opacity-50"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => onApproveJob(job.id)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity ${
+            onClick={async () => {
+              if (isApproving) return;
+              setApprovingKey(card.key);
+              try {
+                await onApproveJob(job.id);
+              } finally {
+                setApprovingKey(null);
+              }
+            }}
+            disabled={isApproving}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-70 cursor-pointer ${
               isDest ? 'bg-emerald-700' : isOrigin ? 'bg-sky-700' : ''
             }`}
             style={!isDest && !isOrigin ? { backgroundColor: theme.primary } : undefined}
             title={isDest ? 'ยืนยันรับรถเข้าสาขา' : isOrigin ? 'อนุมัติแทนสาขาปลายทาง' : 'อนุมัติงาน'}
           >
-            <Check className="w-3.5 h-3.5" />
-            <span>{isDest ? 'ยืนยันรับรถ' : isOrigin ? 'อนุมัติแทน' : 'อนุมัติ'}</span>
+            {isApproving ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>กำลังอนุมัติ...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>{isDest ? 'ยืนยันรับรถ' : isOrigin ? 'อนุมัติแทน' : 'อนุมัติ'}</span>
+              </>
+            )}
           </button>
         </>
       );

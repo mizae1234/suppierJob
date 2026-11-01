@@ -106,7 +106,7 @@ interface AppContextType {
   // Actions
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
-  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; error?: string }>;
+  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }>;
   updateCarWashItemStatus: (jobId: string, itemId: string, status: CarWashItemStatus, remarks?: string) => Promise<CarWashItemProgress | null>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
@@ -419,7 +419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     jobId: string, 
     status: JobStatus, 
     options?: { rejectReason?: string; approvedBy?: string }
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }> => {
     try {
       const res = await fetch(`/api/jobs/${jobId}/status`, {
         method: 'PATCH',
@@ -436,7 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       // Approve / cancel / reject can release or move vehicles → refresh jobs + vehicles
       await fetchJobsAndVehicles();
-      return { success: true };
+      return { success: true, d365Po: data.d365Po };
     } catch (e: any) {
       console.error('Update job status failed:', e);
       return { success: false, error: e?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ' };
@@ -460,7 +460,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (data.success) {
         // Item cancel / approve releases the vehicle → refresh jobs + vehicles
         await fetchJobsAndVehicles();
-        return { ...data.progress, allCompleted: !!data.progress?.allResolved };
+        return {
+          ...data.progress,
+          allCompleted: !!data.progress?.allResolved,
+          d365Po: data.d365Po ?? data.progress?.d365Po,
+        };
       }
     } catch (e) {
       console.error('Update car wash item status failed:', e);

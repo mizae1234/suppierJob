@@ -156,6 +156,11 @@ export interface CarWashItemProgress {
   allResolved: boolean;
   allApproved: boolean;
   allCompleted: boolean;
+  d365Po?: {
+    success: boolean;
+    purchId?: string;
+    message: string;
+  };
 }
 
 export interface JobEvidence {

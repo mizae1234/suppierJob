@@ -92,9 +92,22 @@ function ApprovalsContent() {
         approvedByLabel = `สาขา ${activeBranch.name}`;
       }
 
+      showToast(`⏳ กำลังอนุมัติใบงาน ${job.jobNumber} และเปิดใบสั่งซื้อ (PO) ใน D365...`, 'info', 2500);
       const res = await updateJobStatus(job.id, 'APPROVED', { approvedBy: approvedByLabel || undefined });
       if (res && !res.success) {
         showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
+      } else if (res?.d365Po?.success && res.d365Po.purchId) {
+        showToast(
+          `🎉 อนุมัติใบงาน ${job.jobNumber} และเปิด PO ใน D365 สำเร็จ! (เลข PO: ${res.d365Po.purchId})`,
+          'success',
+          5500
+        );
+      } else if (res?.d365Po && !res.d365Po.success) {
+        showToast(
+          `✅ อนุมัติใบงาน ${job.jobNumber} แล้ว • แต่เปิด PO ใน D365 ไม่สำเร็จ: ${res.d365Po.message}`,
+          'warning',
+          6500
+        );
       } else {
         showToast(
           proxyApproval 
@@ -102,7 +115,8 @@ function ApprovalsContent() {
             : isDest 
             ? `ยืนยันรับรถเข้าสาขาเรียบร้อย (${job.jobNumber})` 
             : `อนุมัติใบงาน ${job.jobNumber} สำเร็จ`, 
-          'success'
+          'success',
+          4500
         );
       }
     } finally {
@@ -114,13 +128,34 @@ function ApprovalsContent() {
   const handleApproveItem = async (jobId: string, itemId: string, carLabel: string) => {
     setApprovingItemId(itemId);
     try {
+      const targetJob = jobs.find(j => j.id === jobId);
+      const activeItems = (targetJob?.carWashItems || []).filter(i => i.status !== 'CANCELLED');
+      const unapprovedCount = activeItems.filter(i => i.status !== 'APPROVED').length;
+      if (unapprovedCount <= 1 && targetJob?.jobNumber) {
+        showToast(`⏳ กำลังอนุมัติใบงาน ${targetJob.jobNumber} และเปิดใบสั่งซื้อ (PO) ใน D365...`, 'info', 2500);
+      }
+
       const progress = await updateCarWashItemStatus(jobId, itemId, 'APPROVED');
       if (!progress) {
         showToast('อนุมัติไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error');
       } else if (progress.allApproved) {
-        showToast(`🎉 อนุมัติครบทุกคันแล้ว — ปิดใบงานอัตโนมัติ`, 'success');
+        if (progress.d365Po?.success && progress.d365Po.purchId) {
+          showToast(
+            `🎉 อนุมัติใบงาน ${targetJob?.jobNumber || ''} และเปิด PO ใน D365 สำเร็จ! (เลข PO: ${progress.d365Po.purchId})`,
+            'success',
+            5500
+          );
+        } else if (progress.d365Po && !progress.d365Po.success) {
+          showToast(
+            `✅ อนุมัติใบงาน ${targetJob?.jobNumber || ''} แล้ว • แต่เปิด PO ใน D365 ไม่สำเร็จ: ${progress.d365Po.message}`,
+            'warning',
+            6500
+          );
+        } else {
+          showToast(`🎉 อนุมัติครบทุกคันแล้ว — ปิดใบงานอัตโนมัติ`, 'success', 4500);
+        }
       } else {
-        showToast(`✅ อนุมัติรถคัน ${carLabel} (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success');
+        showToast(`✅ อนุมัติรถคัน ${carLabel} (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success', 3500);
       }
     } finally {
       setApprovingItemId(null);
