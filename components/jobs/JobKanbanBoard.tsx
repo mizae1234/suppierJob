@@ -236,7 +236,23 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
     <div className="overflow-x-auto pb-6">
       <div className="flex gap-4 min-w-[1500px]">
         {KANBAN_COLUMNS.map(col => {
-          const colCards = vehicleCards.filter(c => c.column === col.id);
+          const colCards = vehicleCards
+            .filter(c => c.column === col.id)
+            .sort((a, b) => {
+              const getCardTime = (card: VehicleCard) => {
+                const j = card.job;
+                if (col.id === 'APPROVED') {
+                  return new Date(j.approvedAt || j.completedAt || j.createdAt).getTime();
+                }
+                if (col.id === 'WAITING_APPROVAL') {
+                  return new Date(j.completedAt || j.createdAt).getTime();
+                }
+                return new Date(j.createdAt).getTime() || getJobScheduleDate(j).getTime();
+              };
+              const timeDiff = getCardTime(b) - getCardTime(a);
+              if (timeDiff !== 0) return timeDiff;
+              return getJobScheduleDate(b.job).getTime() - getJobScheduleDate(a.job).getTime();
+            });
           const colTotal = colCards.reduce((sum, c) => sum + c.price, 0);
           const colJobCount = new Set(colCards.map(c => c.job.id)).size;
 

@@ -89,7 +89,10 @@ export default function CreateVehicleSlidePage() {
     if (currentCompany === 'ALL') return branches;
     const companyObj = companies.find(c => c.code === currentCompany);
     if (!companyObj) return branches;
-    return branches.filter(b => b.companyId === companyObj.id);
+    const filtered = branches.filter(
+      b => b.companyId === companyObj.id || (currentCompany === 'EV7' && (b.code === 'GI06' || b.code?.startsWith('EV7')))
+    );
+    return filtered.length > 0 ? filtered : branches;
   }, [branches, companies, currentCompany]);
 
   // Branch selection for Origin
@@ -130,16 +133,6 @@ export default function CreateVehicleSlidePage() {
 
     return [allOption, ...list];
   }, [branches, availableStockVehicles]);
-
-  // Auto-switch branch when company changes
-  useEffect(() => {
-    if (currentRole === 'BRANCH') return;
-    if (availableBranches.length > 0 && !availableBranches.find(b => b.id === selectedOriginBranchId)) {
-      setSelectedOriginBranchId(availableBranches[0].id);
-      setSelectedVins([]);
-      setSelectedSupplierId('');
-    }
-  }, [availableBranches, selectedOriginBranchId, currentRole]);
 
   // State & Handler for cancelling busy vehicle order (if not verified by supplier yet)
   const [vehicleToCancel, setVehicleToCancel] = useState<(typeof vehicles)[0] | null>(null);
@@ -256,9 +249,46 @@ export default function CreateVehicleSlidePage() {
   }, [vehicles, selectedVins]);
 
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
-  const hasVendorCode = Boolean(selectedSupplier && getSupplierVendorCode(selectedSupplier, originBranchObj));
-  const isLockedBySupplier = !selectedSupplier || !hasVendorCode;
+  const hasVendorCode = Boolean(
+    selectedSupplier &&
+      (originBranchObj
+        ? getSupplierVendorCode(selectedSupplier, originBranchObj)
+        : selectedSupplier.vendorCodes && selectedSupplier.vendorCodes.length > 0)
+  );
+  const hasAnyVendorCode = Boolean(
+    selectedSupplier &&
+      ((selectedSupplier.vendorCodes && selectedSupplier.vendorCodes.length > 0) || hasVendorCode)
+  );
+  const isLockedBySupplier = !selectedSupplier || !hasAnyVendorCode;
   const destBranch = branches.find(b => b.id === destBranchId);
+
+  // Sync origin branch when branches/company/user branch load or change
+  useEffect(() => {
+    if (branches.length === 0) return;
+    if (selectedVins.length === 0) {
+      const preferredId =
+        (currentBranchId && branches.find(b => b.id === currentBranchId)?.id) ||
+        (authUser?.branchId && branches.find(b => b.id === authUser.branchId)?.id) ||
+        availableBranches[0]?.id ||
+        branches[0]?.id ||
+        '';
+      if (preferredId && (!selectedOriginBranchId || !branches.find(b => b.id === selectedOriginBranchId))) {
+        setSelectedOriginBranchId(preferredId);
+      }
+    }
+  }, [branches, availableBranches, currentBranchId, authUser?.branchId, selectedOriginBranchId, selectedVins.length]);
+
+  // Sync default destination branch when branches load or origin branch changes
+  useEffect(() => {
+    if (branches.length === 0) return;
+    if (!destBranchId || destBranchId === selectedOriginBranchId || !branches.find(b => b.id === destBranchId)) {
+      const fallbackDest =
+        availableBranches.find(b => b.id !== selectedOriginBranchId)?.id ||
+        branches.find(b => b.id !== selectedOriginBranchId)?.id ||
+        '';
+      if (fallbackDest) setDestBranchId(fallbackDest);
+    }
+  }, [branches, availableBranches, destBranchId, selectedOriginBranchId]);
 
   // Smart route supplier recommendation (used as recommendation hints, not auto-selected)
   const supplierRecommendation = useMemo(() => {
@@ -533,6 +563,10 @@ export default function CreateVehicleSlidePage() {
     }
     if (!hasVendorCode) {
       showToast('ไม่สามารถสั่งงานได้ — ต้องเลือก Supplier ที่มีรหัส Vendor D365 ของสาขานี้เท่านั้น', 'error');
+      return;
+    }
+    if (contactPhone.replace(/\D/g, '').length !== 10) {
+      showToast('กรุณากรอกเบอร์โทรผู้ติดต่อให้ครบ 10 หลัก', 'warning');
       return;
     }
 
@@ -956,7 +990,7 @@ export default function CreateVehicleSlidePage() {
                     <BranchSelect
                       branches={branches}
                       value={selectedOriginBranchId}
-                      onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); setSelectedSupplierId(''); setIsCustomPrice(false); }}
+                      onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); setIsCustomPrice(false); }}
                     />
                   ) : (
                     <div
@@ -1104,7 +1138,7 @@ export default function CreateVehicleSlidePage() {
                 <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 mb-3">
                   <button
                     type="button"
-                    onClick={() => { setDestMode('branch'); setSelectedSupplierId(''); setIsCustomPrice(false); }}
+                    onClick={() => { setDestMode('branch'); setIsCustomPrice(false); }}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       destMode === 'branch'
                         ? 'bg-white text-[#0f5238] shadow-sm'
@@ -1116,7 +1150,7 @@ export default function CreateVehicleSlidePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setDestMode('custom'); setSelectedSupplierId(''); setIsCustomPrice(false); }}
+                    onClick={() => { setDestMode('custom'); setIsCustomPrice(false); }}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       destMode === 'custom'
                         ? 'bg-white text-[#0f5238] shadow-sm'
@@ -1133,7 +1167,7 @@ export default function CreateVehicleSlidePage() {
                   <BranchSelect
                     branches={branches}
                     value={destBranchId}
-                    onChange={(id) => { setDestBranchId(id); setSelectedSupplierId(''); setIsCustomPrice(false); }}
+                    onChange={(id) => { setDestBranchId(id); setIsCustomPrice(false); }}
                     disabledIds={selectedOriginBranchId ? { [selectedOriginBranchId]: 'ต้นทาง' } : {}}
                     placeholder="เลือกสาขาปลายทาง"
                   />
@@ -1341,15 +1375,23 @@ export default function CreateVehicleSlidePage() {
 
               {/* Contact Phone */}
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  เบอร์โทรผู้ติดต่อ: *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    เบอร์โทรผู้ติดต่อ: *
+                  </label>
+                  <span className={`text-[10px] font-medium ${contactPhone.length === 10 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    {contactPhone.length}/10 หลัก
+                  </span>
+                </div>
                 <input
                   type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  pattern="[0-9]{10}"
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                   required
-                  placeholder="เช่น 08x-xxx-xxxx"
+                  placeholder="เช่น 08xxxxxxxx (ตัวเลข 10 หลัก)"
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
                 />
               </div>

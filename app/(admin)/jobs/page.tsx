@@ -32,6 +32,7 @@ import {
   LayoutList,
   Kanban,
   ArrowRight,
+  RefreshCw,
 } from 'lucide-react';
 
 function JobsContent() {
@@ -51,12 +52,23 @@ function JobsContent() {
     updateJobStatus, 
     updateCarWashItemStatus,
     addJobEvidence,
+    refreshJobs,
     suppliers,
     branches,
     vehicles,
   } = useApp();
   const { showToast } = useToast();
   const theme = useTheme();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshJobs();
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 300);
+    }
+  };
 
   // View Mode: Table vs Kanban (default to KANBAN)
   const initialViewParam = searchParams.get('view')?.toUpperCase();
@@ -179,10 +191,14 @@ function JobsContent() {
       return true;
     });
 
-    // Sort by scheduled work date (earliest first)
+    // Sort newest first (by schedule date desc, then createdAt desc)
     return filtered
-      .map(job => ({ job, t: getJobScheduleDate(job).getTime() }))
-      .sort((a, b) => a.t - b.t)
+      .map(job => ({
+        job,
+        t: getJobScheduleDate(job).getTime(),
+        created: job.createdAt ? new Date(job.createdAt).getTime() : 0,
+      }))
+      .sort((a, b) => (b.t !== a.t ? b.t - a.t : b.created - a.created))
       .map(x => x.job);
   }, [filteredJobs, searchTags, typeFilter, statusFilter, supplierFilter, activeRange]);
 
@@ -340,7 +356,24 @@ function JobsContent() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Auto-Refresh / Manual Refresh Pill */}
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            title="ระบบอัปเดตสถานะอัตโนมัติทุก 10 วินาที • คลิกเพื่ออัปเดตทันที"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-all shadow-xs cursor-pointer"
+            style={{ borderColor: theme.borderSoft }}
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>Auto-sync</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-gray-400 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
+          </button>
+
           {/* View Mode Switcher */}
           <div className="flex items-center p-1 rounded-full bg-white border shadow-xs" style={{ borderColor: theme.borderSoft }}>
             <button

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   UserRole, 
   CompanyCode, 
@@ -111,6 +111,7 @@ interface AppContextType {
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
+  refreshJobs: () => Promise<void>;
   resetToDefaultData: () => void;
 }
 
@@ -178,13 +179,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  const isFetchingJobsRef = useRef(false);
+
   const fetchJobs = useCallback(async () => {
+    if (isFetchingJobsRef.current) return;
+    isFetchingJobsRef.current = true;
     try {
-      const res = await fetch('/api/jobs');
+      const res = await fetch('/api/jobs', { cache: 'no-store' });
       const data = await res.json();
       if (data.jobs) setJobs(data.jobs);
     } catch (e) {
       console.error('Failed to fetch jobs:', e);
+    } finally {
+      isFetchingJobsRef.current = false;
     }
   }, []);
 
@@ -251,6 +258,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearInterval(timer);
     };
   }, [pendingPoJobIds]);
+
+  // ─── Auto-refresh ใบงานอัตโนมัติ (Kanban / หน้างานทั้งหมดอัปเดตแบบไม่ต้องรีเฟรชเอง) ─────
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const refreshIfVisible = () => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        fetchJobs();
+      }
+    };
+
+    const interval = setInterval(refreshIfVisible, 10000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchJobs();
+    };
+    const handleFocus = () => fetchJobs();
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isAuthenticated, fetchJobs]);
 
   // ─── Sync user auth data to context ─────────────
   useEffect(() => {
@@ -560,6 +593,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addJobEvidence,
     createInvoice,
     refreshData,
+    refreshJobs: fetchJobs,
     resetToDefaultData,
   }), [
     isLoaded,
@@ -586,6 +620,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addJobEvidence,
     createInvoice,
     refreshData,
+    fetchJobs,
     resetToDefaultData,
   ]);
 

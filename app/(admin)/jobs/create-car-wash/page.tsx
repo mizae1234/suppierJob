@@ -238,24 +238,48 @@ export default function CreateCarWashPage() {
     if (currentCompany === 'ALL') return branches;
     const companyObj = companies.find(c => c.code === currentCompany);
     if (!companyObj) return branches;
-    return branches.filter(b => b.companyId === companyObj.id);
+    const filtered = branches.filter(
+      b => b.companyId === companyObj.id || (currentCompany === 'EV7' && (b.code === 'GI06' || b.code?.startsWith('EV7')))
+    );
+    return filtered.length > 0 ? filtered : branches;
   }, [branches, companies, currentCompany]);
 
   // Branch selection — Admin/Master pick from available branches, Branch role uses their own
   const [selectedBranchId, setSelectedBranchId] = useState<string>(currentBranchId || availableBranches[0]?.id || branches[0]?.id || '');
   const selectedBranch = branches.find(b => b.id === selectedBranchId);
-  const hasVendorCode = Boolean(selectedSupplier && getSupplierVendorCode(selectedSupplier, selectedBranch));
+  const hasVendorCode = Boolean(
+    selectedSupplier &&
+      (selectedBranch
+        ? getSupplierVendorCode(selectedSupplier, selectedBranch)
+        : selectedSupplier.vendorCodes && selectedSupplier.vendorCodes.length > 0)
+  );
   const isLockedBySupplier = !selectedSupplier || !hasVendorCode;
 
-  // Auto-switch branch when company changes
+  // Sync branch when branches/company/user branch load or change
   useEffect(() => {
-    if (currentRole === 'BRANCH') return; // Branch users don't switch
+    if (branches.length === 0) return;
+    if (currentRole === 'BRANCH') {
+      const myBranchId =
+        (currentBranchId && branches.find(b => b.id === currentBranchId)?.id) ||
+        (authUser?.branchId && branches.find(b => b.id === authUser.branchId)?.id) ||
+        availableBranches[0]?.id ||
+        branches[0]?.id ||
+        '';
+      if (myBranchId && selectedBranchId !== myBranchId) {
+        setSelectedBranchId(myBranchId);
+      }
+      return;
+    }
+    if (currentBranchId && branches.find(b => b.id === currentBranchId) && selectedBranchId !== currentBranchId) {
+      setSelectedBranchId(currentBranchId);
+      setSelectedItems([]);
+      return;
+    }
     if (availableBranches.length > 0 && !availableBranches.find(b => b.id === selectedBranchId)) {
       setSelectedBranchId(availableBranches[0].id);
       setSelectedItems([]);
-      setSelectedSupplierId('');
     }
-  }, [availableBranches, selectedBranchId, currentRole]);
+  }, [branches, availableBranches, selectedBranchId, currentRole, currentBranchId, authUser?.branchId]);
 
   // Branch vehicles (only vehicles currently in stock at selected branch)
   const branchStockVehicles = useMemo(() => {
