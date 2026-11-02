@@ -86,26 +86,15 @@ export async function PATCH(
         );
       }
     } else if (user.role === 'BRANCH') {
-      // Branch can approve (APPROVED) or reject (REJECTED) items for jobs related to their branch
+      // Branch (ทั้งสาขาผู้สั่ง, สาขาต้นทาง, และสาขาปลายทาง) สามารถอนุมัติ/ตีกลับ/ยกเลิกรายการรถในใบงานที่เกี่ยวข้องกับสาขาตัวเองได้
       const isRelatedBranch = 
+        job.requestedById === user.id ||
         job.branchId === user.branchId || 
         job.originBranchId === user.branchId || 
         job.destBranchId === user.branchId;
 
       if (user.branchId && !isRelatedBranch) {
         return NextResponse.json({ error: 'คุณไม่มีสิทธิ์จัดการงานของสาขาอื่น' }, { status: 403 });
-      }
-
-      const isDestinationOnly = 
-        job.destBranchId === user.branchId && 
-        job.originBranchId !== user.branchId && 
-        job.branchId !== user.branchId;
-
-      if (isDestinationOnly && status === 'CANCELLED') {
-        return NextResponse.json(
-          { error: 'สาขาปลายทางไม่สามารถยกเลิกรายการได้' },
-          { status: 403 }
-        );
       }
     }
     // ADMIN and MASTER can do anything

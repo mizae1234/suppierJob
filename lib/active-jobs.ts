@@ -21,6 +21,7 @@ export interface ActiveJobRef {
   jobType: string;
   itemId?: string;
   verifiedAt?: string | null;
+  requestedById?: string | null;
   canCancel?: boolean;
 }
 
@@ -62,7 +63,7 @@ export async function getActiveJobsByVin(
       id: true,
       vin: true, 
       verifiedAt: true,
-      job: { select: { id: true, jobNumber: true, jobType: true, verifiedAt: true } } 
+      job: { select: { id: true, jobNumber: true, jobType: true, verifiedAt: true, requestedById: true } } 
     },
   });
   // Legacy single-car slide jobs that only stored Job.vin (no per-car items)
@@ -73,7 +74,7 @@ export async function getActiveJobsByVin(
       status: { notIn: CLOSED_JOB_STATUSES },
       carWashItems: { none: {} },
     },
-    select: { id: true, jobNumber: true, jobType: true, vin: true, verifiedAt: true },
+    select: { id: true, jobNumber: true, jobType: true, vin: true, verifiedAt: true, requestedById: true },
   });
 
   let items: Awaited<ReturnType<typeof findItems>> = [];
@@ -100,6 +101,7 @@ export async function getActiveJobsByVin(
         jobType: it.job.jobType,
         itemId: it.id,
         verifiedAt: it.verifiedAt ? it.verifiedAt.toISOString() : null,
+        requestedById: it.job.requestedById,
         canCancel: !isVerified,
       });
     }
@@ -113,6 +115,7 @@ export async function getActiveJobsByVin(
         jobNumber: j.jobNumber, 
         jobType: j.jobType,
         verifiedAt: j.verifiedAt ? j.verifiedAt.toISOString() : null,
+        requestedById: j.requestedById,
         canCancel: !isVerified,
       });
     }

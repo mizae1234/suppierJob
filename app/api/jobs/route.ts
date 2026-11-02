@@ -226,13 +226,27 @@ export async function POST(request: NextRequest) {
     // Build requester snapshot — always fetch fresh profile from DB for accuracy
     const dbUser = await prisma.user.findUnique({
       where: { id: user.id },
-      select: { firstName: true, lastName: true, position: true, phone: true, displayName: true },
+      select: { firstName: true, lastName: true, position: true, phone: true, displayName: true, branchId: true, companyId: true },
     });
     const snapshotName = (dbUser?.firstName && dbUser?.lastName)
       ? `${dbUser.firstName} ${dbUser.lastName}`
       : (requestedBy || dbUser?.displayName || user.displayName || '');
     const snapshotPosition = dbUser?.position || requesterPosition || '';
     const snapshotPhone = dbUser?.phone || requesterPhone || '';
+
+    // สำหรับงานรถสไลด์ (VEHICLE_SLIDE): ผูกสาขาผู้ว่าจ้าง (branchId) กับสาขาของผู้สั่งงานโดยอัตโนมัติ (แนวทางที่ 1)
+    if (jobType === 'VEHICLE_SLIDE') {
+      branchId = dbUser?.branchId || user.branchId || branchId || body.originBranchId;
+      if (branchId) {
+        const orderingBranch = await prisma.branch.findUnique({
+          where: { id: branchId },
+          select: { companyId: true },
+        });
+        if (orderingBranch?.companyId) {
+          companyId = orderingBranch.companyId;
+        }
+      }
+    }
 
     // Validate required fields
     if (!jobType || !companyId || !branchId || !supplierId) {
@@ -261,7 +275,7 @@ export async function POST(request: NextRequest) {
         const origId = body.originBranchId || body.branchId;
         const dstId = body.destBranchId;
         // Branch user can request a slide if their branch is either origin (sending car) or destination (pulling car to their branch)
-        if (user.branchId && user.branchId !== origId && user.branchId !== dstId) {
+        if (user.branchId && user.branchId !== origId && user.branchId !== dstId && user.branchId !== branchId) {
           return NextResponse.json(
             { error: 'สาขาของคุณต้องเป็นสาขาต้นทางหรือสาขาปลายทางของงานรถสไลด์นี้' },
             { status: 403 }
@@ -281,8 +295,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ไม่พบบริษัทนี้' }, { status: 404 });
     }
 
-    // ─── Guard: ต้องใช้ Supplier ที่มีรหัส Vendor D365 ของสาขานั้นแล้วเท่านั้น ───
-    const targetBranchId = jobType === 'VEHICLE_SLIDE' ? (body.originBranchId || branchId) : branchId;
+    // ─── Guard: ต้องใช้ Supplier ที่มีรหัส Vendor D365 ของสาขาผู้ว่าจ้าง (branchId) แล้วเท่านั้น ───
+    const targetBranchId = branchId;
     const branchVendor = await prisma.supplierVendorCode.findUnique({
       where: {
         supplierId_branchId: {
@@ -493,7 +507,7 @@ export async function POST(request: NextRequest) {
             jobType: 'VEHICLE_SLIDE',
             status: 'IN_PROGRESS',
             companyId,
-            branchId: originBranchId,
+            branchId,
             supplierId,
             vin: vinsList[0],
             originBranchId,

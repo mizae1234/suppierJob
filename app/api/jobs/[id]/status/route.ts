@@ -62,28 +62,15 @@ export async function PATCH(
         }
       }
     } else if (user.role === 'BRANCH') {
-      // Branch user can approve/reject jobs related to their branch (requester, origin, or destination)
+      // Branch user (ทั้งสาขาผู้สั่ง, สาขาต้นทาง, และสาขาปลายทาง) สามารถจัดการ/ยกเลิกใบงานที่เกี่ยวข้องกับสาขาตัวเองได้
       const isRelatedBranch = 
+        job.requestedById === user.id ||
         job.branchId === user.branchId || 
         job.originBranchId === user.branchId || 
         job.destBranchId === user.branchId;
 
       if (user.branchId && !isRelatedBranch) {
         return NextResponse.json({ error: 'คุณไม่มีสิทธิ์จัดการงานของสาขาอื่น' }, { status: 403 });
-      }
-
-      // Check destination-only branch permissions:
-      // Destination branch CANNOT cancel a job (only origin branch or Admin can cancel)
-      const isDestinationOnly = 
-        job.destBranchId === user.branchId && 
-        job.originBranchId !== user.branchId && 
-        job.branchId !== user.branchId;
-
-      if (isDestinationOnly && status === 'CANCELLED') {
-        return NextResponse.json(
-          { error: 'สาขาปลายทางไม่สามารถยกเลิกงานได้ (ดำเนินการได้เฉพาะสาขาต้นทางหรือผู้ดูแลระบบ)' },
-          { status: 403 }
-        );
       }
     } else if (user.role === 'ADMIN') {
       if (user.companyId && job.companyId !== user.companyId) {

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Job, JobActivity } from '@/types';
 import { getSlideDirection, getJobTotalCost, haversineDistance } from '@/lib/job-utils';
@@ -77,6 +78,7 @@ export function JobDetailDrawer({
   onPreviewPhoto,
 }: JobDetailDrawerProps) {
   const { currentRole, activeBranch, currentBranchId, currentCompany, branches, vehicles, suppliers, jobs, updateJobStatus, updateCarWashItemStatus, addVehiclesToJob, refreshData } = useApp();
+  const { user: authUser } = useAuth();
   const { showToast } = useToast();
   const theme = useTheme();
   const [copiedText, setCopiedText] = useState<string | null>(null);
@@ -192,13 +194,15 @@ export function JobDetailDrawer({
       ? detailActivities.activities
       : activeJob.activities;
 
-  // ─── แนวทางที่ 1: แก้ไข/เพิ่มรถ/ยกเลิกใบงานได้เฉพาะก่อนที่ Supplier จะกดยืนยันตัวรถคันแรก ───
+  // ─── แนวทางที่ 1: แก้ไข/เพิ่มรถ/ยกเลิกใบงานได้โดยสาขา (Branch) / Admin / Master ก่อนที่ Supplier จะกดยืนยันตัวรถคันแรก ───
+  const canUserCancelOrModifyJob = currentRole !== 'SUPPLIER';
+
   const hasSupplierStarted = Boolean(
     activeJob.verifiedAt ||
     activeJob.carWashItems?.some(i => i.verifiedAt || i.status === 'COMPLETED' || i.status === 'APPROVED')
   );
   const canModifyBeforeSupplierStarts =
-    currentRole !== 'SUPPLIER' &&
+    canUserCancelOrModifyJob &&
     ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(activeJob.status) &&
     !hasSupplierStarted;
 
@@ -1127,7 +1131,7 @@ export function JobDetailDrawer({
                         const s = statusCfg[item.status] || statusCfg.PENDING;
                         const isCancelled = item.status === 'CANCELLED';
                         const isVerified = Boolean(item.verifiedAt || activeJob.verifiedAt);
-                        const canCancelItem = currentRole !== 'SUPPLIER' && activeJob.status !== 'CANCELLED' && !['CANCELLED', 'APPROVED'].includes(item.status);
+                        const canCancelItem = canUserCancelOrModifyJob && activeJob.status !== 'CANCELLED' && !['CANCELLED', 'APPROVED'].includes(item.status);
 
                         return (
                           <div key={item.id} className={`px-3 py-2.5 flex items-center gap-3 text-xs transition-colors ${isCancelled ? 'bg-red-50/25' : 'hover:bg-gray-50/50'}`}>
@@ -1785,8 +1789,8 @@ export function JobDetailDrawer({
                     <span>พิมพ์ใบสั่งงาน</span>
                   </button>
 
-                  {/* Admin/Branch cancel entire job button if unverified */}
-                  {currentRole !== 'SUPPLIER' &&
+                  {/* Requester / Admin / Master cancel entire job button if unverified */}
+                  {canUserCancelOrModifyJob &&
                     !['APPROVED', 'INVOICED', 'CANCELLED'].includes(activeJob.status) &&
                     !activeJob.verifiedAt &&
                     !(activeJob.carWashItems && activeJob.carWashItems.some(i => i.verifiedAt)) && (

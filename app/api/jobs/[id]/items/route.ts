@@ -150,6 +150,7 @@ export async function POST(
     }
     if (user.role === 'BRANCH' && user.branchId) {
       const isRelatedBranch =
+        job.requestedById === user.id ||
         job.branchId === user.branchId ||
         job.originBranchId === user.branchId ||
         job.destBranchId === user.branchId;

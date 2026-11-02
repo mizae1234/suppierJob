@@ -43,6 +43,7 @@ interface CreateCarWashParams {
 
 interface CreateVehicleSlideParams {
   companyCode: CompanyCode;
+  branchId?: string;
   originBranchId: string;
   destBranchId: string;
   supplierId: string;
@@ -423,7 +424,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({
           jobType: 'VEHICLE_SLIDE',
           companyId: company?.id,
-          branchId: params.originBranchId,
+          branchId: params.branchId || params.originBranchId,
           supplierId: params.supplierId,
           vin: params.vin,
           vins: params.vins,

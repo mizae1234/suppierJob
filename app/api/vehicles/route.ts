@@ -95,24 +95,32 @@ export async function GET(request: NextRequest) {
     const activeJobs = await getActiveJobsByVin(vehicles.map(v => v.vin));
 
     // Format for frontend compatibility
-    const formatted = vehicles.map(v => ({
-      vin: v.vin,
-      model: v.model,
-      color: v.color,
-      companyId: v.companyId,
-      companyCode: v.company.code,
-      currentBranchId: v.currentBranchId,
-      currentBranchCode: v.currentBranch.code,
-      currentBranchName: v.currentBranch.name,
-      vehicleType: v.vehicleType,
-      licensePlate: v.licensePlate,
-      mileage: v.mileage,
-      status: v.status || 'AVAILABLE',
-      source: v.source,
-      d365Reserved: v.d365Reserved,
-      lastSyncedAt: v.lastSyncedAt,
-      activeJob: activeJobs.get(v.vin) || null,
-    }));
+    const formatted = vehicles.map(v => {
+      const activeJobRef = activeJobs.get(v.vin);
+      const canUserCancelActiveJob = Boolean(
+        activeJobRef?.canCancel && user.role !== 'SUPPLIER'
+      );
+      return {
+        vin: v.vin,
+        model: v.model,
+        color: v.color,
+        companyId: v.companyId,
+        companyCode: v.company.code,
+        currentBranchId: v.currentBranchId,
+        currentBranchCode: v.currentBranch.code,
+        currentBranchName: v.currentBranch.name,
+        vehicleType: v.vehicleType,
+        licensePlate: v.licensePlate,
+        mileage: v.mileage,
+        status: v.status || 'AVAILABLE',
+        source: v.source,
+        d365Reserved: v.d365Reserved,
+        lastSyncedAt: v.lastSyncedAt,
+        activeJob: activeJobRef
+          ? { ...activeJobRef, canCancel: canUserCancelActiveJob }
+          : null,
+      };
+    });
 
     return NextResponse.json({ vehicles: formatted });
   } catch (error) {

@@ -248,11 +248,15 @@ export default function CreateVehicleSlidePage() {
     return vehicles.filter(v => selectedVins.includes(v.vin));
   }, [vehicles, selectedVins]);
 
+  // สาขาผู้ว่าจ้าง (สาขาของคนที่กดสั่งงาน — รับผิดชอบค่าใช้จ่ายและเปิด PO ใน D365)
+  const orderingBranchId = authUser?.branchId || currentBranchId || selectedOriginBranchId;
+  const orderingBranchObj = branches.find(b => b.id === orderingBranchId) || originBranchObj;
+
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
   const hasVendorCode = Boolean(
     selectedSupplier &&
-      (originBranchObj
-        ? getSupplierVendorCode(selectedSupplier, originBranchObj)
+      (orderingBranchObj
+        ? getSupplierVendorCode(selectedSupplier, orderingBranchObj)
         : selectedSupplier.vendorCodes && selectedSupplier.vendorCodes.length > 0)
   );
   const hasAnyVendorCode = Boolean(
@@ -576,11 +580,12 @@ export default function CreateVehicleSlidePage() {
   const handleConfirmSlideJob = async () => {
     setIsSubmitting(true);
     try {
-      const matchedCompany = companies.find(c => c.id === originBranchObj?.companyId);
+      const matchedCompany = companies.find(c => c.id === orderingBranchObj?.companyId);
       const companyCode: CompanyCode = (matchedCompany?.code as CompanyCode) || 'EV7';
 
       const newJob = await createVehicleSlideJob({
         companyCode,
+        branchId: orderingBranchObj?.id || selectedOriginBranchId,
         originBranchId: selectedOriginBranchId,
         destBranchId: destMode === 'branch' ? destBranchId : '',
         supplierId: selectedSupplierId,
@@ -658,16 +663,16 @@ export default function CreateVehicleSlidePage() {
             stepNumber={1}
             title="เลือก Supplier รถสไลด์"
             themeColor="#0f5238"
-            currentBranchId={originBranchObj?.id}
-            currentBranchCode={originBranchObj?.code}
-            currentBranchName={originBranchObj?.name}
+            currentBranchId={orderingBranchObj?.id}
+            currentBranchCode={orderingBranchObj?.code}
+            currentBranchName={orderingBranchObj?.name}
             recommendedSupplierCode={supplierRecommendation?.recommendedCode}
             recommendationReason={supplierRecommendation?.reason}
           />
-          {/* ใบงานสไลด์ผูกกับสาขาต้นทาง → PO เปิดในบริษัทของสาขาต้นทาง */}
+          {/* ใบงานสไลด์ผูกกับสาขาของผู้สั่งงาน → PO เปิดในบริษัทของสาขาผู้สั่งงาน */}
           <D365VendorWarning
             supplier={selectedSupplier}
-            branch={branches.find(b => b.id === selectedOriginBranchId)}
+            branch={orderingBranchObj}
           />
 
           {/* Step 2: Select VIN from any branch */}
