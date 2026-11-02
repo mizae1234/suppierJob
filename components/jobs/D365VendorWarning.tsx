@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import type { Supplier } from '@/types';
 import { getSupplierVendorCode } from '@/lib/job-utils';
 
@@ -11,8 +11,7 @@ export interface D365VendorWarningProps {
 }
 
 /**
- * แถบเตือนเมื่อ Supplier ที่เลือกยังไม่มีรหัส Vendor D365 ของสาขานี้
- * (เตือนเฉย ๆ ไม่บล็อกการสร้างใบงาน — แต่ PO จะเปิดไม่ได้จนกว่าจะเพิ่มรหัส)
+ * แถบแจ้งเตือนและบล็อกการสั่งงานเมื่อ Supplier ที่เลือกยังไม่มีรหัส Vendor D365 ของสาขานี้
  */
 export function D365VendorWarning({ supplier, branch }: D365VendorWarningProps) {
   if (!supplier || !branch) return null;
@@ -22,15 +21,15 @@ export function D365VendorWarning({ supplier, branch }: D365VendorWarningProps) 
     <div
       id="d365-vendor-warning"
       role="alert"
-      className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 -mt-2"
+      className="flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-[11px] text-red-800 -mt-2"
     >
-      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+      <Lock className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
       <div className="leading-relaxed">
-        <p className="font-bold text-amber-900">
-          ยังไม่มีรหัส Vendor D365 สำหรับสาขา {branch.code || branch.name || '-'}
+        <p className="font-bold text-red-900">
+          ไม่สามารถสั่งงานได้ — ยังไม่มีรหัส Vendor D365 สำหรับสาขา {branch.code || branch.name || '-'}
         </p>
-        <p className="text-amber-700">
-          สามารถสร้างใบงานได้ปกติ (กรุณาแจ้ง Admin เพื่อเปิด PO)
+        <p className="text-red-700">
+          ต้องใช้ Supplier ที่มีรหัส Vendor D365 แล้วเท่านั้น กรุณาเลือก Supplier รายอื่น หรือแจ้ง Admin เพื่อผูกรหัส Vendor
         </p>
       </div>
     </div>

@@ -11,10 +11,12 @@ import {
   MapPin,
   X,
   Store,
+  Lock,
 } from 'lucide-react';
 import { Supplier } from '@/types';
 import { getSupplierWashConfig } from '@/lib/car-wash-rates';
 import { getSlideSupplierInfo } from '@/lib/vehicle-slide-rates';
+import { getSupplierVendorCode } from '@/lib/job-utils';
 
 export interface SupplierSelectorProps {
   suppliers: Supplier[];
@@ -25,6 +27,7 @@ export interface SupplierSelectorProps {
   title?: string;
   themeColor?: string;
   className?: string;
+  currentBranchId?: string;
   currentBranchCode?: string;
   currentBranchName?: string;
   recommendedSupplierCode?: string;
@@ -40,6 +43,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   title,
   themeColor = '#0f5238',
   className = '',
+  currentBranchId,
   currentBranchCode,
   currentBranchName,
   recommendedSupplierCode,
@@ -64,7 +68,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
   // Selected supplier wash config (for VAT & Showroom)
   const selectedWashConfig = useMemo(() => {
     if (serviceType !== 'CAR_WASH' || !selectedSupplier) return null;
-    return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name);
+    return getSupplierWashConfig(selectedSupplier.code, selectedSupplier.name, selectedSupplier);
   }, [serviceType, selectedSupplier]);
 
   // Selected supplier slide config (for Showroom & Area)
@@ -73,37 +77,117 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
     return getSlideSupplierInfo(selectedSupplier.code, selectedSupplier.name);
   }, [serviceType, selectedSupplier]);
 
-  // Filter suppliers based on search query
+  // Helper to get D365 vendor code for current branch (or primary D365 vendor code if branch not specified)
+  const getDisplayD365Code = React.useCallback(
+    (sup: Supplier | undefined | null): string | null => {
+      if (!sup) return null;
+      if (currentBranchId || currentBranchCode) {
+        return getSupplierVendorCode(sup, {
+          id: currentBranchId,
+          code: currentBranchCode,
+        });
+      }
+      if (sup.vendorCodes && sup.vendorCodes.length > 0) {
+        const giMatch = sup.vendorCodes.find(vc => vc.branchCode === 'GI');
+        return giMatch?.vendorCode || sup.vendorCodes[0].vendorCode;
+      }
+      return null;
+    },
+    [currentBranchId, currentBranchCode]
+  );
+
+  // Helper to get VAT status of a supplier
+  const getSupplierVatType = React.useCallback(
+    (sup: Supplier): 'VAT_7' | 'NO_VAT' => {
+      if (serviceType === 'CAR_WASH') {
+        const cfg = getSupplierWashConfig(sup.code, sup.name, sup);
+        return cfg.vatType === 'VAT_7' ? 'VAT_7' : 'NO_VAT';
+      }
+      return sup.vatType === 'VAT_7' ? 'VAT_7' : 'NO_VAT';
+    },
+    [serviceType]
+  );
+
+  // Helper to get showroom label of a supplier
+  const getSupplierShowroomLabel = React.useCallback(
+    (sup: Supplier): string => {
+      if (serviceType === 'CAR_WASH') {
+        const cfg = getSupplierWashConfig(sup.code, sup.name, sup);
+        return cfg.showroomLabel || sup.showroomLabel || '';
+      }
+      const slideCfg = getSlideSupplierInfo(sup.code, sup.name);
+      return slideCfg?.showroomLabel || sup.showroomLabel || '';
+    },
+    [serviceType]
+  );
+
+  // Filter & sort suppliers:
+  // 1) มีรหัส Vendor D365 ขึ้นก่อน -> ไม่มีรหัสไว้ด้านล่าง
+  // 2) แยกกลุ่ม VAT 7% กับ No VAT ให้เป็นชุดเดียวกัน
+  // 3) เรียงตามสาขาโชว์รูมประจำ และรหัส Vendor D365
   const filteredSuppliers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return suppliers;
-    return suppliers.filter(s => {
-      const matchBasic =
-        s.name.toLowerCase().includes(q) ||
-        (s.code && s.code.toLowerCase().includes(q)) ||
-        (s.phone && s.phone.toLowerCase().includes(q)) ||
-        (s.address && s.address.toLowerCase().includes(q));
+    const matched = !q
+      ? [...suppliers]
+      : suppliers.filter(s => {
+          const d365Code = getDisplayD365Code(s);
+          const matchBasic =
+            s.name.toLowerCase().includes(q) ||
+            (d365Code && d365Code.toLowerCase().includes(q)) ||
+            (s.vendorCodes && s.vendorCodes.some(vc => vc.vendorCode.toLowerCase().includes(q))) ||
+            (s.code && s.code.toLowerCase().includes(q)) ||
+            (s.phone && s.phone.toLowerCase().includes(q)) ||
+            (s.address && s.address.toLowerCase().includes(q));
 
-      if (matchBasic) return true;
+          if (matchBasic) return true;
 
-      if (serviceType === 'CAR_WASH') {
-        const cfg = getSupplierWashConfig(s.code, s.name);
-        if (cfg.showroomLabel.toLowerCase().includes(q)) return true;
-        if (cfg.showrooms.some(sr => sr.toLowerCase().includes(q))) return true;
-        if (cfg.vatType === 'VAT_7' && (q === 'vat' || q === 'ภาษี')) return true;
-        if (cfg.vatType === 'NO_VAT' && (q === 'no vat' || q === 'ไม่มี vat')) return true;
+          if (serviceType === 'CAR_WASH') {
+            const cfg = getSupplierWashConfig(s.code, s.name, s);
+            if (cfg.showroomLabel.toLowerCase().includes(q)) return true;
+            if (cfg.showrooms.some(sr => sr.toLowerCase().includes(q))) return true;
+            if (cfg.vatType === 'VAT_7' && (q === 'vat' || q === 'ภาษี')) return true;
+            if (cfg.vatType === 'NO_VAT' && (q === 'no vat' || q === 'ไม่มี vat')) return true;
+          }
+
+          if (serviceType === 'VEHICLE_SLIDE') {
+            const slideCfg = getSlideSupplierInfo(s.code, s.name);
+            const showroom = slideCfg?.showroomLabel || s.showroomLabel || '';
+            if (showroom.toLowerCase().includes(q)) return true;
+            if (slideCfg?.areaDescription.toLowerCase().includes(q)) return true;
+          }
+
+          return false;
+        });
+
+    return matched.sort((a, b) => {
+      const codeA = getDisplayD365Code(a);
+      const codeB = getDisplayD365Code(b);
+
+      // 1. มีรหัส Vendor D365 มาก่อน
+      if (codeA && !codeB) return -1;
+      if (!codeA && codeB) return 1;
+
+      // 2. จัดกลุ่ม VAT 7% อยู่ชุดเดียวกัน ตามด้วยกลุ่ม No VAT
+      const vatA = getSupplierVatType(a);
+      const vatB = getSupplierVatType(b);
+      if (vatA !== vatB) {
+        return vatA === 'VAT_7' ? -1 : 1;
       }
 
-      if (serviceType === 'VEHICLE_SLIDE') {
-        const slideCfg = getSlideSupplierInfo(s.code, s.name);
-        const showroom = slideCfg?.showroomLabel || s.showroomLabel || '';
-        if (showroom.toLowerCase().includes(q)) return true;
-        if (slideCfg?.areaDescription.toLowerCase().includes(q)) return true;
-      }
+      // 3. เรียงตามสาขาโชว์รูมประจำให้อยู่กลุ่มเดียวกัน
+      const showroomA = getSupplierShowroomLabel(a);
+      const showroomB = getSupplierShowroomLabel(b);
+      const showroomCmp = showroomA.localeCompare(showroomB, 'th');
+      if (showroomCmp !== 0) return showroomCmp;
 
-      return false;
+      // 4. เรียงตามรหัส Vendor D365 และชื่อ
+      if (codeA && codeB) {
+        const cmp = codeA.localeCompare(codeB, undefined, { numeric: true });
+        if (cmp !== 0) return cmp;
+      }
+      return a.name.localeCompare(b.name, 'th');
     });
-  }, [suppliers, searchQuery, serviceType]);
+  }, [suppliers, searchQuery, serviceType, getDisplayD365Code, getSupplierVatType, getSupplierShowroomLabel]);
 
   // Click outside to close
   useEffect(() => {
@@ -192,9 +276,9 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {selectedSupplier.code && (
+                  {getDisplayD365Code(selectedSupplier) && (
                     <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#0f5238] text-white tracking-wider shadow-2xs">
-                      {selectedSupplier.code}
+                      {getDisplayD365Code(selectedSupplier)}
                     </span>
                   )}
                   <h3 className="font-bold text-gray-900 text-xs sm:text-sm leading-snug break-words">
@@ -210,14 +294,6 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
               <ChevronsUpDown className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#0f5238]" />
             </div>
           </div>
-
-          {/* Recommendation Banner (if applicable) */}
-          {(recommendationReason || (recommendedSupplierCode && selectedSupplier.code === recommendedSupplierCode)) && (
-            <div className="mt-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200/80 text-[11px] text-amber-900 font-medium">
-              <Sparkles className="w-3 h-3 text-amber-600 shrink-0" />
-              <span className="truncate">{recommendationReason || 'แนะนำสำหรับเส้นทางนี้'}</span>
-            </div>
-          )}
 
           {/* Middle Details: Phone & Showroom Area */}
           <div className="mt-2.5 pt-2 border-t border-emerald-950/5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-gray-600">
@@ -324,80 +400,77 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
             {filteredSuppliers.length > 0 ? (
               filteredSuppliers.map(sup => {
                 const isSelected = sup.id === selectedSupplierId;
+                const d365Code = getDisplayD365Code(sup);
+                const isDisabled = !d365Code;
+
                 const itemWashConfig =
                   serviceType === 'CAR_WASH'
-                    ? getSupplierWashConfig(sup.code, sup.name)
+                    ? getSupplierWashConfig(sup.code, sup.name, sup)
                     : null;
-                const isCurrentBranchSupplier = Boolean(
-                  itemWashConfig &&
-                    currentBranchCode &&
-                    itemWashConfig.showrooms.some(
-                      sr =>
-                        currentBranchCode.toLowerCase().includes(sr.toLowerCase()) ||
-                        sr.toLowerCase().includes(currentBranchCode.toLowerCase())
-                    )
-                );
 
                 const itemSlideConfig =
                   serviceType === 'VEHICLE_SLIDE'
                     ? getSlideSupplierInfo(sup.code, sup.name)
                     : null;
 
-                const isRecommendedSlide = Boolean(
-                  serviceType === 'VEHICLE_SLIDE' &&
-                    recommendedSupplierCode &&
-                    (sup.code === recommendedSupplierCode ||
-                      (itemSlideConfig && itemSlideConfig.code === recommendedSupplierCode))
-                );
-
                 return (
                   <button
                     key={sup.id}
                     type="button"
-                    onClick={() => handleSelect(sup.id)}
+                    disabled={isDisabled}
+                    onClick={() => {
+                      if (isDisabled) return;
+                      handleSelect(sup.id);
+                    }}
                     className={`w-full text-left p-3 text-xs transition-colors flex items-center justify-between gap-3 ${
-                      isSelected
-                        ? 'bg-emerald-50/90 text-gray-900 border-l-4 border-l-[#0f5238]'
-                        : 'hover:bg-emerald-50/40 text-gray-700'
+                      isDisabled
+                        ? 'bg-gray-50/90 text-gray-400 opacity-55 cursor-not-allowed select-none'
+                        : isSelected
+                        ? 'bg-emerald-50/90 text-gray-900 border-l-4 border-l-[#0f5238] cursor-pointer'
+                        : 'hover:bg-emerald-50/40 text-gray-700 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      {/* Radio / Check indicator */}
+                      {/* Radio / Check / Lock indicator */}
                       <div
                         className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all ${
-                          isSelected
+                          isDisabled
+                            ? 'bg-gray-200 text-gray-400'
+                            : isSelected
                             ? 'bg-[#0f5238] text-white'
                             : 'border-2 border-gray-300'
                         }`}
                       >
-                        {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        {isDisabled ? (
+                          <Lock className="w-2.5 h-2.5" />
+                        ) : (
+                          isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        )}
                       </div>
 
                       {/* Info */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
-                          {sup.code && (
+                          {d365Code ? (
                             <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-gray-100 text-gray-700 border border-gray-200">
-                              {sup.code}
+                              {d365Code}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">
+                              ไม่มีรหัส Vendor
                             </span>
                           )}
                           <span
                             className={`font-bold truncate text-xs ${
-                              isSelected ? 'text-[#0f5238]' : 'text-gray-900'
+                              isDisabled
+                                ? 'text-gray-400'
+                                : isSelected
+                                ? 'text-[#0f5238]'
+                                : 'text-gray-900'
                             }`}
                           >
                             {sup.name}
                           </span>
-                          {isCurrentBranchSupplier && (
-                            <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-1.5 py-0.2 rounded shrink-0">
-                              ⭐ แนะนำสาขานี้
-                            </span>
-                          )}
-                          {isRecommendedSlide && (
-                            <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200/80 px-1.5 py-0.2 rounded shrink-0">
-                              ⭐ แนะนำตามเส้นทาง
-                            </span>
-                          )}
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
                           <span className="flex items-center gap-1 shrink-0">
@@ -425,8 +498,14 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                               <span className="inline-flex items-center gap-0.5 text-[10px] text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded shrink-0">
                                 📍 {itemSlideConfig.showroomLabel || sup.showroomLabel}
                               </span>
-                              <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 bg-slate-100 text-slate-600 border-slate-200">
-                                No VAT
+                              <span
+                                className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${
+                                  getSupplierVatType(sup) === 'VAT_7'
+                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {getSupplierVatType(sup) === 'VAT_7' ? 'VAT 7%' : 'No VAT'}
                               </span>
                             </>
                           )}

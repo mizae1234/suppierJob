@@ -281,6 +281,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ไม่พบบริษัทนี้' }, { status: 404 });
     }
 
+    // ─── Guard: ต้องใช้ Supplier ที่มีรหัส Vendor D365 ของสาขานั้นแล้วเท่านั้น ───
+    const targetBranchId = jobType === 'VEHICLE_SLIDE' ? (body.originBranchId || branchId) : branchId;
+    const branchVendor = await prisma.supplierVendorCode.findUnique({
+      where: {
+        supplierId_branchId: {
+          supplierId,
+          branchId: targetBranchId,
+        },
+      },
+      select: { vendorCode: true },
+    });
+    if (!branchVendor || !branchVendor.vendorCode?.trim()) {
+      return NextResponse.json(
+        { error: 'ไม่สามารถสั่งงานได้ เนื่องจาก Supplier ที่เลือกยังไม่มีรหัส Vendor D365 สำหรับสาขานี้' },
+        { status: 400 }
+      );
+    }
+
     // Generate collision-resistant job number e.g. CW-EV7-2609-847291
     const dateStr = new Date().toISOString().slice(2, 7).replace('-', '');
     const uniqueSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;

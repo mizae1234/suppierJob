@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
 import TagSearch from '@/components/ui/TagSearch';
 import { CompanyCode, Job } from '@/types';
+import { getSupplierVendorCode } from '@/lib/job-utils';
 import { WashConfirmModal, WashOrderPrintModal, CancelJobConfirmModal, SupplierSelector, AddServiceVehicleModal, D365VendorWarning } from '@/components/jobs';
 import { 
   getSupplierWashConfig, 
@@ -243,6 +244,8 @@ export default function CreateCarWashPage() {
   // Branch selection — Admin/Master pick from available branches, Branch role uses their own
   const [selectedBranchId, setSelectedBranchId] = useState<string>(currentBranchId || availableBranches[0]?.id || branches[0]?.id || '');
   const selectedBranch = branches.find(b => b.id === selectedBranchId);
+  const hasVendorCode = Boolean(selectedSupplier && getSupplierVendorCode(selectedSupplier, selectedBranch));
+  const isLockedBySupplier = !selectedSupplier || !hasVendorCode;
 
   // Auto-switch branch when company changes
   useEffect(() => {
@@ -597,6 +600,10 @@ export default function CreateCarWashPage() {
       showToast('กรุณาเลือก Supplier ผู้ให้บริการ', 'warning');
       return;
     }
+    if (!hasVendorCode) {
+      showToast('ไม่สามารถสั่งงานได้ — ต้องเลือก Supplier ที่มีรหัส Vendor D365 ของสาขานี้เท่านั้น', 'error');
+      return;
+    }
     if (selectedItems.length === 0) {
       showToast('กรุณาเลือก VIN อย่างน้อย 1 คัน', 'warning');
       return;
@@ -691,13 +698,14 @@ export default function CreateCarWashPage() {
             stepNumber={1}
             title="เลือก Supplier คู่ค้า"
             themeColor={theme.primary}
+            currentBranchId={selectedBranch?.id}
             currentBranchCode={selectedBranch?.code}
             currentBranchName={selectedBranch?.name}
           />
           <D365VendorWarning supplier={selectedSupplier} branch={selectedBranch} />
 
           {/* Step 2: Choose Car Category (รถใหม่ vs รถที่มา Service) */}
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-gray-200/90 shadow-xs flex flex-col gap-2.5">
+          <div className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-gray-200/90 shadow-xs flex flex-col gap-2.5 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center font-bold" style={{ backgroundColor: theme.primary }}>2</span>
@@ -773,7 +781,7 @@ export default function CreateCarWashPage() {
           </div>
 
           {/* Step 3: Select Vehicles */}
-          <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-gray-200/90 shadow-xs flex flex-col gap-3">
+          <div className={`p-3.5 sm:p-4 rounded-2xl bg-white border border-gray-200/90 shadow-xs flex flex-col gap-3 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
             {/* Header: Clean, balanced, single-line title and counter */}
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2 min-w-0">
@@ -1085,7 +1093,7 @@ export default function CreateCarWashPage() {
         </div>
 
         {/* Right Column: Per-VIN Operation Dates & Order Breakdown */}
-        <div className="lg:col-span-2 flex flex-col gap-5">
+        <div className={`lg:col-span-2 flex flex-col gap-5 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
           <div className="p-6 rounded-2xl bg-white border shadow-xs flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>

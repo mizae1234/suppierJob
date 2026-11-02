@@ -9,7 +9,7 @@ import TagSearch from '@/components/ui/TagSearch';
 import BranchSelect from '@/components/ui/BranchSelect';
 import { CustomDropdown, DropdownOption } from '@/components/ui/CustomDropdown';
 import { CompanyCode, Job } from '@/types';
-import { haversineDistance } from '@/lib/job-utils';
+import { haversineDistance, getSupplierVendorCode } from '@/lib/job-utils';
 import {
   calculateSlideJobCost,
   getRecommendedSlideSupplier,
@@ -256,6 +256,8 @@ export default function CreateVehicleSlidePage() {
   }, [vehicles, selectedVins]);
 
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
+  const hasVendorCode = Boolean(selectedSupplier && getSupplierVendorCode(selectedSupplier, originBranchObj));
+  const isLockedBySupplier = !selectedSupplier || !hasVendorCode;
   const destBranch = branches.find(b => b.id === destBranchId);
 
   // Smart route supplier recommendation (used as recommendation hints, not auto-selected)
@@ -529,6 +531,10 @@ export default function CreateVehicleSlidePage() {
       showToast('กรุณาเลือก Supplier รถสไลด์', 'warning');
       return;
     }
+    if (!hasVendorCode) {
+      showToast('ไม่สามารถสั่งงานได้ — ต้องเลือก Supplier ที่มีรหัส Vendor D365 ของสาขานี้เท่านั้น', 'error');
+      return;
+    }
 
     setShowConfirmModal(true);
   };
@@ -618,6 +624,9 @@ export default function CreateVehicleSlidePage() {
             stepNumber={1}
             title="เลือก Supplier รถสไลด์"
             themeColor="#0f5238"
+            currentBranchId={originBranchObj?.id}
+            currentBranchCode={originBranchObj?.code}
+            currentBranchName={originBranchObj?.name}
             recommendedSupplierCode={supplierRecommendation?.recommendedCode}
             recommendationReason={supplierRecommendation?.reason}
           />
@@ -628,7 +637,7 @@ export default function CreateVehicleSlidePage() {
           />
 
           {/* Step 2: Select VIN from any branch */}
-          <div className="p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3">
+          <div className={`p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">2</span>
@@ -923,7 +932,7 @@ export default function CreateVehicleSlidePage() {
         </div>
 
         {/* Column 2: Route, Schedule, Cost & Submit */}
-        <div className="lg:col-span-2 flex flex-col gap-5">
+        <div className={`lg:col-span-2 flex flex-col gap-5 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
           {/* Step 3: Route & Schedule */}
           <div className="p-6 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-4">
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
