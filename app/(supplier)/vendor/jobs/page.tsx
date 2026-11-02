@@ -133,28 +133,30 @@ function SupplierJobsPageContent() {
     return list;
   }, [jobs, supplierId, isAll, currentBranchId]);
 
-  // ─── Flatten CAR_WASH jobs with items into item-level cards ──
-  const allItemCards: SupplierItemCard[] = useMemo(() => {
-    const cards: SupplierItemCard[] = [];
+  // ─── Flatten CAR_WASH and VEHICLE_SLIDE jobs with items into item-level cards (1 card = 1 car) ──
+  const { washItemCards, slideItemCards } = useMemo(() => {
+    const washCards: SupplierItemCard[] = [];
+    const slideCards: SupplierItemCard[] = [];
 
     myJobs.forEach(job => {
-      // ONLY CAR_WASH jobs should be flattened into car wash item cards
-      if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+      if (job.carWashItems && job.carWashItems.length > 0 && (job.jobType === 'CAR_WASH' || job.jobType === 'VEHICLE_SLIDE')) {
         const completedCount = job.carWashItems.filter(i => i.status === 'COMPLETED' || i.status === 'APPROVED').length;
-        
+        const targetArr = job.jobType === 'CAR_WASH' ? washCards : slideCards;
+
         job.carWashItems.forEach(item => {
-          cards.push({
+          const vehicleObj = vehicles.find(v => v.vin === item.vin) || (item as any)?.vehicle || job.vehicle;
+          targetArr.push({
             itemId: item.id,
             vin: item.vin,
-            vehicleModel: item.vehicleModel,
-            vehicleColor: item.vehicleColor,
-            licensePlate: item.licensePlate,
+            vehicleModel: item.vehicleModel || vehicleObj?.model,
+            vehicleColor: item.vehicleColor || vehicleObj?.color,
+            licensePlate: item.licensePlate || vehicleObj?.licensePlate,
             washType: item.washType,
             unitPrice: item.unitPrice,
             itemStatus: item.status,
             itemRemarks: item.remarks,
             actualWashDate: item.actualWashDate,
-            verifiedAt: item.verifiedAt,
+            verifiedAt: item.verifiedAt || job.verifiedAt,
             jobId: job.id,
             jobNumber: job.jobNumber,
             jobStatus: job.status,
@@ -170,11 +172,19 @@ function SupplierJobsPageContent() {
       }
     });
 
-    return cards;
-  }, [myJobs]);
+    return { washItemCards: washCards, slideItemCards: slideCards };
+  }, [myJobs, vehicles]);
 
-  // ─── Vehicle Slide jobs (ALL slide jobs, whether single or multi-car) ──
-  const slideJobs = useMemo(() => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE'), [myJobs]);
+  const allItemCards = useMemo(
+    () => [...washItemCards, ...slideItemCards],
+    [washItemCards, slideItemCards]
+  );
+
+  // ─── Legacy Vehicle Slide jobs without carWashItems ──
+  const slideJobs = useMemo(
+    () => myJobs.filter(j => j.jobType === 'VEHICLE_SLIDE' && (!j.carWashItems || j.carWashItems.length === 0)),
+    [myJobs]
+  );
 
   const tabConfig: { key: TabKey; label: string; icon: React.ElementType; color: string }[] = [
     { key: 'verify', label: 'รอยืนยันรถ', icon: ScanLine, color: '#0284c7' },
@@ -187,11 +197,12 @@ function SupplierJobsPageContent() {
 
   // ─── Tab Filtering Logic ──
   // Shared with the supplier dashboard (lib/job-utils) so counts always match.
-  // Car wash = per car (item status + job status), slide = per job.
+  // Both Car Wash and Vehicle Slide are classified per car (item status + job status).
   const getTabItems = (tabKey: TabKey) => {
-    const items = allItemCards.filter(c => classifySupplierItem(c.itemStatus, c.jobStatus, c.verifiedAt) === tabKey);
+    const items = washItemCards.filter(c => classifySupplierItem(c.itemStatus, c.jobStatus, c.verifiedAt) === tabKey);
+    const slideItems = slideItemCards.filter(c => classifySupplierItem(c.itemStatus, c.jobStatus, c.verifiedAt) === tabKey);
     const slides = slideJobs.filter(j => classifySupplierSlide(j.status, j.verifiedAt) === tabKey);
-    return { items, slides };
+    return { items, slideItems, slides };
   };
 
   const currentTabData = getTabItems(activeTab);
@@ -199,7 +210,7 @@ function SupplierJobsPageContent() {
   // Tab counts
   const getTabCount = (tabKey: TabKey) => {
     const data = getTabItems(tabKey);
-    return data.items.length + data.slides.length;
+    return data.items.length + data.slideItems.length + data.slides.length;
   };
 
   const searchQuery = (searchParams.get('q') || '').trim().toLowerCase();
@@ -221,6 +232,22 @@ function SupplierJobsPageContent() {
     );
   }, [currentTabData.items, searchQuery]);
 
+  const filteredSlideItems = useMemo(() => {
+    if (!searchQuery) return currentTabData.slideItems;
+    const terms = searchQuery.split(/[,\s]+/).filter(t => t.length > 0);
+    if (terms.length === 0) return currentTabData.slideItems;
+
+    return currentTabData.slideItems.filter(card =>
+      terms.some(q =>
+        card.vin.toLowerCase().includes(q) ||
+        card.jobNumber.toLowerCase().includes(q) ||
+        (card.licensePlate && card.licensePlate.toLowerCase().includes(q)) ||
+        (card.vehicleModel && card.vehicleModel.toLowerCase().includes(q)) ||
+        card.branchName.toLowerCase().includes(q)
+      )
+    );
+  }, [currentTabData.slideItems, searchQuery]);
+
   const filteredSlides = useMemo(() => {
     if (!searchQuery) return currentTabData.slides;
     const terms = searchQuery.split(/[,\s]+/).filter(t => t.length > 0);
@@ -235,7 +262,7 @@ function SupplierJobsPageContent() {
     );
   }, [currentTabData.slides, searchQuery]);
 
-  const totalFilteredCount = filteredItems.length + filteredSlides.length;
+  const totalFilteredCount = filteredItems.length + filteredSlideItems.length + filteredSlides.length;
 
   // ─── Modal Target Conversion Helpers ──
   const itemCardToTarget = (card: SupplierItemCard): WorkModalTarget => {
@@ -263,6 +290,9 @@ function SupplierJobsPageContent() {
       unitPrice: card.unitPrice,
       branchName: card.branchName,
       routeText,
+      originName: isSlide ? origin : undefined,
+      destName: isSlide ? dest : undefined,
+      distance: isSlide ? card.job.distance : undefined,
       rejectReason: card.itemRemarks || card.job.rejectReason,
       job: card.job,
     };
@@ -639,7 +669,286 @@ function SupplierJobsPageContent() {
     );
   };
 
-  // ─── Render slide job card ──
+  // ─── Render per-car slide item card (เหมือนล้างรถ แยกทีละคัน + มีปุ่มนำทาง Google Maps) ──
+  const renderSlideItemCard = (card: SupplierItemCard) => {
+    const { job } = card;
+    const isSubmitting = submittingId === card.itemId;
+    const isPending = card.itemStatus === 'PENDING' && ['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(card.jobStatus);
+    const isNeedsVerify = isPending && !card.verifiedAt;
+    const isVerifiedPending = isPending && !!card.verifiedAt;
+    const isCompleted = card.itemStatus === 'COMPLETED' || card.itemStatus === 'APPROVED';
+    const isApproved = card.itemStatus === 'APPROVED' ||
+      (card.itemStatus === 'COMPLETED' && ['APPROVED', 'INVOICED'].includes(card.jobStatus));
+    const isRejected = card.itemStatus === 'REJECTED';
+    const isCancelled = card.itemStatus === 'CANCELLED' || card.jobStatus === 'CANCELLED';
+
+    const loc = getSlideLocations(job);
+    const showNav = !isCancelled && !isApproved && (loc.pickup || loc.dropoff);
+
+    return (
+      <div
+        key={card.itemId}
+        className={`p-4 sm:p-5 rounded-3xl bg-white border transition-all duration-200 shadow-2xs hover:shadow-md overflow-hidden flex flex-col gap-3.5 ${
+          isNeedsVerify
+            ? 'border-sky-200/90 hover:border-sky-300'
+            : isVerifiedPending
+            ? 'border-amber-200/90 hover:border-amber-300'
+            : isCompleted
+            ? 'border-emerald-200/70 bg-[#fafdfb]'
+            : 'border-red-200/70 bg-[#fdfafb]'
+        }`}
+      >
+        {/* ── Top Row: Vehicle Info & Per-Car Price ── */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+              isNeedsVerify
+                ? 'bg-sky-50 text-sky-600 border border-sky-100'
+                : isVerifiedPending
+                ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                : isCompleted
+                ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                : 'bg-red-50 text-red-600 border border-red-100'
+            }`}>
+              {isNeedsVerify ? <ScanLine className="w-5 h-5" /> : <Truck className="w-5 h-5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className="text-sm font-bold text-gray-900 leading-tight">
+                  {getVehicleLabel(card.vin, card.licensePlate)}
+                </p>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60 inline-flex items-center gap-1">
+                  <Truck className="w-3 h-3" />
+                  <span>รถสไลด์</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1 truncate">
+                {card.vehicleModel || 'รถยนต์'} {card.vehicleColor ? `• ${card.vehicleColor}` : ''}
+                {card.vin ? <span className="font-mono"> • VIN: {card.vin}</span> : null}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <span
+              className={`text-base font-mono ${isCancelled ? 'text-gray-400 text-xs line-through' : 'font-black text-[#0f5238]'}`}
+            >
+              {formatCurrency(card.unitPrice)}
+            </span>
+            {isCancelled && (
+              <span className="block text-[9px] text-red-500 font-medium">ไม่คิดเงิน</span>
+            )}
+          </div>
+        </div>
+
+        {/* ── Job Reference + Multi-car Status Breakdown ── */}
+        <div className="flex items-center justify-between gap-2 overflow-hidden">
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 min-w-0 overflow-hidden">
+            <Hash className="w-3 h-3 shrink-0 text-gray-400" />
+            <span className="font-mono font-semibold text-gray-700 shrink-0">{card.jobNumber}</span>
+            {isAll && (
+              <>
+                <span>•</span>
+                <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[140px]" title={card.supplierName}>
+                  🏢 {card.supplierName}
+                </span>
+              </>
+            )}
+          </div>
+
+          {card.totalItemsInJob > 1 && (() => {
+            const counts: Record<string, number> = {};
+            (card.job.carWashItems || []).forEach(it => {
+              const tab = classifySupplierItem(it.status, card.jobStatus, it.verifiedAt || card.job.verifiedAt);
+              if (tab) counts[tab] = (counts[tab] || 0) + 1;
+            });
+            const chips = [
+              { key: 'verify', label: 'รอยืนยัน', cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+              { key: 'progress', label: 'รอทำ', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+              { key: 'waiting', label: 'รอตรวจ', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+              { key: 'approved', label: 'ตรวจแล้ว', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+              { key: 'returned', label: 'ตีกลับ', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+              { key: 'declined', label: 'ยกเลิก/ปฏิเสธ', cls: 'bg-red-50 text-red-700 border-red-200' },
+            ].filter(c => counts[c.key]);
+            return (
+              <div className="flex items-center gap-1 shrink-0" title={`ใบงานนี้สั่งทั้งหมด ${card.totalItemsInJob} คัน`}>
+                {chips.map(c => (
+                  <span key={c.key} className={`px-1.5 py-0.5 rounded-md border text-[10px] font-bold whitespace-nowrap ${c.cls}`}>
+                    {c.label} {counts[c.key]}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* ── Route & Navigation Box (Unified Timeline Card) ── */}
+        <div className="p-3.5 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="font-bold text-gray-700 flex items-center gap-1.5">
+              <Route className="w-3.5 h-3.5 text-gray-400" />
+              <span>เส้นทางขนส่ง</span>
+            </span>
+            {job.distance ? (
+              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] border border-emerald-200/60">
+                ~{job.distance} กม.
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 ring-4 ring-amber-50" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate" title={loc.pickupLabel}>
+                    <span className="text-[10px] text-gray-400 font-normal mr-1">รับ:</span>
+                    {loc.pickupLabel}
+                  </p>
+                </div>
+              </div>
+              {showNav && loc.pickup && (
+                <a
+                  href={mapsDirUrl(loc.pickup)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`นำทางไปจุดรับรถ: ${loc.pickupLabel}`}
+                  className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-[11px] font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+                >
+                  <Navigation className="w-3 h-3 text-amber-600" />
+                  <span>นำทาง</span>
+                </a>
+              )}
+            </div>
+
+            <div className="w-0.5 h-2 bg-gray-200 ml-1 -my-0.5" />
+
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 ring-4 ring-emerald-50" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate" title={loc.dropoffLabel}>
+                    <span className="text-[10px] text-gray-400 font-normal mr-1">ส่ง:</span>
+                    {loc.dropoffLabel}
+                  </p>
+                </div>
+              </div>
+              {showNav && loc.dropoff && (
+                <a
+                  href={mapsDirUrl(loc.dropoff)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`นำทางไปจุดส่งรถ: ${loc.dropoffLabel}`}
+                  className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-200 text-[11px] font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
+                >
+                  <Flag className="w-3 h-3 text-emerald-600" />
+                  <span>นำทาง</span>
+                </a>
+              )}
+            </div>
+          </div>
+
+          {showNav && loc.pickup && loc.dropoff && (
+            <div className="pt-2 border-t border-gray-100 flex justify-end">
+              <a
+                href={mapsDirUrl(loc.dropoff, loc.pickup)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-semibold text-sky-700 hover:text-sky-800 flex items-center gap-1 transition-colors"
+              >
+                <span>ดูเส้นทางเต็มบน Google Maps</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Verification badge (step 1 done) */}
+        {card.verifiedAt && (isPending || isRejected) && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/70 text-[11px] font-bold text-emerald-800">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ยืนยันตัวรถคันนี้แล้ว • พร้อมส่งงาน</span>
+          </div>
+        )}
+
+        {/* Action Row */}
+        <div className="flex items-center gap-2 pt-1">
+          {isPending && (
+            <>
+              <button
+                type="button"
+                onClick={() => handleOpenRejectModalForWash(card)}
+                className="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl border border-red-200 bg-red-50/70 hover:bg-red-100 text-red-700 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+              >
+                <XCircle className="w-3.5 h-3.5 text-red-500" />
+                <span>ปฏิเสธ</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenPhotoModalForWash(card)}
+                disabled={isSubmitting}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-xs font-bold transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm disabled:opacity-50"
+                style={{ backgroundColor: theme.primary }}
+              >
+                {card.verifiedAt ? <Camera className="w-3.5 h-3.5" /> : <ScanLine className="w-3.5 h-3.5" />}
+                <span>{card.verifiedAt ? 'ถ่ายรูป + ส่งงาน' : 'ยืนยันรถก่อนเริ่มงาน'}</span>
+              </button>
+            </>
+          )}
+
+          {card.itemStatus === 'COMPLETED' && ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(card.jobStatus) && (
+            <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200/60">
+              <Clock className="w-4 h-4" />
+              <span>ส่งงานคันนี้แล้ว • รอสาขาตรวจรับ</span>
+            </div>
+          )}
+
+          {isApproved && (
+            <div
+              className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold border"
+              style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary, borderColor: theme.borderSoft }}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
+            </div>
+          )}
+
+          {isRejected && (
+            <div className="flex-1 flex items-center justify-between gap-2 p-2 rounded-xl bg-red-50 border border-red-200 text-xs">
+              <span className="text-red-700 font-medium truncate">
+                ⚠️ สาขาขอให้แก้ไข: {card.itemRemarks || card.job.rejectReason || 'โปรดตรวจสอบ'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleOpenPhotoModalForWash(card)}
+                disabled={isSubmitting}
+                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 disabled:opacity-50"
+              >
+                แก้ไข + ส่งใหม่
+              </button>
+            </div>
+          )}
+
+          {isCancelled && !isRejected && (
+            <div className="flex-1 flex flex-col gap-1 p-2.5 rounded-xl bg-red-50/80 border border-red-100 text-xs">
+              <div className="flex items-center gap-1.5 text-red-700 font-bold">
+                <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>ยกเลิก / ปฏิเสธรถคันนี้แล้ว</span>
+              </div>
+              {(card.itemRemarks || card.job.rejectReason) && (
+                <span className="text-[11px] text-red-600 truncate">
+                  เหตุผล: {card.itemRemarks || card.job.rejectReason}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── Render legacy slide job card (เฉพาะใบงานเก่าที่ไม่มี carWashItems) ──
   const renderSlideJobCard = (job: Job) => {
     const cost = getJobTotalCost(job);
     const isActiveJob = job.status === 'IN_PROGRESS' || job.status === 'PENDING_SUPPLIER';
@@ -979,14 +1288,15 @@ function SupplierJobsPageContent() {
             </>
           )}
 
-          {/* Section Header for Vehicle Slide */}
-          {filteredSlides.length > 0 && (
+          {/* Section Header for Vehicle Slide (Per-Car) */}
+          {(filteredSlideItems.length > 0 || filteredSlides.length > 0) && (
             <>
               <div className="flex items-center gap-2 px-1 mt-2">
                 <Truck className="w-4 h-4 text-purple-500" />
-                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">รถสไลด์</span>
-                <span className="text-[10px] text-gray-400">{filteredSlides.length} งาน</span>
+                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">รถสไลด์ (รายคัน)</span>
+                <span className="text-[10px] text-gray-400">{filteredSlideItems.length + filteredSlides.length} คัน</span>
               </div>
+              {filteredSlideItems.map(card => renderSlideItemCard(card))}
               {filteredSlides.map(job => renderSlideJobCard(job))}
             </>
           )}

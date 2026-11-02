@@ -108,6 +108,19 @@ interface AppContextType {
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
   updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }>;
   updateCarWashItemStatus: (jobId: string, itemId: string, status: CarWashItemStatus, remarks?: string) => Promise<CarWashItemProgress | null>;
+  addVehiclesToJob: (
+    jobId: string,
+    items: {
+      vin: string;
+      washType?: string;
+      unitPrice?: number;
+      remarks?: string;
+      actualWashDate?: string;
+      model?: string;
+      color?: string;
+      licensePlate?: string;
+    }[]
+  ) => Promise<{ success: boolean; error?: string; addedCount?: number }>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
@@ -505,6 +518,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   }, [fetchJobsAndVehicles]);
 
+  // ─── Action: Add Vehicles to Existing Job (ก่อน Supplier ยืนยันรถคันแรก) ─
+  const addVehiclesToJob = useCallback(async (
+    jobId: string,
+    items: {
+      vin: string;
+      washType?: string;
+      unitPrice?: number;
+      remarks?: string;
+      actualWashDate?: string;
+      model?: string;
+      color?: string;
+      licensePlate?: string;
+    }[]
+  ): Promise<{ success: boolean; error?: string; addedCount?: number }> => {
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'ไม่สามารถเพิ่มรถเข้าใบงานได้' };
+      }
+      await fetchJobsAndVehicles();
+      return { success: true, addedCount: data.addedCount };
+    } catch (e: any) {
+      console.error('Add vehicles to job failed:', e);
+      return { success: false, error: e?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์' };
+    }
+  }, [fetchJobsAndVehicles]);
+
   // ─── Action: Add Job Evidence (via API) ─────────
   const addJobEvidence = useCallback(async (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => {
     try {
@@ -590,6 +635,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createVehicleSlideJob,
     updateJobStatus,
     updateCarWashItemStatus,
+    addVehiclesToJob,
     addJobEvidence,
     createInvoice,
     refreshData,
@@ -617,6 +663,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createVehicleSlideJob,
     updateJobStatus,
     updateCarWashItemStatus,
+    addVehiclesToJob,
     addJobEvidence,
     createInvoice,
     refreshData,

@@ -79,7 +79,7 @@ export async function PATCH(
         );
       }
       // ต้องยืนยันตัวรถ (VIN/ทะเบียน + รูป) ก่อนส่งงาน
-      if (status === 'COMPLETED' && !item.verifiedAt) {
+      if (status === 'COMPLETED' && !item.verifiedAt && !job.verifiedAt) {
         return NextResponse.json(
           { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
           { status: 400 }

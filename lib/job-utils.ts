@@ -65,7 +65,7 @@ export function classifySupplierSlide(
   return null;
 }
 
-/** Count supplier work per bucket (car wash = per car, slide = per job) */
+/** Count supplier work per bucket (per car for jobs with carWashItems, fallback per job for legacy slide jobs) */
 export function countSupplierTabs(jobs: Job[]): Record<SupplierTabKey, number> {
   const counts: Record<SupplierTabKey, number> = {
     verify: 0,
@@ -76,9 +76,9 @@ export function countSupplierTabs(jobs: Job[]): Record<SupplierTabKey, number> {
     declined: 0,
   };
   jobs.forEach(job => {
-    if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+    if (job.carWashItems && job.carWashItems.length > 0) {
       job.carWashItems.forEach(item => {
-        const tab = classifySupplierItem(item.status, job.status, item.verifiedAt);
+        const tab = classifySupplierItem(item.status, job.status, item.verifiedAt || job.verifiedAt);
         if (tab) counts[tab]++;
       });
     } else if (job.jobType === 'VEHICLE_SLIDE') {
@@ -181,12 +181,15 @@ export function getJobStatusBadge(status: JobStatus): JobStatusMeta {
  * Get standardized vehicle display info from a job
  */
 export function getJobVehicleDisplay(job: Job) {
+  const allItems = job.carWashItems || [];
+  const activeItems = allItems.filter(i => i.status !== 'CANCELLED');
+  const displayItems = activeItems.length > 0 ? activeItems : allItems;
+
   if (job.jobType === 'CAR_WASH') {
-    const items = job.carWashItems || [];
-    const count = items.length;
-    const firstVin = items[0]?.vin || '-';
-    const firstModel = items[0]?.vehicleModel || 'รถยนต์';
-    const firstColor = items[0]?.vehicleColor || '';
+    const count = displayItems.length;
+    const firstVin = displayItems[0]?.vin || '-';
+    const firstModel = displayItems[0]?.vehicleModel || 'รถยนต์';
+    const firstColor = displayItems[0]?.vehicleColor || '';
 
     return {
       title: `${count} คัน (${firstModel}${firstColor ? ` · ${firstColor}` : ''})`,
@@ -197,14 +200,30 @@ export function getJobVehicleDisplay(job: Job) {
   }
 
   // Vehicle Slide
-  const model = job.vehicle?.model || 'รถยนต์ขนย้าย';
-  const color = job.vehicle?.color ? ` · ${job.vehicle.color}` : '';
-  const vin = job.vin || '-';
+  if (displayItems.length > 1) {
+    const count = displayItems.length;
+    const firstVin = displayItems[0]?.vin || job.vin || '-';
+    const firstModel = displayItems[0]?.vehicleModel || job.vehicle?.model || 'รถยนต์ขนย้าย';
+    const firstColor = displayItems[0]?.vehicleColor || job.vehicle?.color || '';
+
+    return {
+      title: `${count} คัน (${firstModel}${firstColor ? ` · ${firstColor}` : ''})`,
+      vin: `${firstVin} (+${count - 1} คัน)`,
+      summaryText: `${job.originBranchName || job.branchName} ➔ ${job.destBranchName || job.customDestAddress || '-'}`,
+      isMulti: true,
+    };
+  }
+
+  const singleItem = displayItems[0];
+  const model = singleItem?.vehicleModel || job.vehicle?.model || 'รถยนต์ขนย้าย';
+  const colorVal = singleItem?.vehicleColor || job.vehicle?.color;
+  const color = colorVal ? ` · ${colorVal}` : '';
+  const vin = singleItem?.vin || job.vin || '-';
 
   return {
     title: `${model}${color}`,
     vin: vin,
-    summaryText: `${job.originBranchName || job.branchName} ➔ ${job.destBranchName || '-'}`,
+    summaryText: `${job.originBranchName || job.branchName} ➔ ${job.destBranchName || job.customDestAddress || '-'}`,
     isMulti: false,
   };
 }
