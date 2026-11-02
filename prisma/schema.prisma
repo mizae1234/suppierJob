@@ -225,6 +225,9 @@ model Job {
   // บันทึก Log การสไลด์ย้ายรถ
   slideLogs        VehicleSlideLog[]
 
+  // บันทึก Log การยิงเปิด Purchase Order (D365 Interface)
+  d365PoLogs       D365PoLog[]
+
   // ค่าใช้จ่ายและการวางบิล
   estimatedCost    Float?
   actualCost       Float?
@@ -421,4 +424,46 @@ model D365SyncRun {
 
   @@index([startedAt])
   @@index([status])
+}
+
+// ประวัติการยิงเปิด Purchase Order (PO) ไปยัง D365 ทุกครั้ง (ทั้งสำเร็จและล้มเหลว)
+model D365PoLog {
+  id             String   @id @default(uuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobNumber      String   // เช่น CW-GI-2611-882028
+  jobType        String   // CAR_WASH, VEHICLE_SLIDE
+  trigger        String   @default("AUTO_APPROVE") // AUTO_APPROVE, MANUAL_RETRY, ODATA_RECOVERY
+
+  companyCode    String?  // รหัสสาขา / Legal Entity ใน D365 เช่น GI, GI01, GI02
+  branchName     String?  // ชื่อสาขา ณ ขณะที่ส่ง
+  supplierCode   String?  // รหัส Supplier ในระบบ เช่น SP-CW005
+  supplierName   String?  // ชื่อ Supplier ณ ขณะที่ส่ง
+  vendorAccount  String?  // รหัส Vendor ใน D365 เช่น V000490
+  vin            String?  // เลขตัวถังรถยนต์
+  itemNumber     String?  // รหัสสินค้าบริการใน D365 เช่น GI-0900832
+  amount         Float?   // ราคาค่าบริการที่ส่งเปิด PO
+
+  status         String   // SUCCESS, FAILED
+  purchId        String?  // เลข PO ที่ได้รับจาก D365 เช่น PO126000494
+  httpStatus     Int?     // HTTP Status Code จาก D365 API เช่น 200, 400, 500
+  message        String?  @db.NVarChar(Max) // ข้อความตอบกลับหรือ Error จาก D365
+  requestUrl     String?  // URL ของ D365 API ที่เรียก
+  requestPayload String?  @db.NVarChar(Max) // JSON Payload ที่ส่งไป D365
+  responseBody   String?  @db.NVarChar(Max) // JSON/Text ดิบที่ได้รับจาก D365
+  durationMs     Int?     // ระยะเวลาที่ใช้ยิง API (มิลลิวินาที)
+
+  actorId        String?  // ผู้กดอนุมัติหรือกดส่งซ้ำ
+  actorName      String?
+  actorRole      String?
+
+  createdAt      DateTime @default(now())
+
+  @@index([jobId])
+  @@index([jobNumber])
+  @@index([status])
+  @@index([companyCode])
+  @@index([vendorAccount])
+  @@index([purchId])
+  @@index([createdAt])
 }

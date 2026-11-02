@@ -392,7 +392,12 @@ export async function PATCH(
     if (result.progress.allApproved) {
       try {
         console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
-        d365Po = await sendJobToD365PurchaseOrder(jobId);
+        d365Po = await sendJobToD365PurchaseOrder(jobId, {
+          trigger: 'AUTO_APPROVE',
+          actorId: user.id,
+          actorName: user.displayName || user.username,
+          actorRole: user.role,
+        });
         console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
       } catch (poError) {
         console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);

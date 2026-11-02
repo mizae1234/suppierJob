@@ -304,7 +304,12 @@ export async function PATCH(
     let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
     if (status === 'APPROVED') {
       try {
-        d365Po = await sendJobToD365PurchaseOrder(id);
+        d365Po = await sendJobToD365PurchaseOrder(id, {
+          trigger: 'AUTO_APPROVE',
+          actorId: user.id,
+          actorName: user.displayName || user.username,
+          actorRole: user.role,
+        });
         console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
       } catch (poErr) {
         console.error('Trigger D365 PO creation error:', poErr);

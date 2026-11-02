@@ -4,6 +4,48 @@ import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { prisma } from '@/lib/prisma';
 import { canViewJob } from '@/lib/job-access';
 
+// GET: ดึงประวัติการยิงเปิด Purchase Order (D365PoLog) ของใบงานนี้
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAuth(request);
+  if (auth.response) return auth.response;
+  const { user } = auth;
+
+  try {
+    const { id } = await params;
+    const job = await prisma.job.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        companyId: true,
+        branchId: true,
+        originBranchId: true,
+        destBranchId: true,
+        supplierId: true,
+      },
+    });
+
+    if (!job || !canViewJob(user, job)) {
+      return NextResponse.json({ error: 'ไม่พบข้อมูลใบสั่งงาน' }, { status: 404 });
+    }
+
+    const logs = await prisma.d365PoLog.findMany({
+      where: { jobId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return NextResponse.json({ logs });
+  } catch (error) {
+    console.error('GET /api/jobs/[id]/d365-po error:', error);
+    return NextResponse.json(
+      { error: 'ไม่สามารถดึงประวัติการส่ง PO ได้' },
+      { status: 500 }
+    );
+  }
+}
+
 // POST: ส่งเปิด Purchase Order (PO) ใน D365 ซ้ำ (Manual Trigger / Retry)
 export async function POST(
   request: NextRequest,
@@ -46,7 +88,12 @@ export async function POST(
       );
     }
 
-    const result = await sendJobToD365PurchaseOrder(id);
+    const result = await sendJobToD365PurchaseOrder(id, {
+      trigger: 'MANUAL_RETRY',
+      actorId: user.id,
+      actorName: user.displayName || user.username,
+      actorRole: user.role,
+    });
 
     if (result.success) {
       return NextResponse.json({

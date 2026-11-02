@@ -155,15 +155,87 @@ export interface D365PurchaseOrderResponse {
   Message?: string;
 }
 
+export interface SendPoOptions {
+  trigger?: 'AUTO_APPROVE' | 'MANUAL_RETRY';
+  actorId?: string | null;
+  actorName?: string | null;
+  actorRole?: string | null;
+}
+
+async function recordD365PoLog(entry: {
+  jobId: string;
+  jobNumber: string;
+  jobType: string;
+  trigger: string;
+  companyCode?: string | null;
+  branchName?: string | null;
+  supplierId?: string | null;
+  supplierCode?: string | null;
+  supplierName?: string | null;
+  vendorAccount?: string | null;
+  vin?: string | null;
+  itemNumber?: string | null;
+  amount?: number | null;
+  status: 'SUCCESS' | 'FAILED';
+  purchId?: string | null;
+  httpStatus?: number | null;
+  message?: string | null;
+  requestUrl?: string | null;
+  requestPayload?: string | null;
+  responseBody?: string | null;
+  durationMs?: number | null;
+  actorId?: string | null;
+  actorName?: string | null;
+  actorRole?: string | null;
+}) {
+  try {
+    await prisma.d365PoLog.create({
+      data: {
+        jobId: entry.jobId,
+        jobNumber: entry.jobNumber,
+        jobType: entry.jobType,
+        trigger: entry.trigger,
+        companyCode: entry.companyCode ?? null,
+        branchName: entry.branchName ?? null,
+        supplierCode: entry.supplierCode ?? null,
+        supplierName: entry.supplierName ?? null,
+        vendorAccount: entry.vendorAccount ?? null,
+        vin: entry.vin ?? null,
+        itemNumber: entry.itemNumber ?? null,
+        amount: entry.amount ?? null,
+        status: entry.status,
+        purchId: entry.purchId ?? null,
+        httpStatus: entry.httpStatus ?? null,
+        message: entry.message ?? null,
+        requestUrl: entry.requestUrl ?? null,
+        requestPayload: entry.requestPayload ?? null,
+        responseBody: entry.responseBody ?? null,
+        durationMs: entry.durationMs ?? null,
+        actorId: entry.actorId ?? null,
+        actorName: entry.actorName ?? null,
+        actorRole: entry.actorRole ?? null,
+      },
+    });
+  } catch (logErr) {
+    console.error('[D365 PO] ไม่สามารถบันทึก D365PoLog ลงฐานข้อมูลได้:', logErr);
+  }
+}
+
 /**
  * ฟังก์ชันสร้างและส่ง Purchase Order (PO) ไปยัง D365 F&O
- * เมื่อสร้างเสร็จจะบันทึกเลข PO (PurchId) และสถานะลงในตาราง Job
+ * เมื่อสร้างเสร็จจะบันทึกเลข PO (PurchId) และสถานะลงในตาราง Job และบันทึก Log ทุกครั้งลงตาราง D365PoLog
  */
-export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
+export async function sendJobToD365PurchaseOrder(
+  jobId: string,
+  options?: SendPoOptions
+): Promise<{
   success: boolean;
   purchId?: string;
   message: string;
 }> {
+  const startTime = Date.now();
+  const trigger = options?.trigger || 'AUTO_APPROVE';
+
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     include: {
@@ -184,6 +256,14 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     return { success: true, purchId: job.d365PoNumber, message: `ใบงานนี้มีเลข PO แล้ว (${job.d365PoNumber})` };
   }
 
+  const actorId = options?.actorId ?? null;
+  const actorName = options?.actorName ?? job.approvedBy ?? null;
+  const actorRole = options?.actorRole ?? null;
+  const vin = (job.vin || job.carWashItems?.[0]?.vin || '').trim();
+  const price = job.actualCost ?? job.estimatedCost ?? 0;
+  const serviceItemNumber = getD365ServiceItem(job.jobType);
+  const d365Company = job.branch?.code?.trim() || null;
+
   // ตรวจสอบรหัสคู่ค้าใน D365 ของสาขานี้ (แต่ละบริษัท/สาขามีรหัส Vendor ไม่เหมือนกัน — ไม่มีการใช้รหัสสาขาอื่นแทน)
   const branchVendor = job.supplierId
     ? await prisma.supplierVendorCode.findUnique({
@@ -201,6 +281,27 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
         d365PoSentAt: new Date(),
       },
     });
+    await recordD365PoLog({
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      jobType: job.jobType,
+      trigger,
+      companyCode: d365Company,
+      branchName: job.branch?.name,
+      supplierId: job.supplierId,
+      supplierCode: job.supplier?.code,
+      supplierName: job.supplier?.name,
+      vendorAccount: null,
+      vin,
+      itemNumber: serviceItemNumber,
+      amount: price,
+      status: 'FAILED',
+      message: errorMsg,
+      durationMs: Date.now() - startTime,
+      actorId,
+      actorName,
+      actorRole,
+    });
     return { success: false, message: errorMsg };
   }
 
@@ -212,31 +313,65 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
   const dueDateObj = new Date(deliveryDateObj.getTime() + 30 * 24 * 60 * 60 * 1000);
   const dueDateStr = dueDateObj.toISOString().split('T')[0] + 'T00:00:00Z';
 
-  // หาเลข VIN ของรถ
-  const vin = (job.vin || job.carWashItems?.[0]?.vin || '').trim();
-
-  // กำหนดราคาค่าบริการ
-  const price = job.actualCost ?? job.estimatedCost ?? 0;
-
   // เลือกรหัสสินค้าบริการ (Service Item) ตามประเภทงาน
-  const serviceItemNumber = getD365ServiceItem(job.jobType);
   if (!serviceItemNumber) {
     const errorMsg = `ไม่พบรหัสสินค้า D365 สำหรับประเภทงาน "${job.jobType}"`;
     await prisma.job.update({
       where: { id: jobId },
       data: { d365PoStatus: 'FAILED', d365PoMessage: errorMsg, d365PoSentAt: new Date() },
     });
+    await recordD365PoLog({
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      jobType: job.jobType,
+      trigger,
+      companyCode: d365Company,
+      branchName: job.branch?.name,
+      supplierId: job.supplierId,
+      supplierCode: job.supplier?.code,
+      supplierName: job.supplier?.name,
+      vendorAccount,
+      vin,
+      itemNumber: null,
+      amount: price,
+      status: 'FAILED',
+      message: errorMsg,
+      durationMs: Date.now() - startTime,
+      actorId,
+      actorName,
+      actorRole,
+    });
     return { success: false, message: errorMsg };
   }
 
   // เปิด PO ตามสาขา: Company และ SiteId ใช้รหัสสาขาเดียวกัน (เช่น GI02 = มีนบุรี)
   // รหัสสาขาในระบบตรงกับรหัสบริษัท (Legal Entity) ใน D365
-  const d365Company = job.branch?.code?.trim();
   if (!d365Company) {
     const errorMsg = 'ใบงานนี้ไม่มีรหัสสาขา ไม่สามารถระบุบริษัทใน D365 ได้';
     await prisma.job.update({
       where: { id: jobId },
       data: { d365PoStatus: 'FAILED', d365PoMessage: errorMsg, d365PoSentAt: new Date() },
+    });
+    await recordD365PoLog({
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      jobType: job.jobType,
+      trigger,
+      companyCode: null,
+      branchName: job.branch?.name,
+      supplierId: job.supplierId,
+      supplierCode: job.supplier?.code,
+      supplierName: job.supplier?.name,
+      vendorAccount,
+      vin,
+      itemNumber: serviceItemNumber,
+      amount: price,
+      status: 'FAILED',
+      message: errorMsg,
+      durationMs: Date.now() - startTime,
+      actorId,
+      actorName,
+      actorRole,
     });
     return { success: false, message: errorMsg };
   }
@@ -283,6 +418,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
       },
     ],
   };
+  const payloadJson = JSON.stringify(payload);
 
   // จองสิทธิ์การส่ง (PENDING) แบบ atomic — กันส่ง PO ซ้ำ เมื่อการส่งอัตโนมัติหลังอนุมัติ (ทำเบื้องหลัง)
   // ยังไม่เสร็จ แล้วมีคนกด "ลองส่ง PO อีกครั้ง" พร้อมกัน; ถ้าค้าง PENDING เกินเวลาที่กำหนดถือว่าหลุด ส่งใหม่ได้
@@ -310,6 +446,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
   const accountingDatePrefix = deliveryDateStr.slice(0, 10);
 
   let poRequestSent = false;
+  let requestUrl: string | null = null;
   try {
     // หากเป็นการกดส่งซ้ำหลังจากครั้งก่อนเคยล้มเหลว/Timeout → เช็กใน D365 OData ก่อนว่ามี PO ที่สร้างสำเร็จไปแล้วแต่ไม่ได้รับเลขกลับมาหรือไม่
     if (job.d365PoStatus === 'FAILED') {
@@ -322,14 +459,39 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
         price,
       });
       if (existingPurchId) {
+        const msg = `Created & confirmed PO ${existingPurchId} (ซิงค์จาก D365)`;
         await prisma.job.update({
           where: { id: jobId },
           data: {
             d365PoNumber: existingPurchId,
             d365PoStatus: 'SUCCESS',
-            d365PoMessage: `Created & confirmed PO ${existingPurchId} (ซิงค์จาก D365)`,
+            d365PoMessage: msg,
             d365PoSentAt: new Date(),
           },
+        });
+        await recordD365PoLog({
+          jobId: job.id,
+          jobNumber: job.jobNumber,
+          jobType: job.jobType,
+          trigger: 'ODATA_RECOVERY',
+          companyCode: d365Company,
+          branchName: job.branch?.name,
+          supplierId: job.supplierId,
+          supplierCode: job.supplier?.code,
+          supplierName: job.supplier?.name,
+          vendorAccount,
+          vin,
+          itemNumber: serviceItemNumber,
+          amount: price,
+          status: 'SUCCESS',
+          purchId: existingPurchId,
+          httpStatus: 200,
+          message: msg,
+          requestPayload: payloadJson,
+          durationMs: Date.now() - startTime,
+          actorId,
+          actorName,
+          actorRole,
         });
         console.log(`[D365 PO] พบ PO เดิมใน D365 สำหรับใบงาน ${job.jobNumber}: ${existingPurchId}`);
         return { success: true, purchId: existingPurchId, message: `ซิงค์เลข PO ${existingPurchId} จาก D365 สำเร็จ` };
@@ -339,6 +501,7 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
     const cfg = getD365Config();
     const token = await getD365Token();
     const url = `${cfg.baseUrl}/api/services/MIS_PurchImportSvcGroup/MIS_PurchImportSvc/createPurchaseOrder`;
+    requestUrl = url;
 
     console.log(`[D365 PO] กำลังส่งใบงาน ${job.jobNumber} ไป D365...`, { url, company: d365Company, jobType: job.jobType, itemNumber: serviceItemNumber, vendorAccount, price, inclTax });
 
@@ -350,26 +513,59 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: payloadJson,
     }, PO_REQUEST_TIMEOUT_MS);
 
-    const json: D365PurchaseOrderResponse = await res.json().catch(() => ({
-      Status: 'Failed',
-      Message: `HTTP ${res.status}: ไม่สามารถอ่าน JSON ตอบกลับได้`,
-    }));
+    const rawResponseText = await res.text().catch(() => '');
+    let json: D365PurchaseOrderResponse;
+    try {
+      json = JSON.parse(rawResponseText);
+    } catch {
+      json = {
+        Status: 'Failed',
+        Message: `HTTP ${res.status}: ไม่สามารถอ่าน JSON ตอบกลับได้`,
+      };
+    }
 
     if (res.ok && json.Status === 'Success' && json.PurchId) {
+      const successMsg = json.Message || 'สร้าง PO ใน D365 สำเร็จ';
       await prisma.job.update({
         where: { id: jobId },
         data: {
           d365PoNumber: json.PurchId,
           d365PoStatus: 'SUCCESS',
-          d365PoMessage: json.Message || 'สร้าง PO ใน D365 สำเร็จ',
+          d365PoMessage: successMsg,
           d365PoSentAt: new Date(),
         },
       });
+      await recordD365PoLog({
+        jobId: job.id,
+        jobNumber: job.jobNumber,
+        jobType: job.jobType,
+        trigger,
+        companyCode: d365Company,
+        branchName: job.branch?.name,
+        supplierId: job.supplierId,
+        supplierCode: job.supplier?.code,
+        supplierName: job.supplier?.name,
+        vendorAccount,
+        vin,
+        itemNumber: serviceItemNumber,
+        amount: price,
+        status: 'SUCCESS',
+        purchId: json.PurchId,
+        httpStatus: res.status,
+        message: successMsg,
+        requestUrl: url,
+        requestPayload: payloadJson,
+        responseBody: rawResponseText,
+        durationMs: Date.now() - startTime,
+        actorId,
+        actorName,
+        actorRole,
+      });
       console.log(`[D365 PO] สำเร็จ! ใบงาน ${job.jobNumber} ได้รับ PO: ${json.PurchId}`);
-      return { success: true, purchId: json.PurchId, message: json.Message || 'สร้าง PO สำเร็จ' };
+      return { success: true, purchId: json.PurchId, message: successMsg };
     } else {
       const errMsg = json.Message || `HTTP ${res.status}: สร้าง PO ใน D365 ไม่สำเร็จ`;
       await prisma.job.update({
@@ -379,6 +575,32 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
           d365PoMessage: errMsg,
           d365PoSentAt: new Date(),
         },
+      });
+      await recordD365PoLog({
+        jobId: job.id,
+        jobNumber: job.jobNumber,
+        jobType: job.jobType,
+        trigger,
+        companyCode: d365Company,
+        branchName: job.branch?.name,
+        supplierId: job.supplierId,
+        supplierCode: job.supplier?.code,
+        supplierName: job.supplier?.name,
+        vendorAccount,
+        vin,
+        itemNumber: serviceItemNumber,
+        amount: price,
+        status: 'FAILED',
+        purchId: null,
+        httpStatus: res.status,
+        message: errMsg,
+        requestUrl: url,
+        requestPayload: payloadJson,
+        responseBody: rawResponseText,
+        durationMs: Date.now() - startTime,
+        actorId,
+        actorName,
+        actorRole,
       });
       console.error(`[D365 PO] ล้มเหลว! ใบงาน ${job.jobNumber}: ${errMsg}`);
       return { success: false, message: errMsg };
@@ -397,14 +619,40 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
         price,
       });
       if (recoveredPurchId) {
+        const recoveredMsg = `Created & confirmed PO ${recoveredPurchId}`;
         await prisma.job.update({
           where: { id: jobId },
           data: {
             d365PoNumber: recoveredPurchId,
             d365PoStatus: 'SUCCESS',
-            d365PoMessage: `Created & confirmed PO ${recoveredPurchId}`,
+            d365PoMessage: recoveredMsg,
             d365PoSentAt: new Date(),
           },
+        });
+        await recordD365PoLog({
+          jobId: job.id,
+          jobNumber: job.jobNumber,
+          jobType: job.jobType,
+          trigger: 'ODATA_RECOVERY',
+          companyCode: d365Company,
+          branchName: job.branch?.name,
+          supplierId: job.supplierId,
+          supplierCode: job.supplier?.code,
+          supplierName: job.supplier?.name,
+          vendorAccount,
+          vin,
+          itemNumber: serviceItemNumber,
+          amount: price,
+          status: 'SUCCESS',
+          purchId: recoveredPurchId,
+          httpStatus: 200,
+          message: `${recoveredMsg} (กู้คืนหลัง Timeout)`,
+          requestUrl,
+          requestPayload: payloadJson,
+          durationMs: Date.now() - startTime,
+          actorId,
+          actorName,
+          actorRole,
         });
         console.log(`[D365 PO] กู้คืน PO หลัง Timeout สำเร็จ! ใบงาน ${job.jobNumber} ได้รับ PO: ${recoveredPurchId}`);
         return { success: true, purchId: recoveredPurchId, message: `สร้าง PO สำเร็จ (${recoveredPurchId})` };
@@ -421,6 +669,31 @@ export async function sendJobToD365PurchaseOrder(jobId: string): Promise<{
         d365PoMessage: errMsg,
         d365PoSentAt: new Date(),
       },
+    });
+    await recordD365PoLog({
+      jobId: job.id,
+      jobNumber: job.jobNumber,
+      jobType: job.jobType,
+      trigger,
+      companyCode: d365Company,
+      branchName: job.branch?.name,
+      supplierId: job.supplierId,
+      supplierCode: job.supplier?.code,
+      supplierName: job.supplier?.name,
+      vendorAccount,
+      vin,
+      itemNumber: serviceItemNumber,
+      amount: price,
+      status: 'FAILED',
+      purchId: null,
+      httpStatus: err instanceof D365Error ? err.status : null,
+      message: errMsg,
+      requestUrl,
+      requestPayload: payloadJson,
+      durationMs: Date.now() - startTime,
+      actorId,
+      actorName,
+      actorRole,
     });
     return { success: false, message: errMsg };
   }
