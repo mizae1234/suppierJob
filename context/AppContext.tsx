@@ -481,8 +481,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!res.ok || !data.success) {
         return { success: false, error: data.error || 'ไม่สามารถอัปเดตสถานะงานได้' };
       }
-      // Approve / cancel / reject can release or move vehicles → refresh jobs + vehicles
-      await fetchJobsAndVehicles();
+      // อัปเดต state ทันทีเพื่อให้ UI และเลข PO แสดงผลโดยไม่ต้องรอโหลดข้อมูลรถทั้งหมดซ้ำ
+      setJobs(prev =>
+        prev.map(j => {
+          if (j.id !== jobId) return j;
+          return {
+            ...j,
+            status,
+            ...(data.job ? {
+              approvedAt: data.job.approvedAt ?? j.approvedAt,
+              approvedBy: data.job.approvedBy ?? j.approvedBy,
+              actualCost: data.job.actualCost ?? j.actualCost,
+              rejectReason: data.job.rejectReason ?? j.rejectReason,
+            } : {}),
+            ...(data.d365Po ? {
+              d365PoNumber: data.d365Po.purchId ?? j.d365PoNumber,
+              d365PoStatus: data.d365Po.success ? 'SUCCESS' : 'FAILED',
+              d365PoMessage: data.d365Po.message,
+            } : {}),
+          };
+        })
+      );
+      // ซิงค์ข้อมูลใบงานและรถเบื้องหลังโดยไม่บล็อกปุ่มผู้ใช้
+      void fetchJobsAndVehicles();
       return { success: true, d365Po: data.d365Po };
     } catch (e: any) {
       console.error('Update job status failed:', e);
@@ -505,12 +526,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (data.success) {
-        // Item cancel / approve releases the vehicle → refresh jobs + vehicles
-        await fetchJobsAndVehicles();
+        const d365Po = data.d365Po ?? data.progress?.d365Po;
+        // อัปเดตสถานะรถและใบงานใน state ทันทีโดยไม่บล็อกรอ fetch ทั้งระบบ
+        setJobs(prev =>
+          prev.map(j => {
+            if (j.id !== jobId) return j;
+            const nextItems = j.carWashItems?.map(it =>
+              it.id === itemId ? { ...it, status, remarks: remarks ?? it.remarks } : it
+            );
+            return {
+              ...j,
+              carWashItems: nextItems,
+              ...(data.progress?.allApproved ? { status: 'APPROVED' as JobStatus } : {}),
+              ...(d365Po ? {
+                d365PoNumber: d365Po.purchId ?? j.d365PoNumber,
+                d365PoStatus: d365Po.success ? 'SUCCESS' : 'FAILED',
+                d365PoMessage: d365Po.message,
+              } : {}),
+            };
+          })
+        );
+        void fetchJobsAndVehicles();
         return {
           ...data.progress,
           allCompleted: !!data.progress?.allResolved,
-          d365Po: data.d365Po ?? data.progress?.d365Po,
+          d365Po,
         };
       }
     } catch (e) {
