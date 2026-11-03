@@ -16,6 +16,7 @@ export interface VehicleRecord {
   companyCode: string;
   branchName: string;
   supplierName: string;
+  d365PoNumber?: string | null;
   invoiceNumber: string | null;
   remarks: string | null;
 }

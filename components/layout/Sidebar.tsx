@@ -103,7 +103,7 @@ export const Sidebar: React.FC = () => {
       badge: null,
     },
     {
-      label: 'ใบรายคัน (Per-Vehicle)',
+      label: 'ประวัติการทำรายการ',
       href: '/vehicle-reports',
       icon: Car,
       badge: null,
