@@ -188,12 +188,13 @@ export function VehicleDetailModal({
             )}
 
             {/* Service History Table */}
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <div className="border border-gray-200 rounded-xl overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-100 border-b border-gray-300 font-bold text-gray-700">
                     <th className="py-2.5 px-3">ลำดับ</th>
                     <th className="py-2.5 px-3">ใบสั่งงาน</th>
+                    <th className="py-2.5 px-3">เลข PO</th>
                     <th className="py-2.5 px-3">ประเภทบริการ</th>
                     <th className="py-2.5 px-3">วันที่</th>
                     <th className="py-2.5 px-3">สาขา / เส้นทาง</th>
@@ -209,8 +210,15 @@ export function VehicleDetailModal({
                     return (
                       <tr key={r.id} className="hover:bg-gray-50/80">
                         <td className="py-2.5 px-3 text-gray-500">{idx + 1}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-gray-900">
+                        <td className="py-2.5 px-3 font-mono font-bold text-gray-900 whitespace-nowrap">
                           {r.jobNumber}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {r.d365PoNumber ? (
+                            <span className="font-mono text-[11px] text-blue-700 font-bold">{r.d365PoNumber}</span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-gray-800 font-medium">
                           {getServiceLabel(r.serviceType)}
@@ -242,7 +250,7 @@ export function VehicleDetailModal({
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
-                    <td colSpan={7} className="py-2.5 px-3 text-right text-gray-700">
+                    <td colSpan={8} className="py-2.5 px-3 text-right text-gray-700">
                       ยอดรวมทั้งสิ้น ({activeRecords.length} รายการ):
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-sm text-[#0f5238]">
@@ -410,8 +418,9 @@ export function VehicleDetailModal({
                 <thead>
                   <tr className="bg-gray-100 border-b border-gray-400 text-gray-800 text-[9.5px]">
                     <th className="py-1.5 px-2 border-r border-gray-300 text-center w-8">#</th>
-                    <th className="py-1.5 px-2 border-r border-gray-300 text-left w-36">เลขที่ใบสั่งงาน</th>
-                    <th className="py-1.5 px-2 border-r border-gray-300 text-center w-24">วันที่ปฏิบัติงาน</th>
+                    <th className="py-1.5 px-2 border-r border-gray-300 text-left w-32">เลขที่ใบสั่งงาน</th>
+                    <th className="py-1.5 px-2 border-r border-gray-300 text-center w-24">เลข PO</th>
+                    <th className="py-1.5 px-2 border-r border-gray-300 text-center w-22">วันที่ปฏิบัติงาน</th>
                     <th className="py-1.5 px-2 border-r border-gray-300 text-left">ประเภทงาน / รายละเอียด</th>
                     <th className="py-1.5 px-2 border-r border-gray-300 text-left">สาขาผู้สั่งงาน / เส้นทาง</th>
                     <th className="py-1.5 px-2 border-r border-gray-300 text-left">Supplier ผู้รับจ้าง</th>
@@ -428,6 +437,9 @@ export function VehicleDetailModal({
                         <td className="py-1.5 px-2 border-r border-gray-300 text-center text-gray-500">{idx + 1}</td>
                         <td className="py-1.5 px-2 border-r border-gray-300 font-mono font-bold text-gray-950">
                           {r.jobNumber}
+                        </td>
+                        <td className="py-1.5 px-2 border-r border-gray-300 text-center font-mono text-[9.5px] font-bold text-gray-900">
+                          {r.d365PoNumber || '-'}
                         </td>
                         <td className="py-1.5 px-2 border-r border-gray-300 text-center text-gray-800 whitespace-nowrap">
                           {formatThaiDate(r.serviceDate)}

@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
               branchId: true,
               supplierId: true,
               invoiceId: true,
+              d365PoNumber: true,
               estimatedCost: true,
               actualCost: true,
               createdAt: true,
@@ -133,6 +134,7 @@ export async function GET(request: NextRequest) {
       companyCode: string;
       branchName: string;
       supplierName: string;
+      d365PoNumber: string | null;
       invoiceNumber: string | null;
       invoiceStatus: string | null;
       completedAt: string | null;
@@ -162,6 +164,7 @@ export async function GET(request: NextRequest) {
         companyCode: item.job.company.code,
         branchName: item.job.branch.name,
         supplierName: item.job.supplier.name,
+        d365PoNumber: item.job.d365PoNumber || null,
         invoiceNumber: item.job.invoice?.invoiceNumber || null,
         invoiceStatus: item.job.invoice?.status || null,
         completedAt: item.job.completedAt?.toISOString() || null,
@@ -190,6 +193,7 @@ export async function GET(request: NextRequest) {
         companyCode: job.company.code,
         branchName: job.branch.name,
         supplierName: job.supplier.name,
+        d365PoNumber: job.d365PoNumber || null,
         invoiceNumber: job.invoice?.invoiceNumber || null,
         invoiceStatus: job.invoice?.status || null,
         completedAt: job.completedAt?.toISOString() || null,

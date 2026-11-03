@@ -4,12 +4,14 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost } from '@/lib/job-utils';
+import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import { Job, CompanyCode, CarWashItem } from '@/types';
 import { VehicleDetailModal, VehicleRecord } from '@/components/vehicles';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 import {
   Car,
   FileText,
+  FileSpreadsheet,
   Search,
   Filter,
   Printer,
@@ -50,6 +52,11 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
   DEEP_CLEAN: 'ล้างพิเศษ (Deep Clean)',
   POLISH: 'ขัดเคลือบ (Polish)',
   VEHICLE_SLIDE: 'รถสไลด์ (Slide)',
+};
+
+const getServiceLabel = (serviceType: string): string => {
+  if (SERVICE_TYPE_LABELS[serviceType]) return SERVICE_TYPE_LABELS[serviceType];
+  return getWashServiceDisplay(serviceType)?.name || serviceType;
 };
 
 export default function VehicleReportsPage() {
@@ -93,6 +100,7 @@ export default function VehicleReportsPage() {
             companyCode: job.companyCode,
             branchName: job.jobType === 'VEHICLE_SLIDE' ? getRouteLabel(job) : job.branchName,
             supplierName: job.supplierName,
+            d365PoNumber: job.d365PoNumber || null,
             invoiceNumber: job.invoiceNumber || null,
             remarks: item.remarks || null,
           });
@@ -118,6 +126,7 @@ export default function VehicleReportsPage() {
           companyCode: job.companyCode,
           branchName: getRouteLabel(job),
           supplierName: job.supplierName,
+          d365PoNumber: job.d365PoNumber || null,
           invoiceNumber: job.invoiceNumber || null,
           remarks: null,
         });
@@ -155,13 +164,30 @@ export default function VehicleReportsPage() {
     return Array.from(set).sort();
   }, [allRecords]);
 
-  const serviceOptions: DropdownOption[] = useMemo(() => [
-    { value: 'ALL', label: 'ทั้งหมด', icon: Sparkles },
-    { value: 'STANDARD', label: 'ล้างปกติ (Standard)', dot: '#3b82f6' },
-    { value: 'DEEP_CLEAN', label: 'ล้างพิเศษ (Deep Clean)', dot: '#8b5cf6' },
-    { value: 'POLISH', label: 'ขัดเคลือบ (Polish)', dot: '#ec4899' },
-    { value: 'VEHICLE_SLIDE', label: 'รถสไลด์ (Slide)', dot: '#f59e0b', icon: Truck },
-  ], []);
+  const serviceOptions: DropdownOption[] = useMemo(() => {
+    const usedTypes = Array.from(new Set(allRecords.map(r => r.serviceType)));
+    const baseTypes = [
+      'WASH_AND_COAT',
+      'POLISH_STAINS',
+      'VACUUM_CENTER',
+      'VACUUM_CUSTOMER',
+      'WASH_NORMAL',
+      'WASH_INSPECTION',
+      'COATING',
+      'BIG_SIZE_M8',
+      'VEHICLE_SLIDE',
+    ];
+    const allTypes = Array.from(new Set([...usedTypes, ...baseTypes]));
+    return [
+      { value: 'ALL', label: 'ทั้งหมด', icon: Sparkles },
+      ...allTypes.map(type => ({
+        value: type,
+        label: getServiceLabel(type),
+        dot: type === 'VEHICLE_SLIDE' ? '#f59e0b' : '#10b981',
+        icon: type === 'VEHICLE_SLIDE' ? Truck : undefined,
+      })),
+    ];
+  }, [allRecords]);
 
   const statusOptions: DropdownOption[] = useMemo(() => [
     { value: 'ALL', label: 'ทั้งหมด', icon: Filter },
@@ -204,6 +230,7 @@ export default function VehicleReportsPage() {
           r.licensePlate.toLowerCase().includes(q) ||
           r.vehicleModel.toLowerCase().includes(q) ||
           r.jobNumber.toLowerCase().includes(q) ||
+          (r.d365PoNumber?.toLowerCase().includes(q) ?? false) ||
           (r.invoiceNumber?.toLowerCase().includes(q) ?? false);
         if (!match) return false;
       }
@@ -242,44 +269,54 @@ export default function VehicleReportsPage() {
   const invoicedCount = filteredRecords.filter(r => r.invoiceNumber).length;
   const cancelledCount = filteredRecords.filter(r => r.itemStatus === 'CANCELLED').length;
 
-  // ─── Export CSV ───
-  const handleExportCSV = () => {
-    const sanitizeCell = (val: string | number | null | undefined): string => {
-      if (val === null || val === undefined) return '""';
-      let str = String(val);
-      if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
-      return `"${str.replace(/"/g, '""')}"`;
-    };
+  // ─── Export Excel (.xlsx) ───
+  const handleExportExcel = async () => {
+    const XLSX = await import('xlsx');
 
-    const headers = ['VIN', 'ทะเบียนรถ', 'รุ่นรถ', 'สี', 'บริษัท', 'สาขา', 'Supplier', 'เลขใบสั่งงาน', 'ประเภทงาน', 'ประเภทบริการ', 'วันที่', 'ราคา', 'สถานะ', 'เลข Invoice', 'หมายเหตุ'];
-    const rows = filteredRecords.map(r => [
-      sanitizeCell(r.vin),
-      sanitizeCell(r.licensePlate),
-      sanitizeCell(r.vehicleModel),
-      sanitizeCell(r.vehicleColor),
-      sanitizeCell(r.companyCode),
-      sanitizeCell(r.branchName),
-      sanitizeCell(r.supplierName),
-      sanitizeCell(r.jobNumber),
-      sanitizeCell(r.jobType),
-      sanitizeCell(r.serviceType),
-      sanitizeCell(r.serviceDate),
-      sanitizeCell(r.unitPrice),
-      sanitizeCell(r.itemStatus),
-      sanitizeCell(r.invoiceNumber),
-      sanitizeCell(r.remarks),
-    ]);
+    const rows = filteredRecords.map((r, index) => ({
+      'ลำดับ': index + 1,
+      'VIN (เลขตัวถัง)': r.vin,
+      'ทะเบียนรถ': r.licensePlate || '-',
+      'รุ่นรถ': r.vehicleModel || '-',
+      'สี': r.vehicleColor || '-',
+      'บริษัท': r.companyCode,
+      'เลขใบสั่งงาน': r.jobNumber,
+      'เลข PO (D365)': r.d365PoNumber || '-',
+      'ประเภทงาน': r.jobType === 'VEHICLE_SLIDE' ? 'รถสไลด์' : 'ล้างรถ',
+      'บริการ': getServiceLabel(r.serviceType),
+      'วันที่ทำรายการ': formatThaiDate(r.serviceDate),
+      'สาขา / เส้นทาง': r.branchName,
+      'Supplier': r.supplierName,
+      'สถานะ': STATUS_STYLES[r.itemStatus]?.label || r.itemStatus,
+      'เลข Invoice': r.invoiceNumber || '-',
+      'ราคา (บาท)': r.unitPrice,
+      'หมายเหตุ': r.remarks || '',
+    }));
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Vehicle_Report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [
+      { wch: 7 },   // ลำดับ
+      { wch: 22 },  // VIN
+      { wch: 14 },  // ทะเบียนรถ
+      { wch: 26 },  // รุ่นรถ
+      { wch: 16 },  // สี
+      { wch: 8 },   // บริษัท
+      { wch: 18 },  // เลขใบสั่งงาน
+      { wch: 18 },  // เลข PO (D365)
+      { wch: 12 },  // ประเภทงาน
+      { wch: 24 },  // บริการ
+      { wch: 15 },  // วันที่ทำรายการ
+      { wch: 35 },  // สาขา / เส้นทาง
+      { wch: 32 },  // Supplier
+      { wch: 14 },  // สถานะ
+      { wch: 18 },  // เลข Invoice
+      { wch: 14 },  // ราคา (บาท)
+      { wch: 24 },  // หมายเหตุ
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ประวัติการทำรายการ');
+    XLSX.writeFile(wb, `Transaction_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // ─── Print per-vehicle detail ───
@@ -351,12 +388,12 @@ export default function VehicleReportsPage() {
           </button>
 
           <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-xs font-bold shadow-xs transition-colors"
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">ส่งออก CSV</span>
-            <span className="sm:hidden">CSV</span>
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">ส่งออก Excel</span>
+            <span className="sm:hidden">Excel</span>
           </button>
         </div>
       </div>
@@ -406,7 +443,7 @@ export default function VehicleReportsPage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="ค้นหา VIN, ทะเบียนรถ, รุ่นรถ, เลขใบสั่งงาน หรือ Invoice..."
+            placeholder="ค้นหา VIN, ทะเบียนรถ, รุ่นรถ, เลขใบสั่งงาน, เลข PO หรือ Invoice..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-10 pl-10 pr-4 rounded-xl border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238]/20 focus:border-[#0f5238] outline-none bg-white"
@@ -510,11 +547,12 @@ export default function VehicleReportsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse min-w-[860px]">
+            <table className="w-full text-left text-xs border-collapse min-w-[960px]">
               <thead>
                 <tr className="bg-gray-50/90 text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
                   <th className="py-3 px-3 md:px-4 w-12 text-center">#</th>
                   <th className="py-3 px-3 md:px-4">ใบสั่งงาน</th>
+                  <th className="py-3 px-3 md:px-4">เลข PO</th>
                   <th className="py-3 px-3 md:px-4">บริการ</th>
                   <th className="py-3 px-3 md:px-4">วันที่</th>
                   <th className="py-3 px-3 md:px-4">สาขา / เส้นทาง</th>
@@ -542,7 +580,7 @@ export default function VehicleReportsPage() {
                       onClick={() => toggleVinGroup(vin)}
                       className="bg-[#f4f9f5]/90 hover:bg-[#eaf4ed] transition-colors cursor-pointer select-none"
                     >
-                      <td colSpan={9} className="py-2.5 px-3 md:px-4">
+                      <td colSpan={10} className="py-2.5 px-3 md:px-4">
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                           {/* Left: Vehicle Identity & Meta */}
                           <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
@@ -664,6 +702,15 @@ export default function VehicleReportsPage() {
                               </span>
                             </td>
                             <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
+                              {r.d365PoNumber ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/70 font-mono text-[11px] font-bold">
+                                  {r.d365PoNumber}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
                               <div className="flex items-center gap-1.5">
                                 {r.serviceType === 'VEHICLE_SLIDE' ? (
                                   <Truck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
@@ -671,7 +718,7 @@ export default function VehicleReportsPage() {
                                   <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                 )}
                                 <span className="text-gray-700 font-medium">
-                                  {SERVICE_TYPE_LABELS[r.serviceType] || r.serviceType}
+                                  {getServiceLabel(r.serviceType)}
                                 </span>
                               </div>
                             </td>
@@ -716,7 +763,7 @@ export default function VehicleReportsPage() {
               {/* ─── Grand Total Footer ─── */}
               <tfoot>
                 <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold text-xs">
-                  <td colSpan={8} className="py-3 px-4 text-right text-gray-700">
+                  <td colSpan={9} className="py-3 px-4 text-right text-gray-700">
                     รวมค่าบริการสุทธิทั้งหมด ({totalVehicles} คัน • {filteredRecords.filter(r => r.itemStatus !== 'CANCELLED').length} รายการ):
                   </td>
                   <td className="py-3 px-4 text-right font-mono text-sm text-[#0f5238]">
