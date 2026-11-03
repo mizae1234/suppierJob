@@ -338,6 +338,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get('q') || '').trim();
+  const isAutocomplete = searchParams.get('autocomplete') === '1';
   if (!q) return NextResponse.json({ provider: 'none', results: [] });
   if (q.length > 300) return NextResponse.json({ error: 'คำค้นยาวเกินไป' }, { status: 400 });
 
@@ -389,8 +390,22 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 4. OpenStreetMap Nominatim แบบ Progressive Relaxation
+  // 4. OpenStreetMap Nominatim (สำหรับ Autocomplete ใช้แค่ Pass 1-2 เพื่อความรวดเร็ว)
   try {
+    if (isAutocomplete) {
+      let osmFast = await fetchNominatim(q);
+      if (osmFast.length === 0) {
+        const cleaned = cleanThaiAddress(q);
+        if (cleaned && cleaned !== q) {
+          osmFast = await fetchNominatim(cleaned);
+        }
+      }
+      if (osmFast.length > 0) {
+        return respondAndCache(cacheKey, { provider: 'osm', results: osmFast });
+      }
+      return NextResponse.json({ provider: 'osm', results: [] });
+    }
+
     const osmResults = await searchOsmProgressive(q);
     if (osmResults.length > 0) {
       return respondAndCache(cacheKey, { provider: 'osm', results: osmResults });
@@ -399,9 +414,9 @@ export async function GET(request: NextRequest) {
     console.warn('OSM search failed, attempting Gemini AI fallback:', error);
   }
 
-  // 5. Google Gemini AI Fallback (เมื่อ OpenStreetMap ไม่เจอ หรือข้อความเป็นภาษาพูด/คำอธิบาย)
+  // 5. Google Gemini AI Fallback (เมื่อกดค้นหาเต็มรูปแบบและ OpenStreetMap ไม่เจอ)
   const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
+  if (geminiKey && !isAutocomplete) {
     try {
       const geminiResults = await searchGemini(q, geminiKey, lat, lng);
       if (geminiResults.length > 0) {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, MapPin, Navigation, Search, RotateCcw } from 'lucide-react';
+import { X, MapPin, Navigation, Search, RotateCcw, Loader2 } from 'lucide-react';
 
 interface MapPickerModalProps {
   isOpen: boolean;
@@ -79,8 +79,12 @@ export default function MapPickerModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; name: string; detail: string }[]>([]);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
   const [searchMessage, setSearchMessage] = useState('');
   const [mapReady, setMapReady] = useState(false);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const skipAutocompleteRef = useRef(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Inject Leaflet CSS into document head
   useEffect(() => {
@@ -110,61 +114,6 @@ export default function MapPickerModal({
     }
     setIsLoadingAddress(false);
   }, []);
-
-  // Jump the map to a point and drop the pin there
-  const goTo = (lat: number, lng: number) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mapInstanceRef.current as any).setView([lat, lng], 16);
-    handlePlaceMarker(lat, lng);
-    setSearchResults([]);
-    setSearchMessage('');
-  };
-
-  // Search location — supports "lat, lng", Google Maps links, or a place name
-  const searchLocation = async () => {
-    const q = searchQuery.trim();
-    if (!q || !mapInstanceRef.current || !leafletRef.current) return;
-    setSearchResults([]);
-    setSearchMessage('');
-
-    // 1) Coordinates or Google Maps URL (…@13.75,100.56… / ?q=13.75,100.56 / !3d13.75!4d100.56)
-    const coordMatch =
-      q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
-      q.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/) ||
-      q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/) ||
-      q.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
-    if (coordMatch) {
-      goTo(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
-      return;
-    }
-
-    // 2) Place-name search (server picks Google Places if configured, otherwise OSM)
-    setIsSearching(true);
-    try {
-      const res = await fetch(
-        `/api/places/search?q=${encodeURIComponent(q)}&lat=${originLat}&lng=${originLng}`
-      );
-      const data: { provider?: string; results?: { lat: number; lng: number; name: string; detail: string }[]; error?: string } = await res.json();
-      const results = data.results || [];
-      if (!res.ok) {
-        setSearchMessage(data.error || 'ค้นหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
-      } else if (results.length === 1) {
-        goTo(results[0].lat, results[0].lng);
-      } else if (results.length > 1) {
-        setSearchResults(results);
-      } else {
-        setSearchMessage(
-          data.provider === 'google'
-            ? 'ไม่พบสถานที่นี้ — ลองพิมพ์ชื่อให้สั้นลง หรือวางพิกัด / ลิงก์ Google Maps'
-            : 'ไม่พบสถานที่นี้ใน OpenStreetMap — ลองค้นด้วยชื่อถนน/เขต หรือวางพิกัด / ลิงก์ Google Maps แทน'
-        );
-      }
-    } catch (e) {
-      console.error('Search error:', e);
-      setSearchMessage('ค้นหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
-    }
-    setIsSearching(false);
-  };
 
   // Place or move marker + draw route line
   const handlePlaceMarker = useCallback(
@@ -279,6 +228,158 @@ export default function MapPickerModal({
     },
     [originLat, originLng, reverseGeocode, pinGradient, pinLabel]
   );
+
+  // Jump the map to a point and drop the pin there
+  const goTo = useCallback(
+    (lat: number, lng: number, selectedName?: string) => {
+      if (!mapInstanceRef.current) return;
+      if (selectedName) {
+        skipAutocompleteRef.current = true;
+        setSearchQuery(selectedName);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mapInstanceRef.current as any).setView([lat, lng], 16);
+      handlePlaceMarker(lat, lng);
+      setSearchResults([]);
+      setHighlightedIndex(-1);
+      setSearchMessage('');
+    },
+    [handlePlaceMarker]
+  );
+
+  // Close autocomplete dropdown when clicking outside search bar
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchResults([]);
+        setHighlightedIndex(-1);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Debounced live autocomplete while typing (no need to press Enter)
+  useEffect(() => {
+    if (skipAutocompleteRef.current) {
+      skipAutocompleteRef.current = false;
+      return;
+    }
+
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+      setSearchResults([]);
+      setHighlightedIndex(-1);
+      setSearchMessage('');
+      setIsSearching(false);
+      return;
+    }
+
+    // Immediate match if user pasted coordinates or a full Google Maps URL containing coordinates
+    const coordMatch =
+      q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+      q.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/) ||
+      q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/) ||
+      q.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+    if (coordMatch && mapInstanceRef.current && leafletRef.current) {
+      goTo(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+
+      setIsSearching(true);
+      setSearchMessage('');
+      try {
+        const res = await fetch(
+          `/api/places/search?q=${encodeURIComponent(q)}&lat=${originLat}&lng=${originLng}&autocomplete=1`,
+          { signal: controller.signal }
+        );
+        if (controller.signal.aborted) return;
+        const data: {
+          provider?: string;
+          results?: { lat: number; lng: number; name: string; detail: string }[];
+          error?: string;
+        } = await res.json();
+        if (controller.signal.aborted) return;
+
+        const results = data.results || [];
+        if (res.ok && results.length > 0) {
+          // If it's a shortened Google Maps link (maps.app.goo.gl), jump directly once resolved
+          if (data.provider === 'google_url' && results.length === 1) {
+            goTo(results[0].lat, results[0].lng);
+          } else {
+            setSearchResults(results);
+            setHighlightedIndex(-1);
+          }
+        } else {
+          setSearchResults([]);
+          setHighlightedIndex(-1);
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 320);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, originLat, originLng, goTo]);
+
+  // Search location — supports "lat, lng", Google Maps links, or full place-name search (with AI fallback)
+  const searchLocation = async () => {
+    const q = searchQuery.trim();
+    if (!q || !mapInstanceRef.current || !leafletRef.current) return;
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+    setSearchResults([]);
+    setHighlightedIndex(-1);
+    setSearchMessage('');
+
+    // 1) Coordinates or Google Maps URL (…@13.75,100.56… / ?q=13.75,100.56 / !3d13.75!4d100.56)
+    const coordMatch =
+      q.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||
+      q.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/) ||
+      q.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)\s*$/) ||
+      q.match(/[?&](?:q|query|ll)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+    if (coordMatch) {
+      goTo(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
+      return;
+    }
+
+    // 2) Full place-name search (includes Progressive OSM + Gemini AI fallback)
+    setIsSearching(true);
+    try {
+      const res = await fetch(
+        `/api/places/search?q=${encodeURIComponent(q)}&lat=${originLat}&lng=${originLng}`
+      );
+      const data: { provider?: string; results?: { lat: number; lng: number; name: string; detail: string }[]; error?: string } = await res.json();
+      const results = data.results || [];
+      if (!res.ok) {
+        setSearchMessage(data.error || 'ค้นหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      } else if (results.length === 1) {
+        goTo(results[0].lat, results[0].lng, results[0].name);
+      } else if (results.length > 1) {
+        setSearchResults(results);
+        setHighlightedIndex(0);
+      } else {
+        setSearchMessage(
+          data.provider === 'google'
+            ? 'ไม่พบสถานที่นี้ — ลองพิมพ์ชื่อให้สั้นลง หรือวางพิกัด / ลิงก์ Google Maps'
+            : 'ไม่พบสถานที่นี้ใน OpenStreetMap — ลองค้นด้วยชื่อถนน/เขต หรือวางพิกัด / ลิงก์ Google Maps แทน'
+        );
+      }
+    } catch (e) {
+      console.error('Search error:', e);
+      setSearchMessage('ค้นหาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    }
+    setIsSearching(false);
+  };
 
   // Initialize map when modal opens
   useEffect(() => {
@@ -422,37 +523,91 @@ export default function MapPickerModal({
           </button>
         </div>
 
-        {/* Search Bar — compact */}
-        <div className="px-5 py-2 border-b border-gray-50 flex gap-2 flex-shrink-0 relative z-[1001]">
+        {/* Search Bar — compact with live Autocomplete */}
+        <div
+          ref={searchContainerRef}
+          className="px-5 py-2 border-b border-gray-50 flex gap-2 flex-shrink-0 relative z-[1001]"
+        >
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            {isSearching ? (
+              <Loader2 className="w-3.5 h-3.5 text-[#0f5238] animate-spin absolute left-3 top-1/2 -translate-y-1/2" />
+            ) : (
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            )}
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setSearchMessage(''); }}
-              onKeyDown={(e) => e.key === 'Enter' && searchLocation()}
-              placeholder={isOriginMode ? 'ค้นหาสถานที่ / วางพิกัด 13.75, 100.56 / ลิงก์ Google Maps' : 'ค้นหาสถานที่ / วางพิกัด / ลิงก์ Google Maps'}
-              className="w-full h-9 pl-9 pr-3 rounded-lg border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238] outline-none"
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setSearchMessage('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown' && searchResults.length > 0) {
+                  e.preventDefault();
+                  setHighlightedIndex((prev) => (prev + 1) % searchResults.length);
+                } else if (e.key === 'ArrowUp' && searchResults.length > 0) {
+                  e.preventDefault();
+                  setHighlightedIndex((prev) => (prev <= 0 ? searchResults.length - 1 : prev - 1));
+                } else if (e.key === 'Escape') {
+                  setSearchResults([]);
+                  setHighlightedIndex(-1);
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (highlightedIndex >= 0 && highlightedIndex < searchResults.length) {
+                    const picked = searchResults[highlightedIndex];
+                    goTo(picked.lat, picked.lng, picked.name);
+                  } else if (searchResults.length === 1) {
+                    goTo(searchResults[0].lat, searchResults[0].lng, searchResults[0].name);
+                  } else {
+                    searchLocation();
+                  }
+                }
+              }}
+              placeholder={isOriginMode ? 'พิมพ์ชื่อสถานที่ (แสดงผลอัตโนมัติ) / วางพิกัด / ลิงก์ Google Maps' : 'พิมพ์ชื่อสถานที่ (แสดงผลอัตโนมัติ) / วางพิกัด / ลิงก์ Google Maps'}
+              className="w-full h-9 pl-9 pr-8 rounded-lg border border-gray-200 text-xs focus:ring-2 focus:ring-[#0f5238] outline-none"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (searchAbortRef.current) searchAbortRef.current.abort();
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setHighlightedIndex(-1);
+                  setSearchMessage('');
+                  setIsSearching(false);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                title="ล้างคำค้นหา"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
 
-            {/* Multiple results — let the user pick */}
+            {/* Autocomplete suggestions dropdown */}
             {searchResults.length > 0 && (
-              <ul className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden max-h-64 overflow-y-auto">
-                {searchResults.map((r, i) => (
-                  <li key={i}>
-                    <button
-                      type="button"
-                      onClick={() => goTo(r.lat, r.lng)}
-                      className="w-full text-left px-3 py-2 hover:bg-emerald-50 flex items-start gap-2 cursor-pointer"
-                    >
-                      <MapPin className="w-3.5 h-3.5 text-[#0f5238] mt-0.5 shrink-0" />
-                      <span className="min-w-0">
-                        <span className="block text-xs font-semibold text-gray-800 truncate">{r.name}</span>
-                        <span className="block text-[10px] text-gray-500 truncate">{r.detail}</span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
+              <ul className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden max-h-64 overflow-y-auto divide-y divide-gray-50">
+                {searchResults.map((r, i) => {
+                  const isHighlighted = i === highlightedIndex;
+                  return (
+                    <li key={`${r.lat}-${r.lng}-${i}`}>
+                      <button
+                        type="button"
+                        onMouseEnter={() => setHighlightedIndex(i)}
+                        onClick={() => goTo(r.lat, r.lng, r.name)}
+                        className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 cursor-pointer transition-colors ${
+                          isHighlighted ? 'bg-emerald-50/90' : 'hover:bg-emerald-50/60'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-[#0f5238] mt-0.5 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-semibold text-gray-800 truncate">{r.name}</span>
+                          <span className="block text-[10px] text-gray-500 truncate mt-0.5">{r.detail}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
@@ -466,9 +621,9 @@ export default function MapPickerModal({
           <button
             onClick={searchLocation}
             disabled={isSearching}
-            className="px-3 h-9 rounded-lg bg-[#0f5238] text-white text-xs font-semibold hover:bg-[#0a3d28] transition-colors disabled:opacity-50"
+            className="px-3 h-9 rounded-lg bg-[#0f5238] text-white text-xs font-semibold hover:bg-[#0a3d28] transition-colors disabled:opacity-50 cursor-pointer shrink-0"
           >
-            {isSearching ? '...' : 'ค้นหา'}
+            {isSearching ? 'กำลังค้น...' : 'ค้นหา'}
           </button>
         </div>
 
