@@ -14,7 +14,7 @@ export interface D365InventOnHandRow {
   ReservPhysical: number;    // จำนวนที่ถูกจอง
 }
 
-/** แถวจาก Entity InventorySitesOnHandV2 (ใช้หา ProductName ของแต่ละ ItemNumber) */
+/** แถวจาก Entity WarehousesOnHandV2 (ใช้หา ProductName ของแต่ละ ItemNumber) */
 export interface D365SiteOnHandRow {
   ItemNumber: string;
   ProductName: string | null;

@@ -61,24 +61,24 @@ export const chunk = <T,>(arr: T[], size: number): T[][] => {
 };
 
 // ── Fetch ─────────────────────────────────────────────
+const GI_DATA_AREAS = ['gi', 'gi01', 'gi02', 'gi03', 'gi04', 'gi05', 'gi06', 'gi07', 'gi08', 'gi09', 'gi10', 'gi11', 'gi12'];
+const GI_DATA_AREA_FILTER = GI_DATA_AREAS.map(a => `dataAreaId eq '${a}'`).join(' or ');
+
 export async function fetchD365InventoryRows() {
-  const [inventRows, productRows] = await Promise.all([
+  const [inventRows, siteRows] = await Promise.all([
     d365FetchAll<D365InventOnHandRow>('BPC_InventOnHand', {
       $filter: "ItemId eq 'GI-07*' and PhysicalInvent gt 0",
       $select: 'dataAreaId,ItemId,InventSerialId,InventSiteId,InventLocationId,PhysicalInvent,ReservPhysical',
       'cross-company': 'true',
     }),
-    // ProductsV2 เป็น master สินค้าระดับ global (ไม่ต้อง cross-company) — เร็วกว่า
-    // InventorySitesOnHandV2 มาก (อันนั้น cross-company แล้วค้างเกิน 3 นาที)
-    d365FetchAll<{ ProductNumber: string; ProductName: string }>('ProductsV2', {
-      $filter: "ProductNumber eq 'GI-07*'",
-      $select: 'ProductNumber,ProductName',
+    // ดึงชื่อรุ่นและสี (ProductName) จากเส้น WarehousesOnHandV2 โดยกรองเฉพาะบริษัทในเครือ GI
+    // เพื่อใช้ Index (DATAAREAID, ITEMID) ทำให้ดึงครบทุกสาขาเสร็จภายใน ~1 วินาที
+    d365FetchAll<D365SiteOnHandRow>('WarehousesOnHandV2', {
+      $filter: `(${GI_DATA_AREA_FILTER}) and ItemNumber eq 'GI-07*'`,
+      $select: 'ItemNumber,ProductName',
+      'cross-company': 'true',
     }),
   ]);
-  const siteRows: D365SiteOnHandRow[] = productRows.map(p => ({
-    ItemNumber: p.ProductNumber,
-    ProductName: p.ProductName,
-  }) as D365SiteOnHandRow);
   return { inventRows, siteRows };
 }
 
