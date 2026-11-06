@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Invoice, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
-import { getJobTotalCost, getSupplierVendorCode } from '@/lib/job-utils';
+import { getJobTotalCost, getOwnerBranchCorporateInfo, getSupplierVendorCode } from '@/lib/job-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { useApp } from '@/context/AppContext';
 import {
@@ -37,7 +37,7 @@ export interface InvoiceDetailModalProps {
 }
 
 export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModalProps) {
-  const { suppliers, companies, branches } = useApp();
+  const { suppliers, companies, branches, vehicles } = useApp();
   const [copiedInvoiceNo, setCopiedInvoiceNo] = useState(false);
   const [copiedBank, setCopiedBank] = useState(false);
 
@@ -52,33 +52,50 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
     c => c.id === invoice.companyId || c.code === invoice.companyCode
   );
 
-  // Official registered corporate details
+  // Build per-vehicle breakdown from related jobs
+  const invoiceJobs = invoice.jobIds
+    .map(jid => jobs.find(job => job.id === jid))
+    .filter(Boolean) as Job[];
+
+  // Identify the original vehicle owner / paying branch from the jobs in this invoice
+  const primaryJob = invoiceJobs[0];
+  const ownerBranchInfo = getOwnerBranchCorporateInfo({
+    job: primaryJob,
+    vehicles,
+    branches,
+    companies,
+    companyCode: invoice.companyCode,
+  });
+
+  const primaryBranch = branches.find(
+    b =>
+      b.code === ownerBranchInfo.branchCode ||
+      b.id === ownerBranchInfo.branchId ||
+      b.id === primaryJob?.branchId ||
+      b.name === primaryJob?.branchName ||
+      b.code === primaryJob?.branchId
+  );
+
+  // Official registered corporate details (สาขาที่เป็นเจ้าของรถต้นสังกัด / ผู้จ่ายเงิน)
   const companyInfo = {
-    name:
-      currentCompany?.name ||
-      (invoice.companyCode === 'EV7'
-        ? 'บริษัท อีวี เซเว่น จำกัด (EV7 CO., LTD.)'
-        : 'บริษัท โกลด์ อินทิเกรท จำกัด (GOLD INTEGRATE CO., LTD.)'),
-    taxId:
-      currentCompany?.taxId ||
-      (invoice.companyCode === 'EV7' ? '0105565012345' : '0105564098765'),
-    branch: 'สำนักงานใหญ่ (Head Office)',
-    address:
-      currentCompany?.address ||
-      (invoice.companyCode === 'EV7'
-        ? '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310'
-        : '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี จังหวัดสมุทรปราการ 10540'),
-    phone: '02-000-0000',
-    department: 'ฝ่ายบริหารยานพาหนะส่วนกลาง (Central Fleet Management)',
+    name: ownerBranchInfo.nameTh,
+    taxId: ownerBranchInfo.taxId || currentCompany?.taxId || (invoice.companyCode === 'EV7' ? '0105565012345' : '0105564098765'),
+    branch: ownerBranchInfo.branchCode ? `สาขา ${ownerBranchInfo.branchCode}` : 'สำนักงานใหญ่ (Head Office)',
+    address: ownerBranchInfo.address || currentCompany?.address || '',
+    phone: ownerBranchInfo.phone || '02-000-0000',
+    department: ownerBranchInfo.department,
   };
 
-  // รหัส Vendor D365 แยกตามสาขา → ใช้สาขาของใบงานแรกในใบแจ้งหนี้
-  const invoiceBranchId = jobs.find(j => j.id === invoice.jobIds[0])?.branchId;
+  // รหัส Vendor D365 แยกตามสาขา → ใช้สาขาเจ้าของรถต้นสังกัด / สาขาของใบงานแรกในใบแจ้งหนี้
+  const invoiceBranchId = primaryBranch?.id || primaryJob?.branchId;
 
   const supplierInfo = {
     name: invoice.supplierName,
     code: currentSupplier?.code || '',
-    d365VendorCode: getSupplierVendorCode(currentSupplier, { id: invoiceBranchId }),
+    d365VendorCode: getSupplierVendorCode(currentSupplier, {
+      id: invoiceBranchId,
+      code: ownerBranchInfo.branchCode || primaryBranch?.code,
+    }),
     showroomLabel: currentSupplier?.showroomLabel || '',
     taxId: currentSupplier?.taxId || null,
     address: currentSupplier?.address || '',
@@ -89,24 +106,11 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
     vatType: currentSupplier?.vatType || (invoice.vatAmount > 0 ? 'VAT_7' : 'NO_VAT'),
   };
 
-  // Build per-vehicle breakdown from related jobs
-  const invoiceJobs = invoice.jobIds
-    .map(jid => jobs.find(job => job.id === jid))
-    .filter(Boolean) as Job[];
-
-  // Identify the ordering branch from the jobs in this invoice
-  const primaryJob = invoiceJobs[0];
-  const primaryBranch = branches.find(
-    b =>
-      b.id === primaryJob?.branchId ||
-      b.name === primaryJob?.branchName ||
-      b.code === primaryJob?.branchId
-  );
-
   const orderingBranchName =
-    primaryBranch?.name || primaryJob?.branchName || 'สาขาผู้สั่งงาน';
-  const orderingBranchCode = primaryBranch?.code || '';
+    ownerBranchInfo.nameTh || primaryBranch?.name || primaryJob?.branchName || 'สาขาผู้สั่งงาน';
+  const orderingBranchCode = ownerBranchInfo.branchCode || primaryBranch?.code || '';
   const orderingBranchAddress =
+    ownerBranchInfo.address ||
     primaryBranch?.address ||
     primaryJob?.originBranchAddress ||
     '';

@@ -112,6 +112,8 @@ export interface Vehicle {
   status: 'AVAILABLE' | 'IN_TRANSIT' | 'IN_WASH' | 'MAINTENANCE' | 'OUT_OF_STOCK';
   /** แหล่งข้อมูลรถ: MANUAL (สร้าง/นำเข้าเอง) | D365 (sync อัตโนมัติ) */
   source?: 'MANUAL' | 'D365';
+  /** รหัสสาขา/บริษัทต้นสังกัดของรถใน D365 (เช่น GI, GI01 - GI12) */
+  d365SiteId?: string | null;
   /** ถูกจองใน D365 (แสดงผลเท่านั้น ยังสั่งงานได้) */
   d365Reserved?: boolean;
   lastSyncedAt?: string | null;
@@ -133,6 +135,11 @@ export interface CarWashItem {
   vehicleModel?: string;
   vehicleColor?: string;
   licensePlate?: string;
+  vehicleSiteId?: string;
+  vehicleBranchId?: string;
+  vehicleBranchCode?: string;
+  vehicleBranchName?: string;
+  vehicleBranchAddress?: string;
   actualWashDate: string; // YYYY-MM-DD
   washType: 'STANDARD' | 'DEEP_CLEAN' | 'POLISH' | string;
   unitPrice: number;
@@ -181,6 +188,7 @@ export interface Job {
   companyId: string;
   companyCode: CompanyCode;
   branchId: string;
+  branchCode?: string;
   branchName: string;
   supplierId: string;
   supplierName: string;
@@ -189,11 +197,13 @@ export interface Job {
   vin?: string;
   vehicle?: Vehicle;
   originBranchId?: string;
+  originBranchCode?: string;
   originBranchName?: string;
   originBranchAddress?: string;
   originBranchLat?: number;
   originBranchLng?: number;
   destBranchId?: string;
+  destBranchCode?: string;
   destBranchName?: string;
   destBranchAddress?: string;
   destBranchLat?: number;

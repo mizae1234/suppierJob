@@ -1,4 +1,4 @@
-import { Job, JobStatus, JobType, Supplier } from '@/types';
+import { Branch, Company, Job, JobStatus, JobType, Supplier, Vehicle } from '@/types';
 
 /**
  * Short label for identifying a car in the UI.
@@ -484,4 +484,232 @@ export function calculateSlideCost(distanceKm: number, supplierCode?: string): n
   });
   return result.costPerCar;
 }
+
+export interface BranchCorporateInfo {
+  branchId?: string;
+  branchCode: string;
+  branchName: string;
+  nameTh: string;
+  nameEn: string;
+  address: string;
+  taxId: string;
+  phone: string;
+  department: string;
+}
+
+const BRANCH_CORPORATE_DIRECTORY: Record<
+  string,
+  { nameTh: string; nameEn: string; defaultAddress: string; defaultTaxId?: string }
+> = {
+  GI: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท จำกัด (สำนักงานใหญ่)',
+    nameEn: 'GOLD INTEGRATE CO., LTD. (HEAD OFFICE)',
+    defaultAddress: '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี สมุทรปราการ 10540',
+  },
+  GI01: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท กาญจนาภิเษก - บางแค จำกัด (สาขา GI01)',
+    nameEn: 'GOLD INTEGRATE KANJANAPISEK - BANGKAE CO., LTD. (GI01)',
+    defaultAddress: 'ถนนกาญจนาภิเษก แขวงบางระมาด เขตตลิ่งชัน กรุงเทพฯ 10170',
+  },
+  GI02: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท มีนบุรี จำกัด (สาขา GI02)',
+    nameEn: 'GOLD INTEGRATE MINBURI CO., LTD. (GI02)',
+    defaultAddress: 'ถนนสุวินทวงศ์ แขวงมีนบุรี เขตมีนบุรี กรุงเทพฯ 10510',
+  },
+  GI03: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท เลียบด่วนรามอินทรา จำกัด (สาขา GI03)',
+    nameEn: 'GOLD INTEGRATE LIABDUANRAMINDRA CO., LTD. (GI03)',
+    defaultAddress: 'ถนนประดิษฐ์มนูธรรม แขวงคลองเจ้าคุณสิงห์ เขตวังทองหลาง กรุงเทพฯ 10310',
+  },
+  GI04: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท สีลม ซอย 9 จำกัด (สาขา GI04)',
+    nameEn: 'GOLD INTEGRATE SILOM SOI 9 CO., LTD. (GI04)',
+    defaultAddress: 'อาคาร เค.ซี.ซี. 2 ซอยสีลม 9 แขวงสีลม เขตบางรัก กรุงเทพฯ 10500',
+  },
+  GI05: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท อุบลราชธานี จำกัด (สาขา GI05)',
+    nameEn: 'GOLD INTEGRATE UBONRATCHATHANI CO., LTD. (GI05)',
+    defaultAddress: '77 หมู่ 26 ถนนชยางกูร ตำบลขามใหญ่ อำเภอเมือง จังหวัดอุบลราชธานี 34000',
+  },
+  GI06: {
+    nameTh: 'บริษัท อีวี เซเว่น จำกัด (สาขา GI06)',
+    nameEn: 'EV7 CO., LTD. (GI06)',
+    defaultAddress: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงบางกะปิ เขตห้วยขวาง กรุงเทพฯ 10310',
+    defaultTaxId: '0105565012345',
+  },
+  EV7: {
+    nameTh: 'บริษัท อีวี เซเว่น จำกัด (สาขา GI06)',
+    nameEn: 'EV7 CO., LTD. (GI06)',
+    defaultAddress: '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงบางกะปิ เขตห้วยขวาง กรุงเทพฯ 10310',
+    defaultTaxId: '0105565012345',
+  },
+  GI07: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท มหาชัย จำกัด (สาขา GI07)',
+    nameEn: 'GOLD INTEGRATE MAHACHAI CO., LTD. (GI07)',
+    defaultAddress: 'ถนนพระราม 2 ตำบลมหาชัย อำเภอเมืองสมุทรสาคร จังหวัดสมุทรสาคร 74000',
+  },
+  GI08: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท ศาลายา จำกัด (สาขา GI08)',
+    nameEn: 'GOLD INTEGRATE SALAYA CO., LTD. (GI08)',
+    defaultAddress: 'ถนนบรมราชชนนี ตำบลศาลายา อำเภอพุทธมณฑล จังหวัดนครปฐม 73170',
+  },
+  GI09: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท วิภาวดี จำกัด (สาขา GI09)',
+    nameEn: 'GOLD INTEGRATE VIBHAVADI CO., LTD. (GI09)',
+    defaultAddress: 'ซอยวิภาวดีรังสิต 22 แขวงจอมพล เขตจตุจักร กรุงเทพฯ 10900',
+  },
+  GI10: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท พิบูลสงคราม จำกัด (สาขา GI10)',
+    nameEn: 'GOLD INTEGRATE PIBULONGKRAM CO., LTD. (GI10)',
+    defaultAddress: 'ถนนพิบูลสงคราม ตำบลสวนใหญ่ อำเภอเมืองนนทบุรี จังหวัดนนทบุรี 11000',
+  },
+  GI11: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท อยุธยา จำกัด (สาขา GI11)',
+    nameEn: 'GOLD INTEGRATE AYUTTHAYA CO., LTD. (GI11)',
+    defaultAddress: 'ถนนสายเอเชีย ตำบลคุ้งลาน อำเภอบางปะอิน จังหวัดพระนครศรีอยุธยา 13160',
+  },
+  GI12: {
+    nameTh: 'บริษัท โกลด์ อินทิเกรท เชียงใหม่ จำกัด (สาขา GI12)',
+    nameEn: 'GOLD INTEGRATE CHIANGMAI CO., LTD. (GI12)',
+    defaultAddress: 'ถนนเจริญเมือง ตำบลท่าศาลา อำเภอเมืองเชียงใหม่ จังหวัดเชียงใหม่ 50000',
+  },
+};
+
+/**
+ * ค้นหาข้อมูลหัวบิล (Corporate Letterhead) ของสาขาที่เป็นเจ้าของรถต้นสังกัด (Original Vehicle Owner Branch)
+ * ลำดับความสำคัญ:
+ * 1) รหัสสาขาต้นสังกัดของรถจาก D365 (`d365SiteId` / `vehicleSiteId`) ซึ่งไม่เปลี่ยนแม้รถจะถูกสไลด์ไปสาขาอื่น
+ * 2) กรณีงานสไลด์และไม่มี `d365SiteId`: ใช้สาขาต้นทาง (`originBranch`)
+ * 3) สาขาที่รถสังกัดในระบบ (`currentBranch`)
+ * 4) สาขาที่เปิดใบสั่งงาน (`job.branch`)
+ */
+export function getOwnerBranchCorporateInfo(params: {
+  job?: Job | null;
+  vin?: string | null;
+  vehicles?: Vehicle[];
+  branches?: Branch[];
+  companies?: Company[];
+  companyCode?: string | null;
+}): BranchCorporateInfo {
+  const { job, vin, vehicles = [], branches = [], companies = [], companyCode } = params;
+
+  const activeWashItem =
+    job?.carWashItems?.find((i) => i.status !== 'CANCELLED') || job?.carWashItems?.[0];
+  const targetVin = (vin || job?.vin || activeWashItem?.vin || '').trim().toUpperCase();
+
+  const matchedVehicle = targetVin
+    ? vehicles.find((v) => v.vin.trim().toUpperCase() === targetVin)
+    : undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jobVehicle = job?.vehicle as any;
+
+  // 1) Original owner branch code from D365 (d365SiteId)
+  const d365OwnerCode = (
+    matchedVehicle?.d365SiteId ||
+    jobVehicle?.d365SiteId ||
+    activeWashItem?.vehicleSiteId ||
+    ''
+  )
+    .trim()
+    .toUpperCase();
+
+  // 2) Origin branch (for slide jobs) or current vehicle branch or ordering branch
+  const fallbackBranchCode = (
+    d365OwnerCode ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? job?.originBranchCode : '') ||
+    matchedVehicle?.currentBranchCode ||
+    jobVehicle?.currentBranch?.code ||
+    activeWashItem?.vehicleBranchCode ||
+    job?.branchCode ||
+    ''
+  )
+    .trim()
+    .toUpperCase();
+
+  const fallbackBranchId =
+    (job?.jobType === 'VEHICLE_SLIDE' ? job?.originBranchId : undefined) ||
+    matchedVehicle?.currentBranchId ||
+    jobVehicle?.currentBranchId ||
+    activeWashItem?.vehicleBranchId ||
+    job?.branchId;
+
+  const fallbackBranchName =
+    (job?.jobType === 'VEHICLE_SLIDE' ? job?.originBranchName : undefined) ||
+    matchedVehicle?.currentBranchName ||
+    jobVehicle?.currentBranch?.name ||
+    activeWashItem?.vehicleBranchName ||
+    job?.branchName;
+
+  // Find Branch object in branches list
+  const branchObj =
+    (d365OwnerCode
+      ? branches.find((b) => b.code.trim().toUpperCase() === d365OwnerCode)
+      : undefined) ||
+    (fallbackBranchCode
+      ? branches.find((b) => b.code.trim().toUpperCase() === fallbackBranchCode)
+      : undefined) ||
+    (fallbackBranchId
+      ? branches.find((b) => b.id === fallbackBranchId || b.code === fallbackBranchId)
+      : undefined) ||
+    (fallbackBranchName
+      ? branches.find((b) => b.name === fallbackBranchName)
+      : undefined);
+
+  const resolvedCode = (
+    branchObj?.code ||
+    d365OwnerCode ||
+    fallbackBranchCode ||
+    (companyCode === 'EV7' || job?.companyCode === 'EV7' ? 'GI06' : 'GI')
+  )
+    .trim()
+    .toUpperCase();
+
+  const directoryEntry =
+    BRANCH_CORPORATE_DIRECTORY[resolvedCode] ||
+    (resolvedCode === 'EV7' ? BRANCH_CORPORATE_DIRECTORY.GI06 : BRANCH_CORPORATE_DIRECTORY.GI);
+
+  const isEV7 =
+    resolvedCode === 'GI06' ||
+    resolvedCode === 'EV7' ||
+    companyCode === 'EV7' ||
+    job?.companyCode === 'EV7';
+
+  const companyObj = companies.find(
+    (c) => c.id === job?.companyId || c.code === (isEV7 ? 'EV7' : 'GI')
+  );
+
+  const resolvedAddress =
+    branchObj?.address ||
+    (d365OwnerCode && d365OwnerCode === activeWashItem?.vehicleBranchCode
+      ? activeWashItem?.vehicleBranchAddress
+      : undefined) ||
+    (d365OwnerCode && d365OwnerCode === jobVehicle?.currentBranch?.code
+      ? jobVehicle?.currentBranch?.address
+      : undefined) ||
+    directoryEntry.defaultAddress ||
+    companyObj?.address ||
+    '';
+
+  const resolvedNameEn = branchObj?.name
+    ? branchObj.code && !branchObj.name.includes(branchObj.code)
+      ? `${branchObj.name} (${branchObj.code})`
+      : branchObj.name
+    : directoryEntry.nameEn;
+
+  return {
+    branchId: branchObj?.id || fallbackBranchId,
+    branchCode: resolvedCode,
+    branchName: branchObj?.name || fallbackBranchName || directoryEntry.nameEn,
+    nameTh: directoryEntry.nameTh,
+    nameEn: resolvedNameEn,
+    address: resolvedAddress,
+    taxId:
+      directoryEntry.defaultTaxId ||
+      companyObj?.taxId ||
+      (isEV7 ? '0105565012345' : '0105564098765'),
+    phone: branchObj?.phone || '02-000-0000',
+    department: 'ฝ่ายบริหารงานยานพาหนะและสั่งจ้างคู่ค้า (Fleet & Vendor Operations)',
+  };
+}
+
 

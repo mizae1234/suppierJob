@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
+import { getOwnerBranchCorporateInfo } from '@/lib/job-utils';
+import { useApp } from '@/context/AppContext';
 import { VehicleRecord } from './types';
 import {
   Car,
@@ -47,6 +49,7 @@ export function VehicleDetailModal({
   copiedText,
 }: VehicleDetailModalProps) {
   const [mounted, setMounted] = useState(false);
+  const { vehicles, branches, companies, jobs } = useApp();
 
   useEffect(() => {
     setMounted(true);
@@ -63,17 +66,16 @@ export function VehicleDetailModal({
   const totalCost = activeRecords.reduce((s, r) => s + r.unitPrice, 0);
   const invoiceNums = [...new Set(activeRecords.map(r => r.invoiceNumber).filter(Boolean))] as string[];
 
-  // Corporate details for official document
-  const isEV7 = first.companyCode === 'EV7';
-  const companyInfo = {
-    nameTh: isEV7 ? 'บริษัท อีวี เซเว่น จำกัด (สำนักงานใหญ่)' : 'บริษัท โกลด์ อินทิเกรท จำกัด (สำนักงานใหญ่)',
-    nameEn: isEV7 ? 'EV7 CO., LTD. (HEAD OFFICE)' : 'GOLD INTEGRATE CO., LTD. (HEAD OFFICE)',
-    address: isEV7
-      ? '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310'
-      : '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี จังหวัดสมุทรปราการ 10540',
-    taxId: isEV7 ? '0105565012345' : '0105564098765',
-    department: 'ฝ่ายบริหารงานยานพาหนะและสั่งจ้างคู่ค้า (Fleet & Vendor Operations)',
-  };
+  // Corporate details for official document (ใช้สาขาที่เป็นเจ้าของรถต้นสังกัด ออริจินอล)
+  const firstJob = jobs.find(j => j.id === first.jobId || j.jobNumber === first.jobNumber);
+  const companyInfo = getOwnerBranchCorporateInfo({
+    job: firstJob,
+    vin,
+    vehicles,
+    branches,
+    companies,
+    companyCode: first.companyCode,
+  });
 
   const bahtTextString = thaiBahtText(totalCost);
 

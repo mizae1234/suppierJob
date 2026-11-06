@@ -7,7 +7,7 @@ import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
-import { getSupplierVendorCode } from '@/lib/job-utils';
+import { getOwnerBranchCorporateInfo, getSupplierVendorCode } from '@/lib/job-utils';
 import { STATUS_MAP } from './constants';
 
 export interface WorkOrderPrintDocumentProps {
@@ -29,27 +29,29 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
   const branch = branches.find(b => b.id === job.branchId || b.name === job.branchName || b.code === job.branchId);
   const supplier = suppliers.find(s => s.id === job.supplierId || s.name === job.supplierName);
 
-  // Official corporate entity details
-  const isEV7 = job.companyCode === 'EV7';
-  const companyInfo = {
-    nameTh: isEV7 ? 'บริษัท อีวี เซเว่น จำกัด (สำนักงานใหญ่)' : 'บริษัท โกลด์ อินทิเกรท จำกัด (สำนักงานใหญ่)',
-    nameEn: isEV7 ? 'EV7 CO., LTD. (HEAD OFFICE)' : 'GOLD INTEGRATE CO., LTD. (HEAD OFFICE)',
-    address: company?.address || (isEV7
-      ? '99/9 อาคารอีวีทาวเวอร์ ชั้น 12 ถนนพระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310'
-      : '888 หมู่ 5 ถนนบางนา-ตราด กม.18 ตำบลบางโฉลง อำเภอบางพลี จังหวัดสมุทรปราการ 10540'),
-    taxId: company?.taxId || (isEV7 ? '0105565012345' : '0105564098765'),
-    phone: '02-000-0000',
-    department: 'ฝ่ายบริหารงานยานพาหนะและสั่งจ้างคู่ค้า (Fleet & Vendor Operations)',
-  };
+  // Official corporate entity details (ใช้สาขาที่เป็นเจ้าของรถต้นสังกัด ออริจินอล)
+  const companyInfo = getOwnerBranchCorporateInfo({
+    job,
+    vehicles,
+    branches,
+    companies,
+    companyCode: job.companyCode,
+  });
 
   // Branch info
-  const orderingBranchName = branch?.name || job.branchName || '-';
-  const orderingBranchCode = branch?.code || '';
-  const orderingBranchAddress = branch?.address || '';
+  const orderingBranchName = branch?.name || job.branchName || companyInfo.branchName || '-';
+  const orderingBranchCode = branch?.code || job.branchCode || companyInfo.branchCode || '';
+  const orderingBranchAddress = branch?.address || companyInfo.address || '';
   const orderingBranchPhone = job.requesterPhone || branch?.phone || '';
 
   // Supplier info
-  const supplierCode = getSupplierVendorCode(supplier, { id: job.branchId, code: branch?.code }) || supplier?.code || '';
+  const supplierCode =
+    getSupplierVendorCode(supplier, {
+      id: companyInfo.branchId || job.branchId,
+      code: companyInfo.branchCode || branch?.code,
+    }) ||
+    supplier?.code ||
+    '';
   const supplierTaxId = supplier?.taxId || '';
   const supplierAddress = supplier?.address || '';
   const supplierPhone = supplier?.phone || '';

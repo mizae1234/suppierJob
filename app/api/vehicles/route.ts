@@ -114,6 +114,7 @@ export async function GET(request: NextRequest) {
         mileage: v.mileage,
         status: v.status || 'AVAILABLE',
         source: v.source,
+        d365SiteId: v.d365SiteId,
         d365Reserved: v.d365Reserved,
         lastSyncedAt: v.lastSyncedAt,
         activeJob: activeJobRef
