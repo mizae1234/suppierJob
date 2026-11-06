@@ -8,29 +8,27 @@ const PO_PENDING_STALE_MS = 4 * 60_000;
 
 /**
  * ค้นหา PO ใน D365 OData ที่อาจถูกสร้างไปแล้วแต่การเชื่อมต่อตัดก่อน (Timeout)
- * จับคู่ด้วย: บริษัท (dataAreaId) + รหัสคู่ค้า + เลขตัวถัง (VendorOrderReference) + วันที่ + รหัสสินค้าบริการ + ราคา
+ * จับคู่ด้วย: บริษัท (dataAreaId) + รหัสคู่ค้า + วันที่ + รายการสินค้าบริการและราคาในแต่ละ Line
  * และตรวจสอบว่าเลข PO นั้นยังไม่เคยผูกกับใบงานอื่นในระบบของเรา
  */
 async function findUnlinkedPoInD365(params: {
   company: string;
   vendorAccount: string;
-  vin: string;
   accountingDatePrefix: string; // YYYY-MM-DD
   serviceItemNumber: string;
-  price: number;
+  expectedPrices: number[];
 }): Promise<string | null> {
-  const { company, vendorAccount, vin, accountingDatePrefix, serviceItemNumber, price } = params;
-  if (!vin) return null;
+  const { company, vendorAccount, accountingDatePrefix, serviceItemNumber, expectedPrices } = params;
+  if (expectedPrices.length === 0) return null;
 
   try {
     const cfg = getD365Config();
     const token = await getD365Token();
     const dataArea = company.toLowerCase().replace(/'/g, "''");
     const safeVendor = vendorAccount.replace(/'/g, "''");
-    const safeVin = vin.replace(/'/g, "''");
 
     const filter = encodeURIComponent(
-      `dataAreaId eq '${dataArea}' and OrderVendorAccountNumber eq '${safeVendor}' and VendorOrderReference eq '${safeVin}'`
+      `dataAreaId eq '${dataArea}' and OrderVendorAccountNumber eq '${safeVendor}'`
     );
     const headersUrl = `${cfg.baseUrl}/data/PurchaseOrderHeadersV2?cross-company=true&$filter=${filter}&$top=5&$orderby=PurchaseOrderNumber%20desc&$select=PurchaseOrderNumber,AccountingDate`;
     const headersRes = await fetchWithTimeout(
@@ -62,7 +60,7 @@ async function findUnlinkedPoInD365(params: {
       });
       if (alreadyLinked) continue;
 
-      // ตรวจสอบรายการสินค้าและราคาใน PurchaseOrderLinesV2 ให้ตรงกัน
+      // ตรวจสอบรายการสินค้าและราคาใน PurchaseOrderLinesV2 ให้ตรงกับจำนวนคันและราคาในใบงาน
       const safePo = poNumber.replace(/'/g, "''");
       const lineFilter = encodeURIComponent(
         `dataAreaId eq '${dataArea}' and PurchaseOrderNumber eq '${safePo}'`
@@ -82,12 +80,17 @@ async function findUnlinkedPoInD365(params: {
         value?: Array<{ ItemNumber?: string; PurchasePrice?: number; LineAmount?: number }>;
       };
       const lines = linesJson.value || [];
-      const matchingLine = lines.some(
-        (l) =>
-          l.ItemNumber === serviceItemNumber &&
-          Math.abs((l.PurchasePrice ?? l.LineAmount ?? 0) - price) < 0.01
-      );
-      if (matchingLine) {
+      if (lines.length !== expectedPrices.length) continue;
+
+      const allLinesMatch = expectedPrices.every((expectedPrice, idx) => {
+        const line = lines[idx];
+        return (
+          line &&
+          line.ItemNumber === serviceItemNumber &&
+          Math.abs((line.PurchasePrice ?? line.LineAmount ?? 0) - expectedPrice) < 0.01
+        );
+      });
+      if (allLinesMatch) {
         return poNumber;
       }
     }
@@ -108,6 +111,17 @@ export function getD365ServiceItem(jobType: string): string | null {
   return D365_SERVICE_ITEMS[jobType as keyof typeof D365_SERVICE_ITEMS] ?? null;
 }
 
+/** ชื่อระบบต้นทาง (System) ที่ส่งไปใน PO แยกตามประเภทงาน */
+export const D365_SYSTEM_NAMES = {
+  CAR_WASH: 'Carwash',
+  VEHICLE_SLIDE: 'Carslide',
+  WINDOW_FILM: 'Carfilm',
+} as const;
+
+export function getD365SystemName(jobType: string): string {
+  return D365_SYSTEM_NAMES[jobType as keyof typeof D365_SYSTEM_NAMES] ?? 'SupplierJob';
+}
+
 export interface D365PurchaseOrderLine {
   DiscountAmount?: number;
   DiscountPercent?: number;
@@ -122,6 +136,7 @@ export interface D365PurchaseOrderLine {
   Series?: string;
   SiteId?: string;
   Unit?: string;
+  Remark?: string;
   WarehouseId?: string;
 }
 
@@ -259,9 +274,29 @@ export async function sendJobToD365PurchaseOrder(
   const actorId = options?.actorId ?? null;
   const actorName = options?.actorName ?? job.approvedBy ?? null;
   const actorRole = options?.actorRole ?? null;
-  const vin = (job.vin || job.carWashItems?.[0]?.vin || '').trim();
-  const price = job.actualCost ?? job.estimatedCost ?? 0;
+
+  // คัดกรองรายการรถที่ปฏิบัติงานจริงในใบงาน (ไม่รวมคันที่ยกเลิก)
+  const completedOrApprovedItems = (job.carWashItems || []).filter(
+    (i) => i.status === 'COMPLETED' || i.status === 'APPROVED'
+  );
+  const activeItems =
+    completedOrApprovedItems.length > 0
+      ? completedOrApprovedItems
+      : (job.carWashItems || []).filter((i) => i.status !== 'CANCELLED');
+
+  const allVins =
+    activeItems.length > 0
+      ? activeItems.map((i) => (i.vin || '').trim()).filter(Boolean)
+      : job.vin
+        ? [job.vin.trim()]
+        : [];
+  const vin = allVins.join(', ');
+  const price =
+    activeItems.length > 0
+      ? activeItems.reduce((sum, i) => sum + (i.unitPrice ?? 0), 0)
+      : (job.actualCost ?? job.estimatedCost ?? 0);
   const serviceItemNumber = getD365ServiceItem(job.jobType);
+  const systemName = getD365SystemName(job.jobType);
   const d365Company = job.branch?.code?.trim() || null;
 
   // ตรวจสอบรหัสคู่ค้าใน D365 ของสาขานี้ (แต่ละบริษัท/สาขามีรหัส Vendor ไม่เหมือนกัน — ไม่มีการใช้รหัสสาขาอื่นแทน)
@@ -379,17 +414,57 @@ export async function sendJobToD365PurchaseOrder(
   // ประเภท VAT ตามคู่ค้า (Supplier): มี VAT (VAT_7) = '1', ไม่มี VAT (NO_VAT) = '0'
   const inclTax = job.supplier?.vatType === 'VAT_7' ? '1' : '0';
 
+  // สร้าง Lines ตามจำนวนรถในใบงาน (1 คัน = 1 Line) พร้อมใส่เลขตัวถัง (VIN) ในฟิลด์ Remark
+  const poLines: D365PurchaseOrderLine[] =
+    activeItems.length > 0
+      ? activeItems.map((item) => ({
+          DiscountAmount: 0,
+          DiscountPercent: 0,
+          ExteriorColor: '',
+          InteriorColor: '',
+          ItemNumber: serviceItemNumber,
+          Model: '',
+          MotorNo: '',
+          Price: item.unitPrice ?? 0,
+          Quantity: 1,
+          SerialNo: '',
+          Series: '',
+          SiteId: '',
+          Unit: 'Unit',
+          Remark: (item.vin || '').trim(),
+          WarehouseId: '',
+        }))
+      : [
+          {
+            DiscountAmount: 0,
+            DiscountPercent: 0,
+            ExteriorColor: '',
+            InteriorColor: '',
+            ItemNumber: serviceItemNumber,
+            Model: '',
+            MotorNo: '',
+            Price: price,
+            Quantity: 1,
+            SerialNo: '',
+            Series: '',
+            SiteId: '',
+            Unit: 'Unit',
+            Remark: (job.vin || '').trim(),
+            WarehouseId: '',
+          },
+        ];
+
   const payload: D365PurchaseOrderPayload = {
     Bank: '',
     Company: d365Company,
-    System: 'SupplierJob',
+    System: systemName,
     DealerId: '',
     DeliveryDate: deliveryDateStr,
     DueDate: dueDateStr,
     ValueDate: deliveryDateStr,
     FloorPlanId: '',
     PaymentType: '', // เว้นว่างเพื่อให้ D365 ดึง Terms of payment (15D, 30D, Cash) และ Method of payment (Transfer) ตาม Vendor อัตโนมัติ
-    PoDMS: vin,
+    PoDMS: '',
     PoGiCore: job.jobNumber,
     SiteId: d365Company,
     VendorAccount: vendorAccount,
@@ -399,24 +474,7 @@ export async function sendJobToD365PurchaseOrder(
     Inspector: '',
     Approval: job.approvedBy || '',
     InclTax: inclTax,
-    Lines: [
-      {
-        DiscountAmount: 0,
-        DiscountPercent: 0,
-        ExteriorColor: '',
-        InteriorColor: '',
-        ItemNumber: serviceItemNumber,
-        Model: '',
-        MotorNo: '',
-        Price: price,
-        Quantity: 1,
-        SerialNo: '',
-        Series: '',
-        SiteId: '',
-        Unit: 'Unit',
-        WarehouseId: '',
-      },
-    ],
+    Lines: poLines,
   };
   const payloadJson = JSON.stringify(payload);
 
@@ -455,10 +513,9 @@ export async function sendJobToD365PurchaseOrder(
       const existingPurchId = await findUnlinkedPoInD365({
         company: d365Company,
         vendorAccount,
-        vin,
         accountingDatePrefix,
         serviceItemNumber,
-        price,
+        expectedPrices: poLines.map((l) => l.Price),
       });
       if (existingPurchId) {
         const msg = `Created & confirmed PO ${existingPurchId} (ซิงค์จาก D365)`;
@@ -621,10 +678,9 @@ export async function sendJobToD365PurchaseOrder(
       const recoveredPurchId = await findUnlinkedPoInD365({
         company: d365Company,
         vendorAccount,
-        vin,
         accountingDatePrefix,
         serviceItemNumber,
-        price,
+        expectedPrices: poLines.map((l) => l.Price),
       });
       if (recoveredPurchId) {
         const recoveredMsg = `Created & confirmed PO ${recoveredPurchId}`;
