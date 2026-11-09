@@ -113,9 +113,9 @@ export function getD365ServiceItem(jobType: string): string | null {
 
 /** ชื่อระบบต้นทาง (System) ที่ส่งไปใน PO แยกตามประเภทงาน */
 export const D365_SYSTEM_NAMES = {
-  CAR_WASH: 'Carwash',
-  VEHICLE_SLIDE: 'Carslide',
-  WINDOW_FILM: 'Carfilm',
+  CAR_WASH: 'Car wash',
+  VEHICLE_SLIDE: 'Car slide',
+  WINDOW_FILM: 'Car film',
 } as const;
 
 export function getD365SystemName(jobType: string): string {
