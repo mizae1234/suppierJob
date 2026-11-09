@@ -31,6 +31,7 @@ import {
   Copy,
   CheckCheck,
   Hash,
+  Calendar,
 } from 'lucide-react';
 
 
@@ -145,7 +146,41 @@ export default function VehicleReportsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [supplierFilter, setSupplierFilter] = useState<string>('ALL');
   const [invoiceFilter, setInvoiceFilter] = useState<string>('ALL');
+  const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH' | 'CUSTOM'>('ALL');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
+
+  const toLocalYMD = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const handleSelectDatePreset = (preset: 'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH') => {
+    setDatePreset(preset);
+    if (preset === 'ALL') {
+      setDateFrom('');
+      setDateTo('');
+      return;
+    }
+    const now = new Date();
+    const todayStr = toLocalYMD(now);
+    if (preset === 'TODAY') {
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (preset === 'PAST_7') {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 6);
+      setDateFrom(toLocalYMD(start));
+      setDateTo(todayStr);
+    } else if (preset === 'THIS_MONTH') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(toLocalYMD(start));
+      setDateTo(todayStr);
+    }
+  };
 
   // ─── Detail view ───
   const [selectedVin, setSelectedVin] = useState<string | null>(null);
@@ -247,9 +282,15 @@ export default function VehicleReportsPage() {
         if (invoiceFilter === 'NO_INVOICE' && r.invoiceNumber) return false;
         if (invoiceFilter !== 'NO_INVOICE' && r.invoiceNumber !== invoiceFilter) return false;
       }
+      // Date range (YYYY-MM-DD)
+      if (dateFrom || dateTo) {
+        const recordDate = (r.serviceDate || '').slice(0, 10);
+        if (dateFrom && recordDate < dateFrom) return false;
+        if (dateTo && recordDate > dateTo) return false;
+      }
       return true;
     });
-  }, [allRecords, searchQuery, companyFilter, serviceFilter, statusFilter, supplierFilter, invoiceFilter]);
+  }, [allRecords, searchQuery, companyFilter, serviceFilter, statusFilter, supplierFilter, invoiceFilter, dateFrom, dateTo]);
 
   // ─── Group by VIN for summary ───
   const vehicleGroups = useMemo(() => {
@@ -320,7 +361,11 @@ export default function VehicleReportsPage() {
   };
 
   // ─── Print per-vehicle detail ───
-  const selectedVinRecords = selectedVin ? allRecords.filter(r => r.vin === selectedVin) : [];
+  const selectedVinRecords = useMemo(() => {
+    if (!selectedVin) return [];
+    const matched = filteredRecords.filter(r => r.vin === selectedVin);
+    return matched.length > 0 ? matched : allRecords.filter(r => r.vin === selectedVin);
+  }, [selectedVin, filteredRecords, allRecords]);
 
   // ─── Collapsed vehicle groups state (default: all expanded in grouped table) ───
   const [collapsedVins, setCollapsedVins] = useState<Set<string>>(new Set());
@@ -456,6 +501,83 @@ export default function VehicleReportsPage() {
               <X className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+
+        {/* Date Range Filter Bar */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-gray-100 shadow-xs">
+          {/* Quick Date Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 mr-1">
+              <Calendar className="w-3.5 h-3.5 text-[#0f5238]" />
+              <span>ช่วงวันที่:</span>
+            </span>
+            {([
+              { key: 'ALL', label: 'ทั้งหมด' },
+              { key: 'TODAY', label: 'วันนี้' },
+              { key: 'PAST_7', label: '7 วันล่าสุด' },
+              { key: 'THIS_MONTH', label: 'เดือนนี้' },
+            ] as const).map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                onClick={() => handleSelectDatePreset(preset.key)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  datePreset === preset.key
+                    ? 'bg-[#0f5238] text-white shadow-2xs'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom Date Inputs (From - To) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-medium text-gray-500 whitespace-nowrap">ตั้งแต่วันที่</label>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDateFrom(val);
+                  setDatePreset(!val && !dateTo ? 'ALL' : 'CUSTOM');
+                }}
+                className="h-8 px-2.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:ring-2 focus:ring-[#0f5238]/20 focus:border-[#0f5238] outline-none bg-gray-50/50"
+              />
+            </div>
+
+            <span className="text-xs text-gray-400">ถึง</span>
+
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-medium text-gray-500 whitespace-nowrap">วันที่</label>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDateTo(val);
+                  setDatePreset(!dateFrom && !val ? 'ALL' : 'CUSTOM');
+                }}
+                className="h-8 px-2.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:ring-2 focus:ring-[#0f5238]/20 focus:border-[#0f5238] outline-none bg-gray-50/50"
+              />
+            </div>
+
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => handleSelectDatePreset('ALL')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-semibold transition-colors cursor-pointer"
+                title="ล้างตัวกรองวันที่"
+              >
+                <X className="w-3 h-3" />
+                <span>ล้างวันที่</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Advanced filters */}

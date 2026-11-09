@@ -102,9 +102,9 @@ async function findUnlinkedPoInD365(params: {
 
 /** รหัสสินค้า/บริการใน D365 (Lines[].ItemNumber) แยกตามประเภทงาน */
 export const D365_SERVICE_ITEMS = {
-  CAR_WASH: 'GI-0900832', // ค่าบริการล้างรถ
-  VEHICLE_SLIDE: 'GI-0900833', // ค่าบริการรถสไลด์
-  WINDOW_FILM: 'GI-0900834', // ค่าบริการติดฟิล์ม (ยังไม่มีประเภทงานนี้ในระบบ — เตรียมไว้สำหรับอนาคต)
+  CAR_WASH: 'Car Wash', // ค่าบริการล้างรถ
+  VEHICLE_SLIDE: 'Towing', // ค่าบริการรถสไลด์
+  WINDOW_FILM: 'Tinting', // ค่าบริการติดฟิล์ม (ยังไม่มีประเภทงานนี้ในระบบ — เตรียมไว้สำหรับอนาคต)
 } as const;
 
 export function getD365ServiceItem(jobType: string): string | null {
@@ -464,7 +464,7 @@ export async function sendJobToD365PurchaseOrder(
     ValueDate: deliveryDateStr,
     FloorPlanId: '',
     PaymentType: '', // เว้นว่างเพื่อให้ D365 ดึง Terms of payment (15D, 30D, Cash) และ Method of payment (Transfer) ตาม Vendor อัตโนมัติ
-    PoDMS: '',
+    PoDMS: job.jobNumber, // D365 บังคับต้องมีค่า (ห้ามว่าง) — ใช้เลขที่ใบงานเดียวกับ PoGiCore
     PoGiCore: job.jobNumber,
     SiteId: d365Company,
     VendorAccount: vendorAccount,

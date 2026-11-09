@@ -441,7 +441,7 @@ model D365PoLog {
   supplierName   String?  // ชื่อ Supplier ณ ขณะที่ส่ง
   vendorAccount  String?  // รหัส Vendor ใน D365 เช่น V000490
   vin            String?  // เลขตัวถังรถยนต์
-  itemNumber     String?  // รหัสสินค้าบริการใน D365 เช่น GI-0900832
+  itemNumber     String?  // รหัสสินค้าบริการใน D365 เช่น Car Wash, Towing, Tinting
   amount         Float?   // ราคาค่าบริการที่ส่งเปิด PO
 
   status         String   // SUCCESS, FAILED
