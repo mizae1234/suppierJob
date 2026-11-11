@@ -122,11 +122,29 @@ export function getD365SystemName(jobType: string): string {
   return D365_SYSTEM_NAMES[jobType as keyof typeof D365_SYSTEM_NAMES] ?? 'SupplierJob';
 }
 
+/**
+ * คำนวณกลุ่มภาษีขายของรายการสินค้า (Lines[].ItemSalesTaxGroup)
+ * - ไม่มี VAT (NO_VAT): ส่ง 'NOVAT'
+ * - มี VAT (VAT_7):
+ *   - ล้างรถ (CAR_WASH) และ รถสไลด์ (VEHICLE_SLIDE): ส่ง 'UNDUE-P'
+ *   - ติดฟิล์ม (WINDOW_FILM): ส่ง 'DUE'
+ */
+export function getD365ItemSalesTaxGroup(jobType: string, vatType?: string | null): string {
+  if (vatType !== 'VAT_7') {
+    return 'NOVAT';
+  }
+  if (jobType === 'WINDOW_FILM') {
+    return 'DUE';
+  }
+  return 'UNDUE-P';
+}
+
 export interface D365PurchaseOrderLine {
   DiscountAmount?: number;
   DiscountPercent?: number;
   ExteriorColor?: string;
   InteriorColor?: string;
+  ItemSalesTaxGroup?: string;
   ItemNumber: string;
   Model?: string;
   MotorNo?: string;
@@ -413,6 +431,7 @@ export async function sendJobToD365PurchaseOrder(
 
   // ประเภท VAT ตามคู่ค้า (Supplier): มี VAT (VAT_7) = '1', ไม่มี VAT (NO_VAT) = '0'
   const inclTax = job.supplier?.vatType === 'VAT_7' ? '1' : '0';
+  const itemSalesTaxGroup = getD365ItemSalesTaxGroup(job.jobType, job.supplier?.vatType);
 
   // สร้าง Lines ตามจำนวนรถในใบงาน (1 คัน = 1 Line) พร้อมใส่เลขตัวถัง (VIN) ในฟิลด์ Remark
   const poLines: D365PurchaseOrderLine[] =
@@ -422,6 +441,7 @@ export async function sendJobToD365PurchaseOrder(
           DiscountPercent: 0,
           ExteriorColor: '',
           InteriorColor: '',
+          ItemSalesTaxGroup: itemSalesTaxGroup,
           ItemNumber: serviceItemNumber,
           Model: '',
           MotorNo: '',
@@ -440,6 +460,7 @@ export async function sendJobToD365PurchaseOrder(
             DiscountPercent: 0,
             ExteriorColor: '',
             InteriorColor: '',
+            ItemSalesTaxGroup: itemSalesTaxGroup,
             ItemNumber: serviceItemNumber,
             Model: '',
             MotorNo: '',
