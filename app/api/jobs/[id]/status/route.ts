@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
+import { sendJobToD365TransferJournal, getD365WarehouseForBranch } from '@/lib/d365/transfer';
 
 // PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard)
 export async function PATCH(
@@ -116,6 +117,9 @@ export async function PATCH(
       }
     }
 
+    // เก็บคลังต้นทางของรถแต่ละคันก่อนอัปเดตสถานะ เพื่อส่งให้ D365 Transfer Journal
+    const preTransferWarehouses: Record<string, string | null | undefined> = {};
+
     // ─── Atomic Update with Transaction ──────────────
     const updatedJob = await prisma.$transaction(async (tx) => {
       const updateData: Record<string, unknown> = {
@@ -157,15 +161,26 @@ export async function PATCH(
         // Reset vehicle status atomically
         if (job.jobType === 'VEHICLE_SLIDE') {
           const slideVins = job.carWashItems && job.carWashItems.length > 0
-            ? job.carWashItems.map(c => c.vin)
+            ? job.carWashItems.filter(c => c.status !== 'CANCELLED').map(c => c.vin)
             : (job.vin ? [job.vin] : []);
 
           if (slideVins.length > 0) {
+            const existingVehicles = await tx.vehicle.findMany({
+              where: { vin: { in: slideVins } },
+              select: { vin: true, d365WarehouseId: true },
+            });
+            for (const ev of existingVehicles) {
+              preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
+            }
+
+            const destWarehouse = getD365WarehouseForBranch(job.destBranch?.code);
+            // อัปเดตเฉพาะที่จอดปัจจุบัน (currentBranchId + d365WarehouseId) โดยไม่แตะ d365SiteId (สาขาเจ้าของรถ Original)
             await tx.vehicle.updateMany({
               where: { vin: { in: slideVins } },
               data: {
                 status: 'AVAILABLE',
                 ...(job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
+                ...(destWarehouse ? { d365WarehouseId: destWarehouse } : {}),
               },
             });
           }
@@ -285,25 +300,45 @@ export async function PATCH(
       }
     }
 
-    // ─── Trigger D365 Purchase Order Creation ───
-    // รอให้สร้าง PO ใน D365 เสร็จก่อนตอบกลับ เพื่อให้หน้าจอแสดงเลข PO และพิมพ์ใบสั่งงานได้ทันทีหลังกดอนุมัติครั้งแรก
+    // ─── Trigger D365 Purchase Order & Inventory Transfer Journal ───
+    // รอให้สร้าง PO (และโอนย้ายคลังที่จอดสำหรับงานสไลด์รถ) ใน D365 เสร็จก่อนตอบกลับ
     // (หาก D365 ล่มหรือเกิดข้อผิดพลาด จะถูกจับใน try/catch โดยไม่ทำให้การอนุมัติใบงานล้มเหลว)
     let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
+    let d365Transfer: { success: boolean; transferredCount: number; message: string } | undefined;
     if (status === 'APPROVED') {
-      try {
-        d365Po = await sendJobToD365PurchaseOrder(id, {
+      const [poResult, transferResult] = await Promise.allSettled([
+        sendJobToD365PurchaseOrder(id, {
           trigger: 'AUTO_APPROVE',
           actorId: user.id,
           actorName: user.displayName || user.username,
           actorRole: user.role,
-        });
+        }),
+        job.jobType === 'VEHICLE_SLIDE'
+          ? sendJobToD365TransferJournal(id, {
+              actorId: user.id,
+              actorName: user.displayName || user.username,
+              actorRole: user.role,
+              preTransferWarehouses,
+            })
+          : Promise.resolve(undefined),
+      ]);
+
+      if (poResult.status === 'fulfilled') {
+        d365Po = poResult.value;
         console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
-      } catch (poErr) {
-        console.error('Trigger D365 PO creation error:', poErr);
+      } else {
+        console.error('Trigger D365 PO creation error:', poResult.reason);
+      }
+
+      if (transferResult.status === 'fulfilled' && transferResult.value) {
+        d365Transfer = transferResult.value;
+        console.log(`[JobStatus] D365 Transfer result for ${job.jobNumber}:`, d365Transfer);
+      } else if (transferResult.status === 'rejected') {
+        console.error('Trigger D365 Transfer Journal error:', transferResult.reason);
       }
     }
 
-    return NextResponse.json({ success: true, job: updatedJob, d365Po });
+    return NextResponse.json({ success: true, job: updatedJob, d365Po, d365Transfer });
   } catch (error) {
     console.error('PATCH /api/jobs/[id]/status error:', error);
     return NextResponse.json(

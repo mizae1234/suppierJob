@@ -81,15 +81,24 @@ export async function GET(request: NextRequest) {
     const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
     const limit = Number.isFinite(parsedLimit) ? Math.min(MAX_LIMIT, Math.max(1, parsedLimit)) : MAX_LIMIT;
 
-    const vehicles = await prisma.vehicle.findMany({
-      where,
-      include: {
-        company: { select: { code: true, name: true } },
-        currentBranch: { select: { code: true, name: true } },
-      },
-      orderBy: { model: 'asc' },
-      take: limit,
-    });
+    const [vehicles, allBranches] = await Promise.all([
+      prisma.vehicle.findMany({
+        where,
+        include: {
+          company: { select: { code: true, name: true } },
+          currentBranch: { select: { code: true, name: true, address: true } },
+        },
+        orderBy: { model: 'asc' },
+        take: limit,
+      }),
+      prisma.branch.findMany({
+        select: { id: true, code: true, name: true, address: true },
+      }),
+    ]);
+
+    const branchByCode = new Map(
+      allBranches.map((b) => [b.code.trim().toUpperCase(), b])
+    );
 
     // Cars that still have unfinished work → can't be ordered again
     const activeJobs = await getActiveJobsByVin(vehicles.map(v => v.vin));
@@ -100,6 +109,9 @@ export async function GET(request: NextRequest) {
       const canUserCancelActiveJob = Boolean(
         activeJobRef?.canCancel && user.role !== 'SUPPLIER'
       );
+      const ownerSiteCode = v.d365SiteId?.trim().toUpperCase();
+      const ownerBranch = ownerSiteCode ? branchByCode.get(ownerSiteCode) : undefined;
+
       return {
         vin: v.vin,
         model: v.model,
@@ -109,12 +121,18 @@ export async function GET(request: NextRequest) {
         currentBranchId: v.currentBranchId,
         currentBranchCode: v.currentBranch.code,
         currentBranchName: v.currentBranch.name,
+        ownerBranchId: ownerBranch?.id || v.currentBranchId,
+        ownerBranchCode: ownerBranch?.code || v.d365SiteId || v.currentBranch.code,
+        ownerBranchName: ownerBranch?.name || v.currentBranch.name,
+        ownerBranchAddress: ownerBranch?.address || v.currentBranch.address || null,
         vehicleType: v.vehicleType,
         licensePlate: v.licensePlate,
         mileage: v.mileage,
         status: v.status || 'AVAILABLE',
         source: v.source,
+        d365ItemId: v.d365ItemId,
         d365SiteId: v.d365SiteId,
+        d365WarehouseId: v.d365WarehouseId,
         d365Reserved: v.d365Reserved,
         lastSyncedAt: v.lastSyncedAt,
         activeJob: activeJobRef

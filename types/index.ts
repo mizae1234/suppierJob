@@ -105,6 +105,11 @@ export interface Vehicle {
   currentBranchId: string;
   currentBranchCode: string;
   currentBranchName: string;
+  /** สาขาที่เป็นเจ้าของรถ Original (ต้นสังกัดตาม d365SiteId) */
+  ownerBranchId?: string;
+  ownerBranchCode?: string;
+  ownerBranchName?: string;
+  ownerBranchAddress?: string | null;
   /** Sedan | SUV | Hatchback | Commercial | MPV หรือ 'ไม่ระบุ' (รถที่ sync จาก D365) */
   vehicleType: string;
   licensePlate?: string;
@@ -112,8 +117,12 @@ export interface Vehicle {
   status: 'AVAILABLE' | 'IN_TRANSIT' | 'IN_WASH' | 'MAINTENANCE' | 'OUT_OF_STOCK';
   /** แหล่งข้อมูลรถ: MANUAL (สร้าง/นำเข้าเอง) | D365 (sync อัตโนมัติ) */
   source?: 'MANUAL' | 'D365';
+  /** รหัสสินค้าใน D365 (เช่น GI-0700028) */
+  d365ItemId?: string | null;
   /** รหัสสาขา/บริษัทต้นสังกัดของรถใน D365 (เช่น GI, GI01 - GI12) */
   d365SiteId?: string | null;
+  /** รหัสคลังสินค้าที่รถจอดอยู่ใน D365 (InventLocationId เช่น 62900, 62008, 62010) */
+  d365WarehouseId?: string | null;
   /** ถูกจองใน D365 (แสดงผลเท่านั้น ยังสั่งงานได้) */
   d365Reserved?: boolean;
   lastSyncedAt?: string | null;

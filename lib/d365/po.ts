@@ -86,7 +86,7 @@ async function findUnlinkedPoInD365(params: {
         const line = lines[idx];
         return (
           line &&
-          line.ItemNumber === serviceItemNumber &&
+          Boolean(line.ItemNumber) &&
           Math.abs((line.PurchasePrice ?? line.LineAmount ?? 0) - expectedPrice) < 0.01
         );
       });

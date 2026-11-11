@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
+import { sendJobToD365TransferJournal, getD365WarehouseForBranch } from '@/lib/d365/transfer';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
@@ -129,6 +130,9 @@ export async function PATCH(
       }
     }
 
+    // เก็บคลังต้นทางของรถแต่ละคันก่อนอัปเดตสถานะ เพื่อส่งให้ D365 Transfer Journal
+    const preTransferWarehouses: Record<string, string | null | undefined> = {};
+
     // ─── Atomic Update with Transaction ──────────────
     const result = await prisma.$transaction(async (tx: any) => {
       // 1. Update the individual item status
@@ -150,11 +154,20 @@ export async function PATCH(
 
       // When individual item is approved, restore vehicle status and update branch if vehicle slide
       if (status === 'APPROVED') {
+        if (job.jobType === 'VEHICLE_SLIDE') {
+          const ev = await tx.vehicle.findUnique({
+            where: { vin: item.vin },
+            select: { vin: true, d365WarehouseId: true },
+          });
+          if (ev) preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
+        }
+        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? getD365WarehouseForBranch(job.destBranch?.code) : null;
         await tx.vehicle.update({
           where: { vin: item.vin },
           data: {
             status: 'AVAILABLE',
             ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
+            ...(job.jobType === 'VEHICLE_SLIDE' && destWarehouse ? { d365WarehouseId: destWarehouse } : {}),
           },
         });
       }
@@ -195,13 +208,18 @@ export async function PATCH(
           },
         });
 
-        await tx.vehicle.updateMany({
-          where: { vin: { in: allItems.map((i: any) => i.vin) } },
-          data: {
-            status: 'AVAILABLE',
-            ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
-          },
-        });
+        const approvedVins = allItems.filter((i: any) => i.status === 'APPROVED').map((i: any) => i.vin);
+        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? getD365WarehouseForBranch(job.destBranch?.code) : null;
+        if (approvedVins.length > 0) {
+          await tx.vehicle.updateMany({
+            where: { vin: { in: approvedVins } },
+            data: {
+              status: 'AVAILABLE',
+              ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
+              ...(job.jobType === 'VEHICLE_SLIDE' && destWarehouse ? { d365WarehouseId: destWarehouse } : {}),
+            },
+          });
+        }
 
         await tx.jobActivity.create({
           data: {
@@ -374,30 +392,50 @@ export async function PATCH(
       }
     }
 
-    // ─── Trigger D365 Purchase Order Integration ──────────────
+    // ─── Trigger D365 Purchase Order & Inventory Transfer Journal ──────────────
     // เมื่อทุกรายการผ่านการ Approve (หรือปฏิเสธครบ) และปิดใบงานเป็น APPROVED
-    // รอให้สร้าง PO ใน D365 เสร็จก่อนตอบกลับ เพื่อให้หน้าจอแสดงเลข PO และพิมพ์ใบสั่งงานได้ทันทีหลังกดอนุมัติครั้งแรก
+    // รอให้สร้าง PO (และโอนย้ายคลังที่จอดสำหรับงานสไลด์รถ) ใน D365 เสร็จก่อนตอบกลับ
     let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
+    let d365Transfer: { success: boolean; transferredCount: number; message: string } | undefined;
     if (result.progress.allApproved) {
-      try {
-        console.log(`[ItemStatus] Job ${job.jobNumber} all approved, sending to D365 PO...`);
-        d365Po = await sendJobToD365PurchaseOrder(jobId, {
+      const [poResult, transferResult] = await Promise.allSettled([
+        sendJobToD365PurchaseOrder(jobId, {
           trigger: 'AUTO_APPROVE',
           actorId: user.id,
           actorName: user.displayName || user.username,
           actorRole: user.role,
-        });
+        }),
+        job.jobType === 'VEHICLE_SLIDE'
+          ? sendJobToD365TransferJournal(jobId, {
+              actorId: user.id,
+              actorName: user.displayName || user.username,
+              actorRole: user.role,
+              preTransferWarehouses,
+            })
+          : Promise.resolve(undefined),
+      ]);
+
+      if (poResult.status === 'fulfilled') {
+        d365Po = poResult.value;
         console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
-      } catch (poError) {
-        console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poError);
+      } else {
+        console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poResult.reason);
+      }
+
+      if (transferResult.status === 'fulfilled' && transferResult.value) {
+        d365Transfer = transferResult.value;
+        console.log(`[ItemStatus] D365 Transfer result for ${job.jobNumber}:`, d365Transfer);
+      } else if (transferResult.status === 'rejected') {
+        console.error(`[ItemStatus] D365 Transfer Journal failed for job ${job.jobNumber}:`, transferResult.reason);
       }
     }
 
     return NextResponse.json({
       success: true,
       item: result.item,
-      progress: { ...result.progress, d365Po },
+      progress: { ...result.progress, d365Po, d365Transfer },
       d365Po,
+      d365Transfer,
     });
   } catch (error) {
     console.error('PATCH /api/jobs/[id]/items/[itemId]/status error:', error);

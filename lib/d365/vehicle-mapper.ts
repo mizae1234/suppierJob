@@ -1,4 +1,5 @@
 import type { D365InventOnHandRow, D365SiteOnHandRow } from './types';
+import { getBranchCodeFromD365Warehouse } from './transfer';
 
 /**
  * แปลงข้อมูลจาก D365 → รูปแบบ Vehicle ของระบบเรา (pure functions ไม่แตะ DB)
@@ -24,6 +25,7 @@ export interface MappedVehicle {
   d365WarehouseId: string | null;
   d365Reserved: boolean;
   nameResolved: boolean; // false = หา ProductName ไม่เจอ (model = ItemId)
+  warehouseMappedToShowroom?: boolean; // true = InventLocationId ชี้ไปที่โชว์รูมสาขาชัดเจน
 }
 
 export interface MapIssue {
@@ -121,17 +123,23 @@ export function mapInventRowsToVehicles(
     const parsed = parseProductName(productNames.get(itemId));
     if (!parsed) missingNameItems.add(itemId);
 
+    const warehouseId = row.InventLocationId?.trim() || null;
+    const showroomBranchCode = getBranchCodeFromD365Warehouse(warehouseId, true);
+    const parkedBranch = showroomBranchCode ? branchByCode.get(showroomBranchCode) : undefined;
+    const effectiveBranch = parkedBranch || branch;
+
     vehicles.set(vin, {
       vin,
       model: parsed?.model || itemId,
       color: parsed?.color || D365_DEFAULT_COLOR,
-      companyId: branch.companyId,
-      currentBranchId: branch.id,
+      companyId: branch.companyId, // บริษัทเจ้าของรถ Original ตามต้นสังกัด
+      currentBranchId: effectiveBranch.id, // สาขาที่รถจอดอยู่ปัจจุบันตามคลัง InventLocationId
       d365ItemId: itemId,
-      d365SiteId: siteId,
-      d365WarehouseId: row.InventLocationId?.trim() || null,
+      d365SiteId: siteId, // เก็บสาขาที่เป็นเจ้าของรถ Original (InventSiteId) เสมอ
+      d365WarehouseId: warehouseId,
       d365Reserved: Number(row.ReservPhysical) > 0,
       nameResolved: Boolean(parsed),
+      warehouseMappedToShowroom: Boolean(parkedBranch),
     });
   }
 

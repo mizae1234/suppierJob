@@ -216,7 +216,10 @@ export interface SyncComparableVehicle {
 }
 
 /** ข้อมูลที่ sync จะเขียนลงรถคันที่มีอยู่แล้ว (ไม่รวม lastSyncedAt) — กติกาเดียวกับเดิม */
-export function buildSyncUpdateData(current: Pick<SyncComparableVehicle, 'status'>, v: MappedVehicle) {
+export function buildSyncUpdateData(
+  current: Pick<SyncComparableVehicle, 'status'> & Partial<Pick<SyncComparableVehicle, 'currentBranchId' | 'd365WarehouseId'>>,
+  v: MappedVehicle
+) {
   const d365Fields = {
     source: 'D365',
     d365ItemId: v.d365ItemId,
@@ -235,7 +238,19 @@ export function buildSyncUpdateData(current: Pick<SyncComparableVehicle, 'status
     };
   }
   if (current.status === 'AVAILABLE') {
-    return { ...nameFields, ...d365Fields, companyId: v.companyId, currentBranchId: v.currentBranchId };
+    // ถ้ารถถูกสไลด์ไปจอดคลังกลาง (เช่น 62900) และรหัสคลังใน D365 ยังตรงกับใน DB -> คง currentBranchId ที่สไลด์ไปจอดไว้
+    const preserveSlidBranch =
+      !v.warehouseMappedToShowroom &&
+      Boolean(current.currentBranchId) &&
+      Boolean(current.d365WarehouseId) &&
+      current.d365WarehouseId === v.d365WarehouseId;
+
+    return {
+      ...nameFields,
+      ...d365Fields,
+      companyId: v.companyId,
+      currentBranchId: preserveSlidBranch ? current.currentBranchId! : v.currentBranchId,
+    };
   }
   // IN_WASH / IN_TRANSIT ฯลฯ — ระบบเราเป็นตัวหลัก ไม่แตะสถานะและสาขา
   return { ...nameFields, ...d365Fields };
