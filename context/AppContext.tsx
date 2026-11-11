@@ -165,8 +165,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetch('/api/suppliers'),
       ]);
       const [companiesData, suppliersData] = await Promise.all([
-        companiesRes.json(),
-        suppliersRes.json(),
+        companiesRes.ok ? companiesRes.json().catch(() => ({})) : Promise.resolve({}),
+        suppliersRes.ok ? suppliersRes.json().catch(() => ({})) : Promise.resolve({}),
       ]);
 
       if (companiesData.companies) {
@@ -186,6 +186,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchVehicles = useCallback(async () => {
     try {
       const res = await fetch('/api/vehicles?scope=all');
+      if (!res.ok) return;
       const data = await res.json();
       if (data.vehicles) setVehicles(data.vehicles);
     } catch (e) {
@@ -200,6 +201,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isFetchingJobsRef.current = true;
     try {
       const res = await fetch('/api/jobs', { cache: 'no-store' });
+      if (!res.ok) return;
       const data = await res.json();
       if (data.jobs) setJobs(data.jobs);
     } catch (e) {
@@ -212,6 +214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const fetchInvoices = useCallback(async () => {
     try {
       const res = await fetch('/api/invoices');
+      if (!res.ok) return;
       const data = await res.json();
       if (data.invoices) setInvoices(data.invoices);
     } catch (e) {

@@ -174,16 +174,18 @@ export async function GET(request: NextRequest) {
       .map(s => s.trim())
       .includes('activities');
 
-    const [total, jobs] = await Promise.all([
-      prisma.job.count({ where }),
-      prisma.job.findMany({
-        where,
-        include: buildJobInclude(includeActivities),
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-    ]);
+    const jobs = await prisma.job.findMany({
+      where,
+      include: buildJobInclude(includeActivities),
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    });
+
+    // ไม่ต้องยิง COUNT(*) แยกอีก connection ถ้าไม่ได้ขอแบบแบ่งหน้า (page === null) และจำนวนไม่ชนเพดาน limit
+    const total = !page && jobs.length < limit
+      ? jobs.length
+      : await prisma.job.count({ where });
 
     // Format for frontend compatibility
     const formatted = jobs.map(serializeJob);
