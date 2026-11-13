@@ -62,6 +62,18 @@ export async function findVendorsByParty(partyNumber: string): Promise<D365Vendo
   return rows.map(mapVendor);
 }
 
+/** ดึง Vendor ที่มีชื่อองค์กร (VendorOrganizationName) ตรงกันเป๊ะจากทุกบริษัท (สำรองกรณีบางสาขาผูกคนละ PartyNumber) */
+export async function findVendorsByOrgName(orgName: string): Promise<D365VendorRecord[]> {
+  const trimmed = orgName.trim();
+  if (!trimmed) return [];
+  const rows = await d365FetchAll<RawVendor>('VendorsV3', {
+    $filter: `VendorOrganizationName eq ${odataStr(trimmed)}`,
+    $select: VENDOR_SELECT,
+    'cross-company': 'true',
+  });
+  return rows.map(mapVendor);
+}
+
 export interface VendorSyncResult {
   partyNumber: string | null;
   created: { branchCode: string; vendorCode: string }[];
@@ -118,7 +130,7 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
     await prisma.supplier.update({ where: { id: supplierId }, data: { d365PartyNumber: partyNumber } });
   }
 
-  // 2) ดึง Vendor ทุกบริษัท
+  // 2) ดึง Vendor ทุกบริษัทตาม PartyNumber
   const vendors = await findVendorsByParty(partyNumber);
   const byCompany = new Map<string, D365VendorRecord[]>();
   for (const v of vendors) {
@@ -127,8 +139,17 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
     byCompany.set(v.company, list);
   }
 
-  // 3) upsert ตามสาขาในระบบ
+  // 3) upsert ตามสาขาในระบบ (หากสาขาไหนไม่เจอด้วย PartyNumber แต่มีชื่อ VendorOrganizationName เดียวกันใน D365 ให้ดึงมาเติม)
   const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
+  const primaryOrgName = vendors.find((v) => v.vendorName)?.vendorName || supplier.vendorCodes.find((vc) => vc.vendorName)?.vendorName || '';
+  if (primaryOrgName && branches.some((b) => !byCompany.has(normalizeCompany(b.code)))) {
+    const byName = await findVendorsByOrgName(primaryOrgName);
+    for (const v of byName) {
+      if (!byCompany.has(v.company)) {
+        byCompany.set(v.company, [v]);
+      }
+    }
+  }
   const existingByBranch = new Map(supplier.vendorCodes.map((vc) => [vc.branchId, vc]));
   const now = new Date();
 
