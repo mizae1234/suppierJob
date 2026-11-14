@@ -118,7 +118,7 @@ export default function SupplierInvoicesPage() {
       {showSuccess && (
         <div className="p-4 rounded-xl bg-green-50 border border-green-200 flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-green-600" />
-          <p className="text-sm font-semibold text-green-800">ออกใบวางบิลสำเร็จ! 🎉</p>
+          <p className="text-sm font-semibold text-green-800">ออกใบวางบิลเรียบร้อยแล้ว</p>
         </div>
       )}
 
@@ -263,7 +263,7 @@ export default function SupplierInvoicesPage() {
                             : 'bg-gray-100 text-gray-700'
                         }`}
                       >
-                        {isSubmitted ? '⏳ รอชำระ' : isPaid ? '✅ ชำระแล้ว' : inv.status}
+                        {isSubmitted ? 'รอชำระ' : isPaid ? 'ชำระแล้ว' : inv.status}
                       </span>
                     </div>
 
@@ -300,7 +300,7 @@ export default function SupplierInvoicesPage() {
                           isPaid ? 'text-emerald-700' : isSubmitted ? 'text-amber-600' : 'text-gray-400'
                         }`}
                       >
-                        {isSubmitted ? '⏳ รอชำระ' : isPaid ? '✅ ชำระแล้ว' : inv.status}
+                        {isSubmitted ? 'รอชำระ' : isPaid ? 'ชำระแล้ว' : inv.status}
                       </span>
                     </div>
 

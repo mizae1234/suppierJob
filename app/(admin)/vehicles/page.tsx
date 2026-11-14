@@ -23,6 +23,7 @@ import {
   Eye,
   ShieldCheck,
   AlertCircle,
+  AlertTriangle,
   Building2,
   Filter
 } from 'lucide-react';
@@ -185,6 +186,8 @@ export default function VehicleStockPage() {
     { value: 'IN_TRANSIT', label: 'อยู่ระหว่างขนส่ง', dot: '#f59e0b', icon: Truck },
     { value: 'DELIVERED', label: 'ส่งมอบปลายทางแล้ว', dot: '#2563eb', icon: MapPin },
     { value: 'APPROVED', label: 'สาขาตรวจรับสำเร็จ', dot: '#059669', icon: CheckCircle2 },
+    { value: 'FAILED_ATTEMPT', label: 'สไลด์ไม่สำเร็จ (เที่ยวเปล่า)', dot: '#ea580c', icon: AlertTriangle },
+    { value: 'FAILED_ATTEMPT_APPROVED', label: 'อนุมัติค่าเที่ยวเปล่า', dot: '#c2410c', icon: CheckCircle2 },
     { value: 'CANCELLED', label: 'ยกเลิกการสไลด์', dot: '#dc2626', icon: X },
   ], []);
 
@@ -309,6 +312,8 @@ export default function VehicleStockPage() {
       IN_TRANSIT: { label: 'อยู่ระหว่างขนส่ง', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: Truck },
       DELIVERED: { label: 'ส่งมอบปลายทางแล้ว', bg: 'bg-blue-50 border-blue-200', text: 'text-blue-800', icon: MapPin },
       APPROVED: { label: 'สาขาตรวจรับสำเร็จ', bg: 'bg-emerald-50 border-emerald-200', text: 'text-[#0f5238]', icon: CheckCircle2 },
+      FAILED_ATTEMPT: { label: 'สไลด์ไม่สำเร็จ (เที่ยวเปล่า)', bg: 'bg-orange-50 border-orange-200', text: 'text-orange-800', icon: AlertTriangle },
+      FAILED_ATTEMPT_APPROVED: { label: 'อนุมัติค่าเที่ยวเปล่า', bg: 'bg-orange-50 border-orange-300', text: 'text-orange-900', icon: CheckCircle2 },
       CANCELLED: { label: 'ยกเลิกการสไลด์', bg: 'bg-rose-50 border-rose-200', text: 'text-rose-800', icon: X },
     };
 

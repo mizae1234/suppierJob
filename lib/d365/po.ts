@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
 import { getD365Config, getD365Token, D365Error, fetchWithTimeout } from './client';
 
 /** เวลารอ D365 ตอบการสร้าง PO (ทำเบื้องหลังหลังอนุมัติ จึงไม่บล็อกผู้ใช้ — เผื่อเวลาให้ D365 Sandbox cold-start + Confirm PO ได้สูงสุด 120 วินาที) */
@@ -309,8 +310,11 @@ export async function sendJobToD365PurchaseOrder(
         ? [job.vin.trim()]
         : [];
   const vin = allVins.join(', ');
-  const price =
-    activeItems.length > 0
+  // เที่ยวเปล่า (สไลด์ไม่สำเร็จ): 1 Line ยอดตายตัวต่อใบงาน ใช้ ItemNumber เดียวกับงานสไลด์
+  const isFailedAttempt = isFailedAttemptJob(job);
+  const price = isFailedAttempt
+    ? SLIDE_FAILED_ATTEMPT_FEE
+    : activeItems.length > 0
       ? activeItems.reduce((sum, i) => sum + (i.unitPrice ?? 0), 0)
       : (job.actualCost ?? job.estimatedCost ?? 0);
   const serviceItemNumber = getD365ServiceItem(job.jobType);
@@ -434,8 +438,9 @@ export async function sendJobToD365PurchaseOrder(
   const itemSalesTaxGroup = getD365ItemSalesTaxGroup(job.jobType, job.supplier?.vatType);
 
   // สร้าง Lines ตามจำนวนรถในใบงาน (1 คัน = 1 Line) พร้อมใส่เลขตัวถัง (VIN) ในฟิลด์ Remark
+  // ยกเว้นเที่ยวเปล่า: 1 Line ต่อใบงาน (ไม่คูณจำนวนคัน)
   const poLines: D365PurchaseOrderLine[] =
-    activeItems.length > 0
+    activeItems.length > 0 && !isFailedAttempt
       ? activeItems.map((item) => ({
           DiscountAmount: 0,
           DiscountPercent: 0,
@@ -470,7 +475,7 @@ export async function sendJobToD365PurchaseOrder(
             Series: '',
             SiteId: '',
             Unit: 'Unit',
-            Remark: (job.vin || '').trim(),
+            Remark: (isFailedAttempt ? `เที่ยวเปล่า: ${vin}` : (job.vin || '').trim()).slice(0, 250),
             WarehouseId: '',
           },
         ];

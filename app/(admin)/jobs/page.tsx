@@ -270,7 +270,7 @@ function JobsContent() {
       }
     }
 
-    showToast(`⏳ กำลังอนุมัติใบงาน ${jobLabel} และเปิดใบสั่งซื้อ (PO) ใน D365...`, 'info', 2500);
+    showToast(`กำลังอนุมัติใบงาน ${jobLabel} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
     const res = await updateJobStatus(jobId, 'APPROVED', { approvedBy: approvedByLabel || undefined });
     if (res && !res.success) {
       showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
@@ -278,11 +278,11 @@ function JobsContent() {
     }
 
     if (res?.d365Po?.success && res.d365Po.purchId) {
-      showToast(`🎉 อนุมัติใบงาน ${jobLabel} และเปิด PO ใน D365 สำเร็จ! (เลข PO: ${res.d365Po.purchId})`, 'success', 5500);
+      showToast(`อนุมัติใบงาน ${jobLabel} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${res.d365Po.purchId})`, 'success', 5500);
     } else if (res?.d365Po && !res.d365Po.success) {
-      showToast(`✅ อนุมัติใบงาน ${jobLabel} แล้ว • แต่เปิด PO ใน D365 ไม่สำเร็จ: ${res.d365Po.message}`, 'warning', 6500);
+      showToast(`อนุมัติใบงาน ${jobLabel} เรียบร้อยแล้ว แต่สร้าง PO ในระบบ D365 ไม่สำเร็จ: ${res.d365Po.message}`, 'warning', 6500);
     } else {
-      showToast(`✅ อนุมัติใบงาน ${jobLabel} สำเร็จเรียบร้อยแล้ว`, 'success', 4500);
+      showToast(`อนุมัติใบงาน ${jobLabel} เรียบร้อยแล้ว`, 'success', 4500);
     }
 
     if (selectedJob?.id === jobId) {
@@ -311,7 +311,7 @@ function JobsContent() {
     const willCloseJob = unapprovedCount <= 1;
 
     if (willCloseJob) {
-      showToast(`⏳ กำลังอนุมัติใบงาน ${job.jobNumber} และเปิดใบสั่งซื้อ (PO) ใน D365...`, 'info', 2500);
+      showToast(`กำลังอนุมัติใบงาน ${job.jobNumber} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
     }
 
     const progress = await updateCarWashItemStatus(job.id, item.id, 'APPROVED');
@@ -322,15 +322,15 @@ function JobsContent() {
 
     if (progress.allApproved) {
       if (progress.d365Po?.success && progress.d365Po.purchId) {
-        showToast(`🎉 อนุมัติใบงาน ${job.jobNumber} และเปิด PO ใน D365 สำเร็จ! (เลข PO: ${progress.d365Po.purchId})`, 'success', 5500);
+        showToast(`อนุมัติใบงาน ${job.jobNumber} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${progress.d365Po.purchId})`, 'success', 5500);
       } else if (progress.d365Po && !progress.d365Po.success) {
-        showToast(`✅ อนุมัติใบงาน ${job.jobNumber} แล้ว • แต่เปิด PO ใน D365 ไม่สำเร็จ: ${progress.d365Po.message}`, 'warning', 6500);
+        showToast(`อนุมัติใบงาน ${job.jobNumber} เรียบร้อยแล้ว แต่สร้าง PO ในระบบ D365 ไม่สำเร็จ: ${progress.d365Po.message}`, 'warning', 6500);
       } else {
-        showToast(`🎉 อนุมัติครบทุกคันแล้ว — ปิดใบงาน ${job.jobNumber} สำเร็จ`, 'success', 4500);
+        showToast(`อนุมัติครบทุกคันเรียบร้อยแล้ว — ปิดใบงาน ${job.jobNumber}`, 'success', 4500);
       }
     } else {
       const carLabel = item.licensePlate || item.vin;
-      showToast(`✅ อนุมัติรถคัน ${carLabel} เรียบร้อย (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success', 3500);
+      showToast(`อนุมัติรถคัน ${carLabel} เรียบร้อยแล้ว (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success', 3500);
     }
   };
 

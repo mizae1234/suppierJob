@@ -251,7 +251,7 @@ export function VendorSubmitPhotoModal({
                   {/* Branch & Category info */}
                   <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 text-[11px] text-gray-600 flex-wrap">
                     <span className="truncate">
-                      🏢 <strong className="font-medium text-gray-800">{target.branchName || 'ไม่ระบุสาขา'}</strong>
+                      สาขา: <strong className="font-medium text-gray-800">{target.branchName || 'ไม่ระบุสาขา'}</strong>
                     </span>
                     <span className="text-gray-500 shrink-0">
                       หมวดหมู่: <strong className="font-medium text-gray-700">{target.washServiceCategory || washMeta.categoryName}</strong>
@@ -269,7 +269,7 @@ export function VendorSubmitPhotoModal({
                   {/* Highlights / Special instructions */}
                   {(target.remarks || target.itemRemarks) && (
                     <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200/80 text-[11px] text-amber-950 flex items-start gap-1.5">
-                      <span className="shrink-0 font-bold text-amber-800">📌 จุดที่ต้องเน้นพิเศษ:</span>
+                      <span className="shrink-0 font-bold text-amber-800">จุดที่ต้องเน้นพิเศษ:</span>
                       <span className="font-semibold leading-relaxed">{target.remarks || target.itemRemarks}</span>
                     </div>
                   )}
@@ -292,7 +292,11 @@ export function VendorSubmitPhotoModal({
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-gray-700">📸 รูปถ่ายหลักฐาน <span className="text-red-500">*</span></p>
+              <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                <span>รูปถ่ายหลักฐาน</span>
+                <span className="text-red-500">*</span>
+              </p>
               <span className="text-[10px] text-gray-400">{uploadedPhotos.length > 0 ? `${uploadedPhotos.length} รูป` : 'ถ่ายได้ไม่จำกัด'}</span>
             </div>
 
@@ -357,7 +361,7 @@ export function VendorSubmitPhotoModal({
 
             {uploadedPhotos.length === 0 && (
               <p className="text-[10px] text-red-500 mt-2 text-center font-medium">
-                ⚠️ ต้องแนบรูปอย่างน้อย 1 รูป จึงจะส่งงานได้
+                กรุณาแนบรูปถ่ายอย่างน้อย 1 รูปเพื่อส่งงาน
               </p>
             )}
           </div>

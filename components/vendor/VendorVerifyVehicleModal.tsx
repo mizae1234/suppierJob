@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Truck, Sparkles, Info } from 'lucide-react';
+import { Camera, ImagePlus, ScanLine, ShieldCheck, Trash2, X, Truck, Sparkles, Info, AlertCircle } from 'lucide-react';
 import { WorkModalTarget } from './types';
 import { useTheme } from '@/hooks/useTheme';
 import { useToast } from '@/components/ui/Toast';
@@ -72,7 +72,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
         setError(data.error || 'ยืนยันตัวรถไม่สำเร็จ กรุณาลองใหม่');
         return;
       }
-      showToast('✅ ยืนยันตัวรถสำเร็จ — เริ่มงานได้เลย', 'success');
+      showToast('ยืนยันตัวรถเรียบร้อยแล้ว สามารถเริ่มดำเนินงานได้', 'success');
       await onVerified(target);
     } catch {
       setError('เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ กรุณาลองใหม่');
@@ -260,7 +260,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
                   {/* Branch & Category info */}
                   <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 text-[11px] text-gray-600 flex-wrap">
                     <span className="truncate">
-                      🏢 <strong className="font-medium text-gray-800">{target.branchName || 'ไม่ระบุสาขา'}</strong>
+                      สาขา: <strong className="font-medium text-gray-800">{target.branchName || 'ไม่ระบุสาขา'}</strong>
                     </span>
                     <span className="text-gray-500 shrink-0">
                       หมวดหมู่: <strong className="font-medium text-gray-700">{target.washServiceCategory || washMeta.categoryName}</strong>
@@ -278,7 +278,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
                   {/* Highlights / Special instructions */}
                   {(target.remarks || target.itemRemarks) && (
                     <div className="p-2.5 rounded-xl bg-amber-50/90 border border-amber-200/80 text-[11px] text-amber-950 flex items-start gap-1.5">
-                      <span className="shrink-0 font-bold text-amber-800">📌 จุดที่ต้องเน้นพิเศษ:</span>
+                      <span className="shrink-0 font-bold text-amber-800">จุดที่ต้องเน้นพิเศษ:</span>
                       <span className="font-semibold leading-relaxed">{target.remarks || target.itemRemarks}</span>
                     </div>
                   )}
@@ -358,7 +358,7 @@ export function VendorVerifyVehicleModal({ target, onClose, onVerified }: Vendor
           {/* Error Message */}
           {error && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-medium text-red-700 flex items-start gap-2 animate-in fade-in">
-              <span className="shrink-0 text-sm">⚠️</span>
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
               <span className="leading-snug">{error}</span>
             </div>
           )}

@@ -5,6 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
+import { getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
 import { Job, CompanyCode, CarWashItem } from '@/types';
 import { VehicleDetailModal, VehicleRecord } from '@/components/vehicles';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
@@ -53,6 +54,7 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
   DEEP_CLEAN: 'ล้างพิเศษ (Deep Clean)',
   POLISH: 'ขัดเคลือบ (Polish)',
   VEHICLE_SLIDE: 'รถสไลด์ (Slide)',
+  SLIDE_FAILED_ATTEMPT: SLIDE_FAILED_ATTEMPT_LABEL,
 };
 
 const getServiceLabel = (serviceType: string): string => {
@@ -93,9 +95,13 @@ export default function VehicleReportsPage() {
             jobId: job.id,
             jobNumber: job.jobNumber,
             jobType: job.jobType,
-            serviceType: job.jobType === 'VEHICLE_SLIDE' ? 'VEHICLE_SLIDE' : item.washType,
+            serviceType: job.jobType === 'VEHICLE_SLIDE'
+              ? (isFailedAttemptJob(job) ? 'SLIDE_FAILED_ATTEMPT' : 'VEHICLE_SLIDE')
+              : item.washType,
             serviceDate: item.actualWashDate,
-            unitPrice: item.unitPrice,
+            unitPrice: job.jobType === 'VEHICLE_SLIDE' && isFailedAttemptJob(job)
+              ? getFailedAttemptItemPrice(job.carWashItems, item.id)
+              : item.unitPrice,
             itemStatus: item.status,
             jobStatus: job.status,
             companyCode: job.companyCode,
@@ -119,9 +125,9 @@ export default function VehicleReportsPage() {
           jobId: job.id,
           jobNumber: job.jobNumber,
           jobType: job.jobType,
-          serviceType: 'VEHICLE_SLIDE',
+          serviceType: isFailedAttemptJob(job) ? 'SLIDE_FAILED_ATTEMPT' : 'VEHICLE_SLIDE',
           serviceDate: job.createdAt,
-          unitPrice: job.actualCost || job.estimatedCost || 0,
+          unitPrice: getJobTotalCost(job),
           itemStatus: job.status,
           jobStatus: job.status,
           companyCode: job.companyCode,
@@ -218,8 +224,8 @@ export default function VehicleReportsPage() {
       ...allTypes.map(type => ({
         value: type,
         label: getServiceLabel(type),
-        dot: type === 'VEHICLE_SLIDE' ? '#f59e0b' : '#10b981',
-        icon: type === 'VEHICLE_SLIDE' ? Truck : undefined,
+        dot: type === 'SLIDE_FAILED_ATTEMPT' ? '#ea580c' : type === 'VEHICLE_SLIDE' ? '#f59e0b' : '#10b981',
+        icon: type === 'VEHICLE_SLIDE' || type === 'SLIDE_FAILED_ATTEMPT' ? Truck : undefined,
       })),
     ];
   }, [allRecords]);
@@ -692,7 +698,7 @@ export default function VehicleReportsPage() {
                   .reduce((s, r) => s + r.unitPrice, 0);
                 const invoiceNums = [...new Set(records.map(r => r.invoiceNumber).filter(Boolean))];
                 const hasCarWash = records.some(r => r.jobType === 'CAR_WASH');
-                const hasSlide = records.some(r => r.serviceType === 'VEHICLE_SLIDE');
+                const hasSlide = records.some(r => r.jobType === 'VEHICLE_SLIDE');
                 const isCollapsed = collapsedVins.has(vin);
 
                 return (
@@ -834,7 +840,7 @@ export default function VehicleReportsPage() {
                             </td>
                             <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
                               <div className="flex items-center gap-1.5">
-                                {r.serviceType === 'VEHICLE_SLIDE' ? (
+                                {r.jobType === 'VEHICLE_SLIDE' ? (
                                   <Truck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
                                 ) : (
                                   <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />

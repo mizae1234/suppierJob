@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
+import { SLIDE_COMPLETION_FAILED_ATTEMPT, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
 
 // GET: ดึงรายการ Invoices (ป้องกันข้อมูลรั่วไหลตาม Role)
 export async function GET(request: NextRequest) {
@@ -160,6 +161,8 @@ export async function POST(request: NextRequest) {
 
       // Calculate amounts (exclude cancelled items)
       const subtotal = targetJobs.reduce((sum, j) => {
+        // เที่ยวเปล่า (สไลด์ไม่สำเร็จ): ยอดตายตัวต่อใบงาน
+        if (j.completionType === SLIDE_COMPLETION_FAILED_ATTEMPT) return sum + SLIDE_FAILED_ATTEMPT_FEE;
         if (j.carWashItems && j.carWashItems.length > 0) {
           const valid = j.carWashItems.filter(i => i.status !== 'CANCELLED');
           return sum + valid.reduce((s, i) => s + (i.unitPrice || 0), 0);

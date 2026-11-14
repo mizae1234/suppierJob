@@ -25,6 +25,7 @@ import {
   CheckCheck,
   Camera,
   Ban,
+  AlertTriangle,
 } from 'lucide-react';
 import type { Job, CarWashItemStatus } from '@/types';
 import {
@@ -32,6 +33,10 @@ import {
   ProxyApprovalModal,
   CarWashItemReviewCard,
 } from '@/components/approvals';
+import {
+  isFailedAttemptJob,
+  SLIDE_FAILED_ATTEMPT_FEE,
+} from '@/lib/slide-failed-attempt';
 
 function ApprovalsContent() {
   const searchParams = useSearchParams();
@@ -84,7 +89,9 @@ function ApprovalsContent() {
       const isOrigin = Boolean(isSlide && ((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
 
       let approvedByLabel = '';
-      if (isDest) {
+      if (isFailedAttemptJob(job)) {
+        approvedByLabel = `อนุมัติค่าเที่ยวเปล่าโดย ${activeBranch?.name || job.originBranchName || job.branchName || 'สาขา'}`;
+      } else if (isDest) {
         approvedByLabel = `ตรวจรับรถโดย ${job.destBranchName || activeBranch?.name || 'สาขาปลายทาง'}`;
       } else if (isOrigin && job.destBranchId) {
         approvedByLabel = `อนุมัติแทนปลายทางโดย ${job.originBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
@@ -92,29 +99,29 @@ function ApprovalsContent() {
         approvedByLabel = `สาขา ${activeBranch.name}`;
       }
 
-      showToast(`⏳ กำลังอนุมัติใบงาน ${job.jobNumber} และเปิดใบสั่งซื้อ (PO) ใน D365...`, 'info', 2500);
+      showToast(`กำลังอนุมัติใบงาน ${job.jobNumber} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
       const res = await updateJobStatus(job.id, 'APPROVED', { approvedBy: approvedByLabel || undefined });
       if (res && !res.success) {
         showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
       } else if (res?.d365Po?.success && res.d365Po.purchId) {
         showToast(
-          `🎉 อนุมัติใบงาน ${job.jobNumber} และเปิด PO ใน D365 สำเร็จ! (เลข PO: ${res.d365Po.purchId})`,
+          `อนุมัติใบงาน ${job.jobNumber} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${res.d365Po.purchId})`,
           'success',
           5500
         );
       } else if (res?.d365Po && !res.d365Po.success) {
         showToast(
-          `✅ อนุมัติใบงาน ${job.jobNumber} แล้ว • แต่เปิด PO ใน D365 ไม่สำเร็จ: ${res.d365Po.message}`,
+          `อนุมัติใบงาน ${job.jobNumber} เรียบร้อยแล้ว แต่สร้าง PO ในระบบ D365 ไม่สำเร็จ: ${res.d365Po.message}`,
           'warning',
           6500
         );
       } else {
         showToast(
           proxyApproval 
-            ? `อนุมัติแทนสาขาปลายทางเรียบร้อย (${job.jobNumber})` 
+            ? `อนุมัติแทนสาขาปลายทางเรียบร้อยแล้ว (${job.jobNumber})` 
             : isDest 
-            ? `ยืนยันรับรถเข้าสาขาเรียบร้อย (${job.jobNumber})` 
-            : `อนุมัติใบงาน ${job.jobNumber} สำเร็จ`, 
+            ? `ยืนยันรับรถเข้าสาขาเรียบร้อยแล้ว (${job.jobNumber})` 
+            : `อนุมัติใบงาน ${job.jobNumber} เรียบร้อยแล้ว`, 
           'success',
           4500
         );
@@ -132,7 +139,7 @@ function ApprovalsContent() {
       const activeItems = (targetJob?.carWashItems || []).filter(i => i.status !== 'CANCELLED');
       const unapprovedCount = activeItems.filter(i => i.status !== 'APPROVED').length;
       if (unapprovedCount <= 1 && targetJob?.jobNumber) {
-        showToast(`⏳ กำลังอนุมัติใบงาน ${targetJob.jobNumber} และเปิดใบสั่งซื้อ (PO) ใน D365...`, 'info', 2500);
+        showToast(`กำลังอนุมัติใบงาน ${targetJob.jobNumber} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
       }
 
       const progress = await updateCarWashItemStatus(jobId, itemId, 'APPROVED');
@@ -141,21 +148,21 @@ function ApprovalsContent() {
       } else if (progress.allApproved) {
         if (progress.d365Po?.success && progress.d365Po.purchId) {
           showToast(
-            `🎉 อนุมัติใบงาน ${targetJob?.jobNumber || ''} และเปิด PO ใน D365 สำเร็จ! (เลข PO: ${progress.d365Po.purchId})`,
+            `อนุมัติใบงาน ${targetJob?.jobNumber || ''} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${progress.d365Po.purchId})`,
             'success',
             5500
           );
         } else if (progress.d365Po && !progress.d365Po.success) {
           showToast(
-            `✅ อนุมัติใบงาน ${targetJob?.jobNumber || ''} แล้ว • แต่เปิด PO ใน D365 ไม่สำเร็จ: ${progress.d365Po.message}`,
+            `อนุมัติใบงาน ${targetJob?.jobNumber || ''} เรียบร้อยแล้ว แต่สร้าง PO ในระบบ D365 ไม่สำเร็จ: ${progress.d365Po.message}`,
             'warning',
             6500
           );
         } else {
-          showToast(`🎉 อนุมัติครบทุกคันแล้ว — ปิดใบงานอัตโนมัติ`, 'success', 4500);
+          showToast(`อนุมัติครบทุกคันเรียบร้อยแล้ว — ปิดใบงานอัตโนมัติ`, 'success', 4500);
         }
       } else {
-        showToast(`✅ อนุมัติรถคัน ${carLabel} (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success', 3500);
+        showToast(`อนุมัติรถคัน ${carLabel} เรียบร้อยแล้ว (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success', 3500);
       }
     } finally {
       setApprovingItemId(null);
@@ -353,27 +360,27 @@ function ApprovalsContent() {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10px] shadow-2xs">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                                  📥 รับเข้า (สาขาปลายทาง)
+                                  รับเข้า (สาขาปลายทาง)
                                 </span>
                               );
                             }
                             if (dir === 'OUTBOUND') {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-[10px] shadow-2xs">
-                                  📤 ส่งออก (สาขาต้นทาง)
+                                  ส่งออก (สาขาต้นทาง)
                                 </span>
                               );
                             }
                             if (dir === 'INTERNAL' || job.destBranchId) {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
-                                  🚚 ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}
+                                  ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}
                                 </span>
                               );
                             }
                             return (
                               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700 border border-gray-200 font-bold text-[10px]">
-                                📍 ส่งตามพิกัด/แผนที่
+                                ส่งตามพิกัด/แผนที่
                               </span>
                             );
                           })()}
@@ -454,7 +461,17 @@ function ApprovalsContent() {
                               <span>ตีกลับทั้งใบ</span>
                             </button>
 
-                            {isDest ? (
+                            {isFailedAttemptJob(job) ? (
+                              <button
+                                onClick={() => handleApprove(job, false)}
+                                disabled={approvingJobId === job.id}
+                                className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 active:scale-[0.98] text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                                title="อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) — รถไม่ถูกย้ายสาขา"
+                              >
+                                <CheckCheck className="w-4 h-4 shrink-0" />
+                                <span>{approvingJobId === job.id ? 'กำลังบันทึก...' : `อนุมัติค่าเที่ยวเปล่า ฿${SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}`}</span>
+                              </button>
+                            ) : isDest ? (
                               <button
                                 onClick={() => handleApprove(job, false)}
                                 disabled={approvingJobId === job.id}
@@ -462,7 +479,7 @@ function ApprovalsContent() {
                                 title="สาขาปลายทางยืนยันรับรถเข้าสาขา"
                               >
                                 <CheckCheck className="w-4 h-4 shrink-0" />
-                                <span>{approvingJobId === job.id ? 'กำลังบันทึก...' : '✅ ยืนยันรับรถเข้าสาขา'}</span>
+                                <span>{approvingJobId === job.id ? 'กำลังบันทึก...' : 'ยืนยันรับรถเข้าสาขา'}</span>
                               </button>
                             ) : isOrigin && job.destBranchId ? (
                               <button
@@ -495,10 +512,53 @@ function ApprovalsContent() {
                       อนุมัติสำเร็จเมื่อ {formatThaiDate(job.approvedAt)}{job.approvedBy ? ` โดย ${job.approvedBy}` : ''}
                     </p>
                   )}
+
+                  {/* ── เที่ยวเปล่า (สไลด์ไม่สำเร็จ) ── */}
+                  {isFailedAttemptJob(job) && (() => {
+                    const issuePhotos = job.evidences.filter(e => e.evidenceType === 'ISSUE');
+                    const activeCars = (job.carWashItems || []).filter(i => i.status !== 'CANCELLED');
+                    const carLabels = activeCars.length > 0
+                      ? activeCars.map(i => getVehicleLabel(i.vin, i.licensePlate))
+                      : [getVehicleLabel(job.vin, job.vehicle?.licensePlate)];
+                    return (
+                      <div className="p-3.5 rounded-2xl bg-orange-50 border border-orange-200 text-xs text-orange-950 flex flex-col gap-2.5">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 font-bold text-orange-900">
+                            <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
+                            <span>เที่ยวเปล่า — Supplier มาถึงหน้างานแต่สไลด์รถไม่สำเร็จ</span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full bg-white border border-orange-300 font-mono font-black text-orange-700">
+                            ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()} / ใบงาน
+                          </span>
+                        </div>
+                        <div className="grid gap-1 text-[11px]">
+                          <p className="whitespace-pre-line"><span className="text-orange-700/80 mr-1">หมายเหตุจาก Supplier:</span><b>{job.failNote || '-'}</b></p>
+                          <p><span className="text-orange-700/80 mr-1">รถในใบงาน ({carLabels.length} คัน):</span>{carLabels.join(', ')}</p>
+                          <p className="text-orange-800/80">เมื่ออนุมัติ: เปิด PO {SLIDE_FAILED_ATTEMPT_FEE} บาท • รถยังอยู่ที่เดิม (ไม่ย้ายสาขา / ไม่โอนคลังใน D365)</p>
+                        </div>
+                        {issuePhotos.length > 0 && (
+                          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                            {issuePhotos.map(evi => (
+                              <button
+                                type="button"
+                                key={evi.id}
+                                onClick={() => setSelectedPhoto({ url: evi.photoUrl, caption: evi.caption, type: 'รูปปัญหาหน้างาน' })}
+                                className="relative rounded-xl overflow-hidden border border-orange-200 aspect-4/3 bg-white cursor-pointer hover:shadow-md active:scale-95 transition-all"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={evi.photoUrl} alt={evi.caption} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* ── Per-car review cards (Ultra-Compact Redesign) ── */}
-                {job.carWashItems && job.carWashItems.length > 0 && (
+                {/* เที่ยวเปล่าอนุมัติทั้งใบงานเท่านั้น → ไม่แสดงปุ่มอนุมัติรายคัน */}
+                {job.carWashItems && job.carWashItems.length > 0 && !isFailedAttemptJob(job) && (
                   <div className="px-3 pb-3 sm:px-4 sm:pb-4 pt-2.5 bg-gray-50/60 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
                     {job.carWashItems.map((item) => (
                       <CarWashItemReviewCard

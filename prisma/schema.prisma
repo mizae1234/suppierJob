@@ -216,6 +216,11 @@ model Job {
   verifiedAt       DateTime?
   verifiedBy       String?
 
+  // ผลการจบงาน (Vehicle Slide): DELIVERED = ส่งรถสำเร็จ, FAILED_ATTEMPT = เที่ยวเปล่า (สไลด์ไม่สำเร็จ — คิดค่าบริการตายตัวต่อใบงาน)
+  completionType   String?
+  failReasonCode   String?       // รหัสสาเหตุที่สไลด์ไม่สำเร็จ (ดู lib/slide-failed-attempt.ts)
+  failNote         String?       // รายละเอียดเพิ่มเติมจาก Vendor
+
   // รูปหลักฐาน
   evidences        JobEvidence[]
 

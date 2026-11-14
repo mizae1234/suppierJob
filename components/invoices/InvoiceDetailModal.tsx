@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Invoice, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost, getOwnerBranchCorporateInfo, getSupplierVendorCode } from '@/lib/job-utils';
+import { getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { useApp } from '@/context/AppContext';
 import {
@@ -128,6 +129,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
   for (const j of invoiceJobs) {
     if (j.carWashItems && j.carWashItems.length > 0) {
       for (const item of j.carWashItems) {
+        const isFailedAttempt = isFailedAttemptJob(j);
         vehicleItems.push({
           vin: item.vin,
           model: item.vehicleModel || '-',
@@ -138,7 +140,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
           jobType: j.jobType,
           serviceType:
             j.jobType === 'VEHICLE_SLIDE'
-              ? 'รถสไลด์'
+              ? (isFailedAttempt ? SLIDE_FAILED_ATTEMPT_LABEL : 'รถสไลด์')
               : item.washType === 'STANDARD'
               ? 'ล้างปกติ'
               : item.washType === 'DEEP_CLEAN'
@@ -147,7 +149,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
               ? 'ขัดเคลือบ'
               : item.washType,
           serviceDate: item.actualWashDate,
-          unitPrice: item.unitPrice,
+          unitPrice: isFailedAttempt ? getFailedAttemptItemPrice(j.carWashItems, item.id) : item.unitPrice,
           status: item.status,
           branchName: j.branchName,
         });
@@ -161,9 +163,9 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
         jobNumber: j.jobNumber,
         poNumber: j.d365PoNumber,
         jobType: j.jobType,
-        serviceType: 'รถสไลด์',
+        serviceType: isFailedAttemptJob(j) ? SLIDE_FAILED_ATTEMPT_LABEL : 'รถสไลด์',
         serviceDate: j.createdAt,
-        unitPrice: j.actualCost || j.estimatedCost || 0,
+        unitPrice: getJobTotalCost(j),
         status: j.status,
         branchName: j.branchName,
       });

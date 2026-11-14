@@ -5,6 +5,7 @@ import { Job, UserRole, CarWashItem, JobEvidence, JobStatus } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
+import { getFailedAttemptItemPrice, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { useApp } from '@/context/AppContext';
 import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2, Loader2 } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
@@ -91,7 +92,7 @@ function toVehicleCards(jobs: Job[]): VehicleCard[] {
         licensePlate: item.licensePlate,
         model: item.vehicleModel,
         color: item.vehicleColor,
-        price: item.unitPrice,
+        price: isFailedAttemptJob(job) ? getFailedAttemptItemPrice(items, item.id) : item.unitPrice,
         column,
         index: idx + 1,
         total: items.length,
@@ -139,8 +140,8 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
     }
     if (!isReviewer || card.column !== 'WAITING_APPROVAL') return null;
 
-    // Per-car review (car was submitted by supplier)
-    if (item && item.status === 'COMPLETED' && onApproveItem && onRejectItem) {
+    // Per-car review (car was submitted by supplier) — เที่ยวเปล่าต้องอนุมัติทั้งใบ จึงไม่แสดงปุ่มรายคัน
+    if (item && item.status === 'COMPLETED' && onApproveItem && onRejectItem && !isFailedAttemptJob(job)) {
       return (
         <>
           <button
@@ -180,12 +181,13 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
       );
     }
 
-    // Single-vehicle job without items → whole-job review
-    if (!item && job.status === 'WAITING_APPROVAL') {
+    // Single-vehicle job without items (หรืองานเที่ยวเปล่า) → whole-job review
+    if ((!item || isFailedAttemptJob(job)) && job.status === 'WAITING_APPROVAL') {
       const myBranchId = activeBranch?.id || currentBranchId;
       const isSlide = job.jobType === 'VEHICLE_SLIDE';
-      const isDest = Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
-      const isOrigin = Boolean(isSlide && job.destBranchId && (job.originBranchId === myBranchId || job.branchId === myBranchId));
+      const isFailed = isFailedAttemptJob(job);
+      const isDest = !isFailed && Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
+      const isOrigin = !isFailed && Boolean(isSlide && job.destBranchId && (job.originBranchId === myBranchId || job.branchId === myBranchId));
 
       return (
         <>
@@ -209,10 +211,10 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
             }}
             disabled={isApproving}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-xs hover:opacity-90 transition-opacity disabled:opacity-70 cursor-pointer ${
-              isDest ? 'bg-emerald-700' : isOrigin ? 'bg-sky-700' : ''
+              isFailed ? 'bg-orange-600' : isDest ? 'bg-emerald-700' : isOrigin ? 'bg-sky-700' : ''
             }`}
-            style={!isDest && !isOrigin ? { backgroundColor: theme.primary } : undefined}
-            title={isDest ? 'ยืนยันรับรถเข้าสาขา' : isOrigin ? 'อนุมัติแทนสาขาปลายทาง' : 'อนุมัติงาน'}
+            style={!isFailed && !isDest && !isOrigin ? { backgroundColor: theme.primary } : undefined}
+            title={isFailed ? 'อนุมัติค่าเที่ยวเปล่า (ทั้งใบงาน)' : isDest ? 'ยืนยันรับรถเข้าสาขา' : isOrigin ? 'อนุมัติแทนสาขาปลายทาง' : 'อนุมัติงาน'}
           >
             {isApproving ? (
               <>
@@ -222,7 +224,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
             ) : (
               <>
                 <Check className="w-3.5 h-3.5" />
-                <span>{isDest ? 'ยืนยันรับรถ' : isOrigin ? 'อนุมัติแทน' : 'อนุมัติ'}</span>
+                <span>{isFailed ? 'อนุมัติเที่ยวเปล่า' : isDest ? 'ยืนยันรับรถ' : isOrigin ? 'อนุมัติแทน' : 'อนุมัติ'}</span>
               </>
             )}
           </button>
@@ -342,6 +344,12 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                                 {isCarWash ? (WASH_TYPE_LABEL[item?.washType || ''] || 'Car Wash') : 'รถสไลด์'}
                               </span>
 
+                              {isFailedAttemptJob(job) && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-100 text-orange-800 border border-orange-300">
+                                  เที่ยวเปล่า
+                                </span>
+                              )}
+
                               {/* Direction chip for slide jobs */}
                               {!isCarWash && (() => {
                                 const myBranchId = activeBranch?.id || currentBranchId;
@@ -349,21 +357,21 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                                 if (dir === 'INBOUND') {
                                   return (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                      📥 รับเข้า
+                                      รับเข้า
                                     </span>
                                   );
                                 }
                                 if (dir === 'OUTBOUND') {
                                   return (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
-                                      📤 ส่งออก
+                                      ส่งออก
                                     </span>
                                   );
                                 }
                                 if (dir === 'INTERNAL') {
                                   return (
                                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
-                                      🔄 ย้ายสาขา
+                                      ย้ายสาขา
                                     </span>
                                   );
                                 }

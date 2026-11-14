@@ -73,10 +73,10 @@ export default function SupplierSubmitPage() {
       setCompletedItems(prev => new Set(prev).add(itemId));
 
       if (progress?.allCompleted) {
-        showToast(`🎉 ส่งงานครบทุกคันแล้ว! ใบงาน ${job.jobNumber} รอสาขาตรวจรับ`, 'success');
+        showToast(`ส่งงานครบทุกคันเรียบร้อยแล้ว ใบงาน ${job.jobNumber} อยู่ระหว่างรอสาขาตรวจรับ`, 'success');
         setSubmitted(true);
       } else if (progress) {
-        showToast(`✅ ส่งงานรถคัน ${getVehicleLabel(vin, job.carWashItems?.find(i => i.id === itemId)?.licensePlate)} เสร็จ (${progress.completed}/${progress.total})`, 'success');
+        showToast(`ส่งงานรถคัน ${getVehicleLabel(vin, job.carWashItems?.find(i => i.id === itemId)?.licensePlate)} เรียบร้อยแล้ว (${progress.completed}/${progress.total})`, 'success');
       }
     } catch (e) {
       showToast('เกิดข้อผิดพลาด กรุณาลองอีกครั้ง', 'error');
@@ -100,7 +100,7 @@ export default function SupplierSubmitPage() {
           });
           await updateCarWashItemStatus(job.id, item.id, 'COMPLETED', caption || undefined);
         }
-        showToast(`🎉 ส่งงานครบทุกคันแล้ว! ใบงาน ${job.jobNumber} รอสาขาตรวจรับ`, 'success');
+        showToast(`ส่งงานครบทุกคันเรียบร้อยแล้ว ใบงาน ${job.jobNumber} อยู่ระหว่างรอสาขาตรวจรับ`, 'success');
       } else {
         // Vehicle Slide — original flow
         await addJobEvidence(job.id, {
@@ -128,7 +128,7 @@ export default function SupplierSubmitPage() {
         >
           <CheckCircle2 className="w-8 h-8" style={{ color: theme.primary }} />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">ส่งงานเรียบร้อย! 🎉</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">ส่งงานเรียบร้อยแล้ว</h2>
         <p className="text-sm text-gray-500 mb-6">
           {isCarWash
             ? `ส่งงานล้างรถครบทั้ง ${job.carWashItems?.length || 0} คันแล้ว — รอสาขาตรวจรับ`
@@ -239,7 +239,7 @@ export default function SupplierSubmitPage() {
                         )}
                         {item.remarks && (
                           <p className="text-[10px] text-amber-700 font-medium truncate mt-0.5">
-                            📌 {item.remarks}
+                            หมายเหตุ: {item.remarks}
                           </p>
                         )}
                       </div>

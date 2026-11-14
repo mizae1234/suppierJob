@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
+import { SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
 import { getOwnerBranchCorporateInfo } from '@/lib/job-utils';
 import { useApp } from '@/context/AppContext';
 import { VehicleRecord } from './types';
@@ -81,6 +82,7 @@ export function VehicleDetailModal({
 
   const getServiceLabel = (serviceType: string) => {
     if (serviceType === 'VEHICLE_SLIDE') return 'ขนส่งรถสไลด์ (Vehicle Slide)';
+    if (serviceType === 'SLIDE_FAILED_ATTEMPT') return SLIDE_FAILED_ATTEMPT_LABEL;
     const display = getWashServiceDisplay(serviceType);
     return display?.name ? `${display.name} (${serviceType})` : serviceType;
   };

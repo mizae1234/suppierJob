@@ -5,6 +5,7 @@ import { logAuditFromUser } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { sendJobToD365TransferJournal, getD365WarehouseForBranch } from '@/lib/d365/transfer';
+import { isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
@@ -55,6 +56,14 @@ export async function PATCH(
       return NextResponse.json(
         { error: 'ไม่พบรายการรถคันนี้ในใบงาน' },
         { status: 404 }
+      );
+    }
+
+    // เที่ยวเปล่า (สไลด์ไม่สำเร็จ) คิดเงินต่อใบงาน → ต้องอนุมัติ/ตีกลับทั้งใบ (อนุมัติรายคันจะย้ายสาขารถผิด)
+    if (isFailedAttemptJob(job) && job.status === 'WAITING_APPROVAL') {
+      return NextResponse.json(
+        { error: 'ใบงานนี้ส่งเป็นเที่ยวเปล่า (สไลด์ไม่สำเร็จ) กรุณาอนุมัติหรือขอแก้ไขทั้งใบงาน' },
+        { status: 400 }
       );
     }
 

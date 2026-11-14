@@ -185,7 +185,7 @@ export interface JobEvidence {
   vin?: string;
   photoUrl: string;
   caption: string;
-  evidenceType: 'BEFORE' | 'AFTER' | 'PICKUP' | 'DROPOFF' | 'GENERAL' | 'VERIFY';
+  evidenceType: 'BEFORE' | 'AFTER' | 'PICKUP' | 'DROPOFF' | 'GENERAL' | 'VERIFY' | 'ISSUE';
   uploadedAt: string;
 }
 
@@ -246,6 +246,10 @@ export interface Job {
   // ยืนยันตัวรถก่อนเริ่มงาน (Vehicle Slide)
   verifiedAt?: string;
   verifiedBy?: string;
+  // ผลการจบงานสไลด์: DELIVERED | FAILED_ATTEMPT (เที่ยวเปล่า)
+  completionType?: 'DELIVERED' | 'FAILED_ATTEMPT' | null;
+  failReasonCode?: string | null;
+  failNote?: string | null;
 
   // หลักฐานภาพถ่าย
   evidences: JobEvidence[];

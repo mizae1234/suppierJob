@@ -5,6 +5,11 @@ import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { sendJobToD365TransferJournal, getD365WarehouseForBranch } from '@/lib/d365/transfer';
+import {
+  isFailedAttemptJob,
+  SLIDE_COMPLETION_DELIVERED,
+  SLIDE_FAILED_ATTEMPT_FEE,
+} from '@/lib/slide-failed-attempt';
 
 // PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard)
 export async function PATCH(
@@ -36,6 +41,9 @@ export async function PATCH(
     if (!job) {
       return NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 });
     }
+
+    // เที่ยวเปล่า (สไลด์ไม่สำเร็จ) ที่ Vendor ส่งแล้ว — รถไม่ถูกย้าย, ไม่ทำ Transfer Journal, PO ยอดตายตัว
+    const isFailedAttempt = isFailedAttemptJob(job);
 
     // ─── Authorization Check ─────────────────────────
     if (user.role === 'SUPPLIER') {
@@ -115,6 +123,13 @@ export async function PATCH(
           { status: 400 }
         );
       }
+      // Vendor มาหน้างานและส่งเป็นเที่ยวเปล่าแล้ว → ต้องอนุมัติค่าเที่ยวเปล่า ไม่ใช่ยกเลิก
+      if (isFailedAttempt && user.role !== 'MASTER') {
+        return NextResponse.json(
+          { error: 'ไม่สามารถยกเลิกใบงานได้ เนื่องจาก Supplier ส่งงานเที่ยวเปล่า (สไลด์ไม่สำเร็จ) แล้ว กรุณาอนุมัติหรือขอแก้ไข' },
+          { status: 400 }
+        );
+      }
     }
 
     // เก็บคลังต้นทางของรถแต่ละคันก่อนอัปเดตสถานะ เพื่อส่งให้ D365 Transfer Journal
@@ -129,6 +144,13 @@ export async function PATCH(
 
       if (status === 'WAITING_APPROVAL') {
         updateData.completedAt = new Date();
+        if (job.jobType === 'VEHICLE_SLIDE') {
+          // ส่งงานสไลด์แบบปกติ (ส่งรถสำเร็จ) → ล้างข้อมูลเที่ยวเปล่าจากรอบก่อน (ถ้ามี) กันยอดค้าง
+          updateData.completionType = SLIDE_COMPLETION_DELIVERED;
+          updateData.failReasonCode = null;
+          updateData.failNote = null;
+          if (isFailedAttempt) updateData.actualCost = null;
+        }
         if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
           const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
           const validItems = completedItems.length > 0 
@@ -148,7 +170,10 @@ export async function PATCH(
 
         updateData.approvedAt = new Date();
         updateData.approvedBy = approvedBy || defaultApprovedBy;
-        if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
+        if (isFailedAttempt) {
+          // เที่ยวเปล่า: ยอดตายตัวต่อใบงาน
+          updateData.actualCost = SLIDE_FAILED_ATTEMPT_FEE;
+        } else if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
           const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
           const validItems = completedItems.length > 0 
             ? completedItems 
@@ -159,7 +184,24 @@ export async function PATCH(
         }
 
         // Reset vehicle status atomically
-        if (job.jobType === 'VEHICLE_SLIDE') {
+        if (job.jobType === 'VEHICLE_SLIDE' && isFailedAttempt) {
+          // เที่ยวเปล่า: รถยังอยู่ที่เดิม → ปลดล็อกสถานะอย่างเดียว ไม่เปลี่ยนสาขา/คลัง
+          const slideVins = job.carWashItems && job.carWashItems.length > 0
+            ? job.carWashItems.filter(c => c.status !== 'CANCELLED').map(c => c.vin)
+            : (job.vin ? [job.vin] : []);
+          if (slideVins.length > 0) {
+            await tx.vehicle.updateMany({
+              where: { vin: { in: slideVins } },
+              data: { status: 'AVAILABLE' },
+            });
+          }
+          if (job.carWashItems && job.carWashItems.length > 0) {
+            await tx.carWashItem.updateMany({
+              where: { jobId: job.id, status: { not: 'CANCELLED' } },
+              data: { status: 'APPROVED' },
+            });
+          }
+        } else if (job.jobType === 'VEHICLE_SLIDE') {
           const slideVins = job.carWashItems && job.carWashItems.length > 0
             ? job.carWashItems.filter(c => c.status !== 'CANCELLED').map(c => c.vin)
             : (job.vin ? [job.vin] : []);
@@ -204,6 +246,19 @@ export async function PATCH(
         }
       } else if (status === 'REJECTED') {
         updateData.rejectReason = rejectReason || 'ขอให้แก้ไขรายละเอียดงาน';
+        if (isFailedAttempt) {
+          // ตีกลับงานเที่ยวเปล่า → ล้างสถานะเที่ยวเปล่า ให้ Vendor เลือกส่งใหม่ได้ (สไลด์จริง หรือแจ้งเที่ยวเปล่าอีกครั้ง)
+          updateData.completionType = null;
+          updateData.failReasonCode = null;
+          updateData.failNote = null;
+          updateData.actualCost = null;
+          if (job.carWashItems && job.carWashItems.length > 0) {
+            await tx.carWashItem.updateMany({
+              where: { jobId: job.id, status: { not: 'CANCELLED' } },
+              data: { status: 'REJECTED', remarks: `ตีกลับงานเที่ยวเปล่า: ${updateData.rejectReason}` },
+            });
+          }
+        }
       } else if (status === 'CANCELLED') {
         updateData.rejectReason = rejectReason || (user.role === 'SUPPLIER' ? 'Supplier ปฏิเสธงาน' : 'ยกเลิกคำสั่งงาน');
         updateData.actualCost = 0;
@@ -245,7 +300,9 @@ export async function PATCH(
       IN_PROGRESS: 'UPDATE_JOB',
     };
     const descMap: Record<string, string> = {
-      APPROVED: `อนุมัติใบงาน ${job.jobNumber}`,
+      APPROVED: isFailedAttempt
+        ? `อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) ใบงาน ${job.jobNumber} — ${SLIDE_FAILED_ATTEMPT_FEE} บาท`
+        : `อนุมัติใบงาน ${job.jobNumber}`,
       REJECTED: `ตีกลับใบงาน ${job.jobNumber}${rejectReason ? ` — ${rejectReason}` : ''}`,
       CANCELLED: `ยกเลิกใบงาน ${job.jobNumber}${rejectReason ? ` — ${rejectReason}` : ''}`,
       WAITING_APPROVAL: `ส่งงานใบงาน ${job.jobNumber} รอตรวจรับ`,
@@ -256,7 +313,13 @@ export async function PATCH(
       entityType: 'Job',
       entityId: id,
       description: descMap[status] || `เปลี่ยนสถานะงาน ${job.jobNumber} เป็น ${status}`,
-      metadata: { jobNumber: job.jobNumber, fromStatus: job.status, toStatus: status, rejectReason },
+      metadata: {
+        jobNumber: job.jobNumber,
+        fromStatus: job.status,
+        toStatus: status,
+        rejectReason,
+        ...(isFailedAttempt ? { completionType: job.completionType } : {}),
+      },
       request,
     });
 
@@ -266,10 +329,10 @@ export async function PATCH(
         ? job.carWashItems.map(c => c.vin)
         : (job.vin ? [job.vin] : []);
 
-      let slideAction: 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | null = null;
+      let slideAction: 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | 'FAILED_ATTEMPT_APPROVED' | null = null;
       if (status === 'IN_PROGRESS') slideAction = 'IN_TRANSIT';
       else if (status === 'WAITING_APPROVAL') slideAction = 'DELIVERED';
-      else if (status === 'APPROVED') slideAction = 'APPROVED';
+      else if (status === 'APPROVED') slideAction = isFailedAttempt ? 'FAILED_ATTEMPT_APPROVED' : 'APPROVED';
       else if (status === 'CANCELLED') slideAction = 'CANCELLED';
 
       if (slideAction && vins.length > 0) {
@@ -313,7 +376,8 @@ export async function PATCH(
           actorName: user.displayName || user.username,
           actorRole: user.role,
         }),
-        job.jobType === 'VEHICLE_SLIDE'
+        // เที่ยวเปล่า: รถไม่ได้ย้ายจริง → ไม่ทำ Transfer Journal (กันสต็อกใน D365 เพี้ยน)
+        job.jobType === 'VEHICLE_SLIDE' && !isFailedAttempt
           ? sendJobToD365TransferJournal(id, {
               actorId: user.id,
               actorName: user.displayName || user.username,

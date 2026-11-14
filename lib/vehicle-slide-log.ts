@@ -4,7 +4,7 @@ export interface VehicleSlideLogInput {
   jobId: string;
   jobNumber: string;
   vins: string[];
-  action: 'CREATED' | 'PICKUP_VERIFIED' | 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED';
+  action: 'CREATED' | 'PICKUP_VERIFIED' | 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | 'FAILED_ATTEMPT' | 'FAILED_ATTEMPT_APPROVED';
   originBranchId?: string | null;
   originName?: string | null;
   originAddress?: string | null;

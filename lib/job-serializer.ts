@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { SLIDE_COMPLETION_FAILED_ATTEMPT, SLIDE_FAILED_ATTEMPT_FEE } from './slide-failed-attempt';
 
 /**
  * แปลงข้อมูล Job จาก Prisma → รูปแบบที่หน้าเว็บใช้ (ใช้ร่วมกันระหว่าง GET /api/jobs และ GET /api/jobs/[id])
@@ -113,6 +114,9 @@ export function serializeJob(job: any) {
     rejectReason: job.rejectReason,
     verifiedAt: job.verifiedAt?.toISOString(),
     verifiedBy: job.verifiedBy || undefined,
+    completionType: job.completionType || null,
+    failReasonCode: job.failReasonCode || null,
+    failNote: job.failNote || null,
     // Evidence
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     evidences: job.evidences.map((e: any) => ({
@@ -128,6 +132,8 @@ export function serializeJob(job: any) {
     estimatedCost: job.estimatedCost || 0,
     actualCost: (() => {
       if (job.status === 'CANCELLED') return 0;
+      // เที่ยวเปล่า: ยอดตายตัวต่อใบงาน ไม่คำนวณจากราคารายคัน
+      if (job.completionType === SLIDE_COMPLETION_FAILED_ATTEMPT) return SLIDE_FAILED_ATTEMPT_FEE;
       if (job.carWashItems && job.carWashItems.length > 0) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const hasCancelled = job.carWashItems.some((i: any) => i.status === 'CANCELLED');

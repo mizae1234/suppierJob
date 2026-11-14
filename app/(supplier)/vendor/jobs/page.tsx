@@ -10,8 +10,10 @@ import { getJobTotalCost, getVehicleLabel, classifySupplierItem, classifySupplie
 import { formatCurrency } from '@/lib/billing-utils';
 import { Job, JobStatus, CarWashItemStatus } from '@/types';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
-import { VendorRejectModal, VendorSubmitPhotoModal, VendorVerifyVehicleModal, WorkModalTarget } from '@/components/vendor';
+import { VendorRejectModal, VendorSubmitPhotoModal, VendorVerifyVehicleModal, VendorFailedAttemptModal, WorkModalTarget } from '@/components/vendor';
+import { getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
 import {
+  AlertTriangle,
   ClipboardList,
   Clock,
   CheckCircle2,
@@ -123,6 +125,7 @@ function SupplierJobsPageContent() {
   const [photoModalTarget, setPhotoModalTarget] = useState<WorkModalTarget | null>(null);
   const [verifyTarget, setVerifyTarget] = useState<WorkModalTarget | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [failedAttemptJob, setFailedAttemptJob] = useState<Job | null>(null);
 
   // ─── Filter jobs by supplier ──
   const myJobs = useMemo(() => {
@@ -152,7 +155,9 @@ function SupplierJobsPageContent() {
             vehicleColor: item.vehicleColor || vehicleObj?.color,
             licensePlate: item.licensePlate || vehicleObj?.licensePlate,
             washType: item.washType,
-            unitPrice: item.unitPrice,
+            unitPrice: job.jobType === 'VEHICLE_SLIDE' && isFailedAttemptJob(job)
+              ? getFailedAttemptItemPrice(job.carWashItems!, item.id)
+              : item.unitPrice,
             itemStatus: item.status,
             itemRemarks: item.remarks,
             actualWashDate: item.actualWashDate,
@@ -386,9 +391,9 @@ function SupplierJobsPageContent() {
         const progress = await updateCarWashItemStatus(target.jobId, target.itemId, 'COMPLETED');
         if (!progress) throw new Error('update item failed');
         if (progress.allCompleted) {
-          showToast(`🎉 ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เสร็จ — ใบงาน ${target.jobNumber} ครบทุกคันแล้ว! รอสาขาตรวจรับ`, 'success');
+          showToast(`ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เรียบร้อยแล้ว — ใบงาน ${target.jobNumber} ครบทุกคัน อยู่ระหว่างรอสาขาตรวจรับ`, 'success');
         } else {
-          showToast(`✅ ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เสร็จ (${progress.completed}/${progress.total} คัน)`, 'success');
+          showToast(`ส่งงานรถคัน ${getVehicleLabel(target.vin, target.licensePlate)} เรียบร้อยแล้ว (${progress.completed}/${progress.total} คัน)`, 'success');
         }
       } else {
         const result = await updateJobStatus(target.jobId, 'WAITING_APPROVAL');
@@ -396,7 +401,7 @@ function SupplierJobsPageContent() {
           showToast(result.error || 'ไม่สามารถส่งงานได้', 'error');
           throw new Error(result.error);
         }
-        showToast(`🎉 ส่งงานรถสไลด์ ${target.jobNumber} เสร็จเรียบร้อย! รอสาขาตรวจรับ`, 'success');
+        showToast(`ส่งงานรถสไลด์ ${target.jobNumber} เรียบร้อยแล้ว อยู่ระหว่างรอสาขาตรวจรับ`, 'success');
       }
     } catch (e) {
       console.error(e);
@@ -408,6 +413,66 @@ function SupplierJobsPageContent() {
       setSubmittingId(null);
     }
   };
+
+  // ─── เที่ยวเปล่า (สไลด์ไม่สำเร็จ) — ทั้งใบงาน ──
+  const canReportFailedAttempt = (job: Job) => {
+    if (job.jobType !== 'VEHICLE_SLIDE') return false;
+    if (!['PENDING_SUPPLIER', 'IN_PROGRESS', 'REJECTED'].includes(job.status)) return false;
+    const activeItems = (job.carWashItems || []).filter(i => i.status !== 'CANCELLED');
+    if (activeItems.some(i => i.status === 'APPROVED')) return false;
+    // ส่งงานสไลด์สำเร็จไปแล้วบางคัน (และยังไม่ถูกตีกลับ) → ไม่ใช่เที่ยวเปล่า
+    if (job.status !== 'REJECTED' && activeItems.some(i => i.status === 'COMPLETED')) return false;
+    return activeItems.length > 0 || Boolean(job.vin);
+  };
+
+  const handleSubmitFailedAttempt = async (data: { note: string; photos: string[] }) => {
+    if (!failedAttemptJob) return;
+    const target = failedAttemptJob;
+    setSubmittingId(target.id);
+    try {
+      const res = await fetch(`/api/jobs/${target.id}/failed-attempt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(result.error || 'ไม่สามารถส่งงานเที่ยวเปล่าได้ กรุณาลองใหม่', 'error');
+        throw new Error(result.error || 'failed-attempt error');
+      }
+      showToast(`ส่งงานเที่ยวเปล่า ${target.jobNumber} (฿${SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}) เรียบร้อยแล้ว — อยู่ระหว่างรอสาขาอนุมัติ`, 'success');
+      await refreshData();
+      setActiveTab('waiting');
+    } finally {
+      setSubmittingId(null);
+    }
+  };
+
+  const renderFailedAttemptButton = (job: Job) => {
+    if (!canReportFailedAttempt(job)) return null;
+    const carCount = (job.carWashItems || []).filter(i => i.status !== 'CANCELLED').length;
+    return (
+      <button
+        type="button"
+        onClick={() => setFailedAttemptJob(job)}
+        disabled={submittingId === job.id}
+        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-orange-200 bg-orange-50/70 hover:bg-orange-100 text-orange-800 text-[11px] font-bold transition-all cursor-pointer active:scale-[0.99] disabled:opacity-50"
+      >
+        <AlertTriangle className="w-3.5 h-3.5 text-orange-600" />
+        <span>
+          สไลด์ไม่ได้ / เที่ยวเปล่า (฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}
+          {carCount > 1 ? ` ทั้งใบงาน ${carCount} คัน` : ''})
+        </span>
+      </button>
+    );
+  };
+
+  const renderFailedAttemptWaiting = () => (
+    <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-orange-50 text-orange-800 text-xs font-bold border border-orange-200">
+      <AlertTriangle className="w-4 h-4 text-orange-600" />
+      <span>ส่งเป็นเที่ยวเปล่าแล้ว (฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}) • รอสาขาอนุมัติ</span>
+    </div>
+  );
 
   // ─── Handle reject (per-item for item cards, or entire job for slide jobs) ──
   const handleConfirmReject = async (target: WorkModalTarget, reason: string) => {
@@ -530,7 +595,7 @@ function SupplierJobsPageContent() {
 
               {card.itemRemarks && (
                 <div className="mt-2 pt-2 border-t border-gray-100 flex items-start gap-1.5 text-[11px] text-amber-950">
-                  <span className="shrink-0 font-bold text-amber-800">📌 จุดที่ต้องเน้น:</span>
+                  <span className="shrink-0 font-bold text-amber-800">จุดที่ต้องเน้น:</span>
                   <span className="font-semibold leading-relaxed">{card.itemRemarks}</span>
                 </div>
               )}
@@ -546,7 +611,7 @@ function SupplierJobsPageContent() {
             <span>•</span>
             {isAll && (
               <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[140px]" title={card.supplierName}>
-                🏢 {card.supplierName}
+                {card.supplierName}
               </span>
             )}
             {!isAll && (
@@ -629,7 +694,7 @@ function SupplierJobsPageContent() {
               style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary }}
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
+              <span>ผ่านการตรวจรับเรียบร้อยแล้ว</span>
             </div>
           )}
 
@@ -637,7 +702,7 @@ function SupplierJobsPageContent() {
           {isRejected && (
             <div className="flex-1 flex items-center justify-between gap-2">
               <span className="text-xs text-red-700 font-medium truncate">
-                ⚠️ สาขาขอให้แก้ไข: {card.itemRemarks || card.job.rejectReason || 'โปรดตรวจสอบ'}
+                สาขาขอให้แก้ไข: {card.itemRemarks || card.job.rejectReason || 'โปรดตรวจสอบ'}
               </span>
               <button
                 type="button"
@@ -750,7 +815,7 @@ function SupplierJobsPageContent() {
               <>
                 <span>•</span>
                 <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/50 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[140px]" title={card.supplierName}>
-                  🏢 {card.supplierName}
+                  {card.supplierName}
                 </span>
               </>
             )}
@@ -898,10 +963,12 @@ function SupplierJobsPageContent() {
           )}
 
           {card.itemStatus === 'COMPLETED' && ['IN_PROGRESS', 'WAITING_APPROVAL'].includes(card.jobStatus) && (
+            isFailedAttemptJob(job) ? renderFailedAttemptWaiting() : (
             <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200/60">
               <Clock className="w-4 h-4" />
               <span>ส่งงานคันนี้แล้ว • รอสาขาตรวจรับ</span>
             </div>
+            )
           )}
 
           {isApproved && (
@@ -910,14 +977,14 @@ function SupplierJobsPageContent() {
               style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary, borderColor: theme.borderSoft }}
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
+              <span>{isFailedAttemptJob(job) ? 'อนุมัติค่าเที่ยวเปล่าเรียบร้อยแล้ว' : 'ผ่านการตรวจรับเรียบร้อยแล้ว'}</span>
             </div>
           )}
 
           {isRejected && (
             <div className="flex-1 flex items-center justify-between gap-2 p-2 rounded-xl bg-red-50 border border-red-200 text-xs">
               <span className="text-red-700 font-medium truncate">
-                ⚠️ สาขาขอให้แก้ไข: {card.itemRemarks || card.job.rejectReason || 'โปรดตรวจสอบ'}
+                สาขาขอให้แก้ไข: {card.itemRemarks || card.job.rejectReason || 'โปรดตรวจสอบ'}
               </span>
               <button
                 type="button"
@@ -944,6 +1011,8 @@ function SupplierJobsPageContent() {
             </div>
           )}
         </div>
+
+        {(isPending || isRejected) && renderFailedAttemptButton(job)}
       </div>
     );
   };
@@ -1188,7 +1257,7 @@ function SupplierJobsPageContent() {
           {isRejected && (
             <div className="flex-1 flex items-center justify-between gap-2 p-2 rounded-xl bg-red-50 border border-red-200 text-xs">
               <span className="text-red-700 font-medium truncate">
-                ⚠️ สาขาขอให้แก้ไข: {job.rejectReason || 'โปรดตรวจสอบ'}
+                สาขาขอให้แก้ไข: {job.rejectReason || 'โปรดตรวจสอบ'}
               </span>
               <button
                 type="button"
@@ -1202,10 +1271,12 @@ function SupplierJobsPageContent() {
           )}
 
           {job.status === 'WAITING_APPROVAL' && (
+            isFailedAttemptJob(job) ? renderFailedAttemptWaiting() : (
             <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-50 text-amber-700 text-xs font-bold border border-amber-200/60">
               <Clock className="w-4 h-4" />
               <span>ส่งงานแล้ว • รอสาขาตรวจรับ...</span>
             </div>
+            )
           )}
 
           {['APPROVED', 'INVOICED'].includes(job.status) && (
@@ -1214,10 +1285,12 @@ function SupplierJobsPageContent() {
               style={{ backgroundColor: theme.badgeBg, color: theme.textPrimary, borderColor: theme.borderSoft }}
             >
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>ผ่านการตรวจรับเรียบร้อย ✅</span>
+              <span>{isFailedAttemptJob(job) ? 'อนุมัติค่าเที่ยวเปล่าเรียบร้อยแล้ว' : 'ผ่านการตรวจรับเรียบร้อยแล้ว'}</span>
             </div>
           )}
         </div>
+
+        {(isActiveJob || isRejected) && renderFailedAttemptButton(job)}
       </div>
     );
   };
@@ -1323,6 +1396,14 @@ function SupplierJobsPageContent() {
         target={photoModalTarget}
         onClose={() => setPhotoModalTarget(null)}
         onSubmit={handleSubmitPhotos}
+      />
+
+      {/* Failed Attempt (เที่ยวเปล่า) Modal */}
+      <VendorFailedAttemptModal
+        key={failedAttemptJob?.id || 'none'}
+        job={failedAttemptJob}
+        onClose={() => setFailedAttemptJob(null)}
+        onSubmit={handleSubmitFailedAttempt}
       />
     </div>
   );

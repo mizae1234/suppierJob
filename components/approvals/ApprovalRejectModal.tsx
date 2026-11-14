@@ -64,7 +64,7 @@ export function ApprovalRejectModal({
 
         {itemId && (
           <p className="text-xs text-gray-500 bg-amber-50 border border-amber-100 p-2.5 rounded-lg">
-            💡 ตีกลับเฉพาะรถคันนี้ — รถคันอื่นในใบงานไม่ได้รับผลกระทบ
+            หมายเหตุ: ตีกลับเฉพาะรถคันนี้ รถคันอื่นในใบงานไม่ได้รับผลกระทบ
           </p>
         )}
 

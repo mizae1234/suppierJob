@@ -53,7 +53,7 @@ export function ProxyApprovalModal({ job, onClose, onConfirm }: ProxyApprovalMod
           </div>
 
           <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
-            ⚠️ คุณกำลังดำเนินการอนุมัติและตรวจรับรถแทนสาขาปลายทาง ระบบจะบันทึกสาขาต้นทางและชื่อของคุณลงในประวัติการตรวจรับ
+            หมายเหตุ: คุณกำลังดำเนินการอนุมัติและตรวจรับรถแทนสาขาปลายทาง ระบบจะบันทึกสาขาต้นทางและชื่อผู้ดำเนินการลงในประวัติการตรวจรับ
           </div>
         </div>
 

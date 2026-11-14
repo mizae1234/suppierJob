@@ -133,21 +133,21 @@ export const JobTable: React.FC<JobTableProps> = ({
                               if (dir === 'INBOUND') {
                                 return (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                    📥 รับเข้า
+                                    รับเข้า
                                   </span>
                                 );
                               }
                               if (dir === 'OUTBOUND') {
                                 return (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300">
-                                    📤 ส่งออก
+                                    ส่งออก
                                   </span>
                                 );
                               }
                               if (dir === 'INTERNAL') {
                                 return (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-300">
-                                    🔄 ย้ายสาขา
+                                    ย้ายสาขา
                                   </span>
                                 );
                               }

@@ -13,6 +13,7 @@ import { STATUS_MAP, SAMPLE_PHOTOS } from './constants';
 import { useToast } from '@/components/ui/Toast';
 import { CancelJobConfirmModal } from './CancelJobConfirmModal';
 import { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
+import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
 import {
   AlertCircle,
   AlertTriangle,
@@ -110,7 +111,7 @@ export function JobDetailDrawer({
       const res = await fetch(`/api/jobs/${activeJob.id}/d365-po`, { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast(`✓ สร้าง D365 PO ${data.purchId} สำเร็จ`, 'success');
+        showToast(`สร้างใบสั่งซื้อ (PO) เลขที่ ${data.purchId} ในระบบ D365 เรียบร้อยแล้ว`, 'success');
         refreshData();
       } else {
         showToast(data.message || data.error || 'ไม่สามารถสร้าง PO ได้', 'error');
@@ -343,7 +344,7 @@ export function JobDetailDrawer({
       });
       const res = await addVehiclesToJob(activeJob.id, payloadItems);
       if (res.success) {
-        showToast(`✓ เพิ่มรถเข้าใบงาน ${activeJob.jobNumber} สำเร็จ (${selectedAddVins.length} คัน)`, 'success');
+        showToast(`เพิ่มรถเข้าใบงาน ${activeJob.jobNumber} เรียบร้อยแล้ว (${selectedAddVins.length} คัน)`, 'success');
         setIsAddingVehicles(false);
         setSelectedAddVins([]);
         setAddSearchQuery('');
@@ -386,7 +387,7 @@ export function JobDetailDrawer({
       try {
         const res = await updateJobStatus(activeJob.id, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
         if (res.success) {
-          showToast(`✓ ยกเลิกใบงาน ${activeJob.jobNumber} สำเร็จ — ปลดล็อครถทั้งหมดแล้ว`, 'success');
+          showToast(`ยกเลิกใบงาน ${activeJob.jobNumber} เรียบร้อยแล้ว — ปลดล็อคสถานะรถทั้งหมดแล้ว`, 'success');
           setCancelModalState({ isOpen: false, type: 'JOB' });
           onClose();
         } else {
@@ -403,7 +404,7 @@ export function JobDetailDrawer({
       try {
         const res = await updateCarWashItemStatus(activeJob.id, item.id, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
         if (res) {
-          showToast(`✓ ยกเลิกงานรถคัน ${item.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
+          showToast(`ยกเลิกงานรถคัน ${item.vin} เรียบร้อยแล้ว — ปลดล็อคสถานะรถพร้อมสั่งงานใหม่แล้ว`, 'success');
           setCancelModalState({ isOpen: false, type: 'ITEM' });
         } else {
           showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
@@ -474,21 +475,21 @@ export function JobDetailDrawer({
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs whitespace-nowrap shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                          📥 รับเข้า (สาขาปลายทาง)
+                          รับเข้า (สาขาปลายทาง)
                         </span>
                       );
                     }
                     if (dir === 'OUTBOUND') {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-xs whitespace-nowrap shrink-0">
-                          📤 ส่งออก (สาขาต้นทาง)
+                          ส่งออก (สาขาต้นทาง)
                         </span>
                       );
                     }
                     if (dir === 'INTERNAL' || activeJob.destBranchId) {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs whitespace-nowrap shrink-0" title={`${activeJob.originBranchName || activeJob.branchName} → ${activeJob.destBranchName}`}>
-                          🚚 ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}
+                          ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}
                         </span>
                       );
                     }
@@ -554,7 +555,7 @@ export function JobDetailDrawer({
                       </span>
                       {activeJob.jobType === 'CAR_WASH' && activeJob.transferReason && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                          {activeJob.transferReason.includes('Service') ? '🔧 รถ Service' : '🚗 รถใหม่'}
+                          {activeJob.transferReason.includes('Service') ? 'รถ Service' : 'รถใหม่'}
                         </span>
                       )}
                       <span className="text-[10px] text-gray-500 font-medium">
@@ -959,7 +960,7 @@ export function JobDetailDrawer({
                                     : 'text-gray-500 hover:text-gray-800'
                                 }`}
                               >
-                                🏢 สาขาต้นทาง {originBranchForAdd?.code ? `(${originBranchForAdd.code})` : ''} · {originAvailableCount}
+                                สาขาต้นทาง {originBranchForAdd?.code ? `(${originBranchForAdd.code})` : ''} · {originAvailableCount}
                               </button>
                               <button
                                 type="button"
@@ -970,7 +971,7 @@ export function JobDetailDrawer({
                                     : 'text-gray-500 hover:text-gray-800'
                                 }`}
                               >
-                                🌐 ทุกสาขา · {allAvailableCount}
+                                ทุกสาขา · {allAvailableCount}
                               </button>
                             </div>
                           </div>
@@ -1257,6 +1258,26 @@ export function JobDetailDrawer({
 
                   return (
                     <div className="space-y-4">
+                      {/* ── เที่ยวเปล่า (สไลด์ไม่สำเร็จ) ── */}
+                      {isFailedAttemptJob(activeJob) && (
+                        <div className="p-4 rounded-2xl border border-orange-200 bg-orange-50 text-xs text-orange-950 space-y-2">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 font-bold text-orange-900">
+                              <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
+                              <span>เที่ยวเปล่า — Supplier มาถึงหน้างานแต่สไลด์รถไม่สำเร็จ</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-white border border-orange-300 font-mono font-black text-orange-700">
+                              ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()} / ใบงาน
+                            </span>
+                          </div>
+                          <p className="whitespace-pre-line"><span className="text-orange-700/80 mr-1">หมายเหตุจาก Supplier:</span><b>{activeJob.failNote || '-'}</b></p>
+                          <p className="text-[11px] text-orange-800/80">
+                            {isApproved
+                              ? `อนุมัติแล้ว — เปิด PO ${SLIDE_FAILED_ATTEMPT_FEE} บาท โดยรถยังอยู่ที่เดิม (ไม่ย้ายสาขา)`
+                              : `เมื่ออนุมัติ: เปิด PO ${SLIDE_FAILED_ATTEMPT_FEE} บาท • รถยังอยู่ที่เดิม (ไม่ย้ายสาขา / ไม่โอนคลังใน D365)`}
+                          </p>
+                        </div>
+                      )}
                       {/* Vehicle Main Card with Status (Only for single vehicle slide without items) */}
                       {(!activeJob.carWashItems || activeJob.carWashItems.length === 0) && (
                       <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-2xs space-y-3.5">
@@ -1572,7 +1593,7 @@ export function JobDetailDrawer({
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
-                                  🚗
+                                  <Car className="w-3.5 h-3.5" />
                                 </span>
                                 <div>
                                   <p className="text-xs font-bold text-gray-900">
@@ -1610,7 +1631,7 @@ export function JobDetailDrawer({
                                       </div>
                                     </div>
                                     <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-bold uppercase backdrop-blur-xs">
-                                      {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType}
+                                      {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType === 'ISSUE' ? 'รูปปัญหาหน้างาน' : evi.evidenceType}
                                     </span>
                                   </div>
                                   <div className="p-2.5">
@@ -1656,7 +1677,7 @@ export function JobDetailDrawer({
                                       </div>
                                     </div>
                                     <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-bold uppercase backdrop-blur-xs">
-                                      {evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType}
+                                      {evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType === 'ISSUE' ? 'รูปปัญหาหน้างาน' : evi.evidenceType}
                                     </span>
                                   </div>
                                   <div className="p-2.5">
@@ -1695,7 +1716,7 @@ export function JobDetailDrawer({
                               </div>
                             </div>
                             <span className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/70 text-white text-[10px] font-bold uppercase backdrop-blur-xs">
-                              {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType}
+                              {evi.evidenceType === 'AFTER' ? 'หลังทำเสร็จ' : evi.evidenceType === 'BEFORE' ? 'ก่อนเริ่มงาน' : evi.evidenceType === 'VERIFY' ? 'ยืนยันตัวรถ' : evi.evidenceType === 'ISSUE' ? 'รูปปัญหาหน้างาน' : evi.evidenceType}
                             </span>
                           </div>
                           <div className="p-3">
@@ -1792,6 +1813,7 @@ export function JobDetailDrawer({
                   {/* Requester / Admin / Master cancel entire job button if unverified */}
                   {canUserCancelOrModifyJob &&
                     !['APPROVED', 'INVOICED', 'CANCELLED'].includes(activeJob.status) &&
+                    !isFailedAttemptJob(activeJob) &&
                     !activeJob.verifiedAt &&
                     !(activeJob.carWashItems && activeJob.carWashItems.some(i => i.verifiedAt)) && (
                       <button
@@ -1836,13 +1858,24 @@ export function JobDetailDrawer({
 
                   {(currentRole === 'BRANCH' || currentRole === 'ADMIN') && activeJob.status === 'WAITING_APPROVAL' && (() => {
                     const isSlide = activeJob.jobType === 'VEHICLE_SLIDE';
+                    const isFailed = isFailedAttemptJob(activeJob);
                     const myBranchId = activeBranch?.id || currentBranchId;
-                    const isDest = Boolean(isSlide && activeJob.destBranchId && activeJob.destBranchId === myBranchId);
-                    const isOrigin = Boolean(isSlide && activeJob.destBranchId && (activeJob.originBranchId === myBranchId || activeJob.branchId === myBranchId));
+                    const isDest = !isFailed && Boolean(isSlide && activeJob.destBranchId && activeJob.destBranchId === myBranchId);
+                    const isOrigin = !isFailed && Boolean(isSlide && activeJob.destBranchId && (activeJob.originBranchId === myBranchId || activeJob.branchId === myBranchId));
 
                     return (
                       <>
-                        {isDest ? (
+                        {isFailed ? (
+                          <button
+                            type="button"
+                            onClick={() => onApprove(activeJob.id, `อนุมัติค่าเที่ยวเปล่าโดย ${activeBranch?.name || activeJob.originBranchName || activeJob.branchName || 'สาขา'}`)}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-xs transition-colors"
+                            title="อนุมัติค่าเที่ยวเปล่า — รถไม่ถูกย้ายสาขา"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>อนุมัติค่าเที่ยวเปล่า ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}</span>
+                          </button>
+                        ) : isDest ? (
                           <button
                             type="button"
                             onClick={() => onApprove(activeJob.id)}
