@@ -315,8 +315,8 @@ function JobsContent() {
     }
 
     const progress = await updateCarWashItemStatus(job.id, item.id, 'APPROVED');
-    if (!progress) {
-      showToast('อนุมัติไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error');
+    if (!progress || progress.error) {
+      showToast(progress?.error || 'อนุมัติไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error', 6500);
       return;
     }
 

@@ -275,7 +275,7 @@ export async function sendJobToD365PurchaseOrder(
     include: {
       supplier: true,
       branch: true,
-      originBranch: true,
+      pickupBranch: true,
       company: true,
       vehicle: true,
       carWashItems: {
@@ -347,8 +347,8 @@ export async function sendJobToD365PurchaseOrder(
     });
   }
   if (!poBranch) {
-    if (job.jobType === 'VEHICLE_SLIDE' && job.originBranch) {
-      poBranch = { id: job.originBranch.id, code: job.originBranch.code, name: job.originBranch.name };
+    if (job.jobType === 'VEHICLE_SLIDE' && job.pickupBranch) {
+      poBranch = { id: job.pickupBranch.id, code: job.pickupBranch.code, name: job.pickupBranch.name };
     } else if (job.branch) {
       poBranch = { id: job.branch.id, code: job.branch.code, name: job.branch.name };
     }
@@ -535,7 +535,7 @@ export async function sendJobToD365PurchaseOrder(
     Admin: '',
     Buyer: '',
     Inspector: '',
-    Approval: job.approvedBy || '',
+    Approval: job.approvedBy || actorName || '',
     InclTax: inclTax,
     Lines: poLines,
   };

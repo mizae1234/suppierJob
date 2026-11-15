@@ -34,7 +34,7 @@ export async function GET(
             vehicles: true,
             users: true,
             jobs: true,
-            originJobs: true,
+            pickupJobs: true,
             destJobs: true,
           },
         },
@@ -166,7 +166,7 @@ export async function DELETE(
           select: {
             vehicles: true,
             jobs: true,
-            originJobs: true,
+            pickupJobs: true,
             destJobs: true,
             users: true,
           },
@@ -178,7 +178,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'ไม่พบสาขานี้' }, { status: 404 });
     }
 
-    if (branch._count.jobs > 0 || branch._count.originJobs > 0 || branch._count.destJobs > 0) {
+    if (branch._count.jobs > 0 || branch._count.pickupJobs > 0 || branch._count.destJobs > 0) {
       return NextResponse.json(
         { error: 'ไม่สามารถลบสาขานี้ได้เนื่องจากมีประวัติงานที่ผูกกับสาขานี้อยู่ในระบบ' },
         { status: 400 }

@@ -91,7 +91,7 @@ export async function sendJobToD365TransferJournal(
     where: { id: jobId },
     include: {
       branch: true,
-      originBranch: true,
+      pickupBranch: true,
       destBranch: true,
       carWashItems: true,
     },
@@ -159,7 +159,7 @@ export async function sendJobToD365TransferJournal(
     return { success: false, transferredCount: 0, message: 'ไม่พบข้อมูลรถในระบบ' };
   }
 
-  const fallbackOriginWarehouse = getD365WarehouseForBranch(job.originBranch?.code || job.branch?.code);
+  const fallbackOriginWarehouse = getD365WarehouseForBranch(job.pickupBranch?.code || job.branch?.code);
 
   // จัดกลุ่มตาม (company เจ้าของรถ Original, fromWarehouse, toWarehouse)
   const groups = new Map<
@@ -184,7 +184,7 @@ export async function sendJobToD365TransferJournal(
     // บริษัทเจ้าของรถ Original ใน D365 (ห้ามเปลี่ยนเป็นสาขาปลายทาง เพราะสต็อกรถใน D365 ผูกอยู่กับ Legal Entity เจ้าของรถ)
     const ownerCompany = (
       v.d365SiteId ||
-      job.originBranch?.code ||
+      job.pickupBranch?.code ||
       job.branch?.code ||
       'GI'
     )

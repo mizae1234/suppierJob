@@ -632,7 +632,7 @@ export function JobDetailDrawer({
                   const hasPo = Boolean(activeJob.d365PoNumber);
                   const isFailed = activeJob.d365PoStatus === 'FAILED';
 
-                  if (!hasPo && !isEligible) return null;
+                  if (!hasPo && !isEligible && !isFailed) return null;
 
                   return (
                     <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs ${

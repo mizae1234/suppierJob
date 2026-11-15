@@ -119,12 +119,12 @@ export async function GET(request: NextRequest) {
       // Supplier must only see their own jobs
       where.supplierId = user.supplierId || 'none';
     } else if (user.role === 'BRANCH') {
-      // Branch user can see all jobs involving their branch (as requester, origin, or destination)
+      // Branch user can see all jobs involving their branch (as requester, pickup branch, or destination)
       // Note: do NOT constrain by companyId so cross-company slide jobs (e.g. EV7 -> GI) are visible
       if (user.branchId) {
         where.OR = [
           { branchId: user.branchId },
-          { originBranchId: user.branchId },
+          { pickupBranchId: user.branchId },
           { destBranchId: user.branchId },
           { requestedById: user.id },
         ];
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
     if (branchId && user.role !== 'BRANCH') {
       where.OR = [
         { branchId },
-        { originBranchId: branchId },
+        { pickupBranchId: branchId },
         { destBranchId: branchId },
       ];
     }
@@ -285,6 +285,7 @@ export async function POST(request: NextRequest) {
       if (!ownerBranch) {
         const fallbackBranchId =
           firstVehicle?.currentBranchId ||
+          body.pickupBranchId ||
           body.originBranchId ||
           branchId ||
           dbUser?.branchId ||
@@ -321,7 +322,7 @@ export async function POST(request: NextRequest) {
 
     if (user.role === 'BRANCH') {
       if (jobType === 'VEHICLE_SLIDE') {
-        const origId = body.originBranchId || body.branchId;
+        const origId = body.pickupBranchId || body.originBranchId || body.branchId;
         const dstId = body.destBranchId;
         // Branch user can request a slide if their branch is either origin (sending car), destination (pulling car to their branch), or owner branch
         if (user.branchId && user.branchId !== origId && user.branchId !== dstId && user.branchId !== branchId) {
@@ -510,7 +511,8 @@ export async function POST(request: NextRequest) {
       const { 
         vin, 
         vins,
-        originBranchId, 
+        pickupBranchId: rawPickupBranchId,
+        originBranchId: rawOriginBranchId, 
         destBranchId, 
         customDestAddress, 
         customDestLat, 
@@ -529,6 +531,7 @@ export async function POST(request: NextRequest) {
         manualPriceNote: rawManualPriceNote,
         destWarehouseId: rawDestWarehouseId,
       } = body;
+      const pickupBranchId = rawPickupBranchId || rawOriginBranchId;
 
       // สไลด์ระหว่างสาขา (ปลายทางเป็นสาขาในระบบ) → ต้องระบุรหัสคลัง D365 ปลายทาง เพื่อยิง Transfer Journal ตอนอนุมัติ
       const isBranchToBranchDest = Boolean(destBranchId) && !customDestAddress;
@@ -555,7 +558,7 @@ export async function POST(request: NextRequest) {
         ? vins
         : (vin ? [vin] : []);
 
-      if (vinsList.length === 0 || !originBranchId || (!destBranchId && !customDestAddress)) {
+      if (vinsList.length === 0 || !pickupBranchId || (!destBranchId && !customDestAddress)) {
         return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุเลขตัวถัง และสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
       }
 
@@ -583,9 +586,9 @@ export async function POST(request: NextRequest) {
       }
 
       // ราคาตามสัญญา — คำนวณซ้ำฝั่ง server (ใช้เป็นราคาจริงในโหมด AUTO และเก็บไว้เทียบในโหมด MANUAL)
-      const [slideSupplier, originBranchRow, destBranchRow] = await Promise.all([
+      const [slideSupplier, pickupBranchRow, destBranchRow] = await Promise.all([
         prisma.supplier.findUnique({ where: { id: supplierId }, select: { code: true, name: true } }),
-        prisma.branch.findUnique({ where: { id: originBranchId }, select: { code: true, name: true } }),
+        prisma.branch.findUnique({ where: { id: pickupBranchId }, select: { code: true, name: true } }),
         destBranchId
           ? prisma.branch.findUnique({ where: { id: destBranchId }, select: { code: true, name: true } })
           : Promise.resolve(null),
@@ -596,8 +599,8 @@ export async function POST(request: NextRequest) {
         distanceKm: Number.isFinite(distanceKm) ? distanceKm : 0,
         originMode: customOriginAddress ? 'custom' : 'branch',
         destMode: destBranchId && !customDestAddress ? 'branch' : 'custom',
-        originBranchCode: originBranchRow?.code,
-        originBranchName: originBranchRow?.name,
+        originBranchCode: pickupBranchRow?.code,
+        originBranchName: pickupBranchRow?.name,
         destBranchCode: destBranchRow?.code,
         destBranchName: destBranchRow?.name,
         carCount: vinsList.length,
@@ -645,7 +648,7 @@ export async function POST(request: NextRequest) {
             branchId,
             supplierId,
             vin: vinsList[0],
-            originBranchId,
+            pickupBranchId,
             destBranchId: destBranchId || null,
             ...(supportsDestWarehouseField ? { destWarehouseId: resolvedDestWarehouse } : {}),
             customDestAddress: customDestAddress || null,
@@ -686,7 +689,7 @@ export async function POST(request: NextRequest) {
         }
 
         const labels = getSlideRouteLabels({
-          originBranch: createdJob.originBranch,
+          pickupBranch: createdJob.pickupBranch,
           destBranch: createdJob.destBranch,
           customOriginAddress: createdJob.customOriginAddress,
           customDestAddress: createdJob.customDestAddress,
@@ -726,11 +729,11 @@ export async function POST(request: NextRequest) {
         jobNumber,
         vins: vinsList,
         action: 'CREATED',
-        originBranchId,
+        pickupBranchId,
         originName,
-        originAddress: job.customOriginAddress || job.originBranch?.address,
-        originLat: job.customOriginLat ?? job.originBranch?.latitude,
-        originLng: job.customOriginLng ?? job.originBranch?.longitude,
+        originAddress: job.customOriginAddress || job.pickupBranch?.address,
+        originLat: job.customOriginLat ?? job.pickupBranch?.latitude,
+        originLng: job.customOriginLng ?? job.pickupBranch?.longitude,
         destBranchId: destBranchId || null,
         destName,
         destAddress: job.customDestAddress || job.destBranch?.address,

@@ -21,7 +21,7 @@ export async function GET(
         id: true,
         companyId: true,
         branchId: true,
-        originBranchId: true,
+        pickupBranchId: true,
         destBranchId: true,
         supplierId: true,
       },
@@ -70,7 +70,7 @@ export async function POST(
         d365PoNumber: true,
         companyId: true,
         branchId: true,
-        originBranchId: true,
+        pickupBranchId: true,
         destBranchId: true,
         supplierId: true,
       },
@@ -81,9 +81,9 @@ export async function POST(
       return NextResponse.json({ error: 'ไม่พบข้อมูลใบสั่งงาน' }, { status: 404 });
     }
 
-    if (job.status !== 'APPROVED' && job.status !== 'INVOICED') {
+    if (job.status !== 'APPROVED' && job.status !== 'INVOICED' && job.status !== 'WAITING_APPROVAL') {
       return NextResponse.json(
-        { error: 'สามารถสร้าง PO ได้เฉพาะงานที่ได้รับอนุมัติ (APPROVED) แล้วเท่านั้น' },
+        { error: 'สามารถสร้าง PO ได้เฉพาะงานที่รอตรวจรับ (WAITING_APPROVAL) หรืออนุมัติแล้ว (APPROVED) เท่านั้น' },
         { status: 400 }
       );
     }

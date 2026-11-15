@@ -117,7 +117,7 @@ export async function POST(
       where: { id: jobId },
       include: {
         carWashItems: true,
-        originBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+        pickupBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
         destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
         supplier: {
           select: {
@@ -152,7 +152,7 @@ export async function POST(
       const isRelatedBranch =
         job.requestedById === user.id ||
         job.branchId === user.branchId ||
-        job.originBranchId === user.branchId ||
+        job.pickupBranchId === user.branchId ||
         job.destBranchId === user.branchId;
       if (!isRelatedBranch) {
         return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขใบงานของสาขาอื่น' }, { status: 403 });
@@ -232,9 +232,9 @@ export async function POST(
     const originCoords =
       (job.customOriginLat != null && job.customOriginLng != null)
         ? { lat: job.customOriginLat, lng: job.customOriginLng }
-        : (job.originBranch?.latitude != null && job.originBranch?.longitude != null)
-          ? { lat: job.originBranch.latitude, lng: job.originBranch.longitude }
-          : getBranchDefaultCoords(job.originBranch?.code || job.originBranch?.name);
+        : (job.pickupBranch?.latitude != null && job.pickupBranch?.longitude != null)
+          ? { lat: job.pickupBranch.latitude, lng: job.pickupBranch.longitude }
+          : getBranchDefaultCoords(job.pickupBranch?.code || job.pickupBranch?.name);
 
     const destCoords =
       (job.customDestLat != null && job.customDestLng != null)
@@ -255,8 +255,8 @@ export async function POST(
           distanceKm: estimatedDistanceKm,
           originMode: job.customOriginAddress ? 'custom' : 'branch',
           destMode: (job.customDestAddress || !job.destBranchId) ? 'custom' : 'branch',
-          originBranchCode: job.originBranch?.code,
-          originBranchName: job.originBranch?.name,
+          originBranchCode: job.pickupBranch?.code,
+          originBranchName: job.pickupBranch?.name,
           destBranchCode: job.destBranch?.code,
           destBranchName: job.destBranch?.name,
           carCount: 1,
@@ -393,7 +393,7 @@ export async function POST(
     // บันทึก Movement Log สำหรับรถสไลด์
     if (job.jobType === 'VEHICLE_SLIDE') {
       const { originName, destName } = getSlideRouteLabels({
-        originBranch: job.originBranch,
+        pickupBranch: job.pickupBranch,
         destBranch: job.destBranch,
         customOriginAddress: job.customOriginAddress,
         customDestAddress: job.customDestAddress,
@@ -404,11 +404,11 @@ export async function POST(
         jobNumber: job.jobNumber,
         vins: requestedVins,
         action: 'CREATED',
-        originBranchId: job.originBranchId,
+        pickupBranchId: job.pickupBranchId,
         originName,
-        originAddress: job.customOriginAddress || job.originBranch?.address,
-        originLat: job.customOriginLat ?? job.originBranch?.latitude,
-        originLng: job.customOriginLng ?? job.originBranch?.longitude,
+        originAddress: job.customOriginAddress || job.pickupBranch?.address,
+        originLat: job.customOriginLat ?? job.pickupBranch?.latitude,
+        originLng: job.customOriginLng ?? job.pickupBranch?.longitude,
         destBranchId: job.destBranchId,
         destName,
         destAddress: job.customDestAddress || job.destBranch?.address,

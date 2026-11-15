@@ -33,7 +33,7 @@ export async function PATCH(
       where: { id: jobId },
       include: {
         carWashItems: true,
-        originBranch: { select: { code: true, name: true, address: true } },
+        pickupBranch: { select: { code: true, name: true, address: true } },
         destBranch: { select: { code: true, name: true, address: true } },
         supplier: { select: { name: true } },
       },
@@ -96,11 +96,11 @@ export async function PATCH(
         );
       }
     } else if (user.role === 'BRANCH') {
-      // Branch (ทั้งสาขาผู้สั่ง, สาขาต้นทาง, และสาขาปลายทาง) สามารถอนุมัติ/ตีกลับ/ยกเลิกรายการรถในใบงานที่เกี่ยวข้องกับสาขาตัวเองได้
+      // Branch (ทั้งสาขาผู้สั่ง, สาขาจุดรับรถ, และสาขาปลายทาง) สามารถอนุมัติ/ตีกลับ/ยกเลิกรายการรถในใบงานที่เกี่ยวข้องกับสาขาตัวเองได้
       const isRelatedBranch = 
         job.requestedById === user.id ||
         job.branchId === user.branchId || 
-        job.originBranchId === user.branchId || 
+        job.pickupBranchId === user.branchId || 
         job.destBranchId === user.branchId;
 
       if (user.branchId && !isRelatedBranch) {
@@ -136,6 +136,56 @@ export async function PATCH(
           { error: 'ไม่สามารถยกเลิกรายการนี้ได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว' },
           { status: 400 }
         );
+      }
+    }
+
+    // ─── สร้างใบสั่งซื้อ (D365 PO) ก่อนเปลี่ยนสถานะใบงานเป็น APPROVED ────────
+    // หากการอนุมัติรถคันนี้จะทำให้ใบงานครบทุกคัน (allApproved) ต้องยิงเปิด PO ใน D365 ให้สำเร็จก่อน
+    // ถ้าเปิด PO ไม่สำเร็จ จะไม่เปลี่ยนสถานะรถและใบงาน (ให้คงอยู่ในคอลัมน์รอตรวจรับบน Kanban)
+    let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
+    if (status === 'APPROVED') {
+      const allItemsBefore = await prisma.carWashItem.findMany({ where: { jobId } });
+      const simulatedItems = allItemsBefore.map((i: any) =>
+        i.id === itemId ? { ...i, status: 'APPROVED' } : i
+      );
+      const simApprovedCount = simulatedItems.filter((i: any) => i.status === 'APPROVED').length;
+      const simCancelledCount = simulatedItems.filter((i: any) => i.status === 'CANCELLED').length;
+      const willAllBeApproved =
+        simApprovedCount > 0 &&
+        simApprovedCount + simCancelledCount === simulatedItems.length &&
+        ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED'].includes(job.status);
+
+      if (willAllBeApproved) {
+        const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
+        const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
+        const autoApprovedBy = userBranchLabel ? `${userBranchLabel} (${userName})` : userName;
+
+        try {
+          d365Po = await sendJobToD365PurchaseOrder(jobId, {
+            trigger: 'AUTO_APPROVE',
+            actorId: user.id,
+            actorName: autoApprovedBy,
+            actorRole: user.role,
+          });
+          console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
+        } catch (poErr) {
+          console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poErr);
+          d365Po = {
+            success: false,
+            message: poErr instanceof Error ? poErr.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ D365',
+          };
+        }
+
+        if (!d365Po?.success) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `ไม่สามารถอนุมัติใบงานได้ เนื่องจากเปิด PO ใน D365 ไม่สำเร็จ: ${d365Po?.message || 'ไม่ทราบสาเหตุ'}`,
+              d365Po,
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -380,9 +430,9 @@ export async function PATCH(
           jobNumber: job.jobNumber,
           vins: [item.vin],
           action: slideAction,
-          originBranchId: job.originBranchId,
+          pickupBranchId: job.pickupBranchId,
           originName,
-          originAddress: job.customOriginAddress || job.originBranch?.address,
+          originAddress: job.customOriginAddress || job.pickupBranch?.address,
           originLat: job.customOriginLat,
           originLng: job.customOriginLng,
           destBranchId: job.destBranchId,
@@ -401,41 +451,19 @@ export async function PATCH(
       }
     }
 
-    // ─── Trigger D365 Purchase Order & Inventory Transfer Journal ──────────────
-    // เมื่อทุกรายการผ่านการ Approve (หรือปฏิเสธครบ) และปิดใบงานเป็น APPROVED
-    // รอให้สร้าง PO (และโอนย้ายคลังที่จอดสำหรับงานสไลด์รถ) ใน D365 เสร็จก่อนตอบกลับ
-    let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
+    // ─── Trigger D365 Inventory Transfer Journal (หลังเปิด PO และอนุมัติครบทุกคันสำเร็จ) ──────────────
     let d365Transfer: { success: boolean; transferredCount: number; message: string } | undefined;
-    if (result.progress.allApproved) {
-      const [poResult, transferResult] = await Promise.allSettled([
-        sendJobToD365PurchaseOrder(jobId, {
-          trigger: 'AUTO_APPROVE',
+    if (result.progress.allApproved && job.jobType === 'VEHICLE_SLIDE') {
+      try {
+        d365Transfer = await sendJobToD365TransferJournal(jobId, {
           actorId: user.id,
           actorName: user.displayName || user.username,
           actorRole: user.role,
-        }),
-        job.jobType === 'VEHICLE_SLIDE'
-          ? sendJobToD365TransferJournal(jobId, {
-              actorId: user.id,
-              actorName: user.displayName || user.username,
-              actorRole: user.role,
-              preTransferWarehouses,
-            })
-          : Promise.resolve(undefined),
-      ]);
-
-      if (poResult.status === 'fulfilled') {
-        d365Po = poResult.value;
-        console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
-      } else {
-        console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poResult.reason);
-      }
-
-      if (transferResult.status === 'fulfilled' && transferResult.value) {
-        d365Transfer = transferResult.value;
+          preTransferWarehouses,
+        });
         console.log(`[ItemStatus] D365 Transfer result for ${job.jobNumber}:`, d365Transfer);
-      } else if (transferResult.status === 'rejected') {
-        console.error(`[ItemStatus] D365 Transfer Journal failed for job ${job.jobNumber}:`, transferResult.reason);
+      } catch (transferErr) {
+        console.error(`[ItemStatus] D365 Transfer Journal failed for job ${job.jobNumber}:`, transferErr);
       }
     }
 

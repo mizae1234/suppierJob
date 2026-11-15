@@ -27,7 +27,7 @@ export async function GET(
     where: { photoUrl: `${FILES_ROUTE_PREFIX}${key}` },
     select: {
       job: {
-        select: { companyId: true, branchId: true, originBranchId: true, destBranchId: true, supplierId: true },
+        select: { companyId: true, branchId: true, pickupBranchId: true, destBranchId: true, supplierId: true },
       },
     },
   });

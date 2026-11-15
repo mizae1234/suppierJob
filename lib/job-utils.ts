@@ -424,7 +424,8 @@ export function getSlideDirection(
     if (job.destBranchId && job.destBranchId === branchId) {
       return 'INBOUND';
     }
-    if (job.originBranchId === branchId || job.branchId === branchId) {
+    const pickupBranchId = job.pickupBranchId || job.originBranchId;
+    if (pickupBranchId === branchId || job.branchId === branchId) {
       return 'OUTBOUND';
     }
   }
@@ -617,10 +618,10 @@ export function getOwnerBranchCorporateInfo(params: {
     .trim()
     .toUpperCase();
 
-  // 2) Origin branch (for slide jobs) or current vehicle branch or ordering branch
+  // 2) Pickup branch (for slide jobs) or current vehicle branch or ordering branch
   const fallbackBranchCode = (
     d365OwnerCode ||
-    (job?.jobType === 'VEHICLE_SLIDE' ? job?.originBranchCode : '') ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? (job?.pickupBranchCode || job?.originBranchCode) : '') ||
     matchedVehicle?.currentBranchCode ||
     jobVehicle?.currentBranch?.code ||
     activeWashItem?.vehicleBranchCode ||
@@ -631,14 +632,14 @@ export function getOwnerBranchCorporateInfo(params: {
     .toUpperCase();
 
   const fallbackBranchId =
-    (job?.jobType === 'VEHICLE_SLIDE' ? job?.originBranchId : undefined) ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? (job?.pickupBranchId || job?.originBranchId) : undefined) ||
     matchedVehicle?.currentBranchId ||
     jobVehicle?.currentBranchId ||
     activeWashItem?.vehicleBranchId ||
     job?.branchId;
 
   const fallbackBranchName =
-    (job?.jobType === 'VEHICLE_SLIDE' ? job?.originBranchName : undefined) ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? (job?.pickupBranchName || job?.originBranchName) : undefined) ||
     matchedVehicle?.currentBranchName ||
     jobVehicle?.currentBranch?.name ||
     activeWashItem?.vehicleBranchName ||

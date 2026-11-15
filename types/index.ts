@@ -172,6 +172,7 @@ export interface CarWashItemProgress {
   allResolved: boolean;
   allApproved: boolean;
   allCompleted: boolean;
+  error?: string;
   d365Po?: {
     success: boolean;
     purchId?: string;
@@ -205,6 +206,12 @@ export interface Job {
   // สำหรับ Vehicle Slide
   vin?: string;
   vehicle?: Vehicle;
+  pickupBranchId?: string;
+  pickupBranchCode?: string;
+  pickupBranchName?: string;
+  pickupBranchAddress?: string;
+  pickupBranchLat?: number;
+  pickupBranchLng?: number;
   originBranchId?: string;
   originBranchCode?: string;
   originBranchName?: string;

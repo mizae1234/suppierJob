@@ -61,7 +61,7 @@ model Branch {
   vehicles    Vehicle[]
   users       User[]
   jobs        Job[]     @relation("BranchJobs")
-  originJobs  Job[]     @relation("OriginBranchJobs")
+  pickupJobs  Job[]     @relation("PickupBranchJobs")
   destJobs    Job[]     @relation("DestBranchJobs")
   supplierVendorCodes SupplierVendorCode[]
   createdAt   DateTime  @default(now())
@@ -183,8 +183,8 @@ model Job {
   // Vehicle Slide ข้อมูล
   vin              String?
   vehicle          Vehicle?      @relation(fields: [vin], references: [vin], onDelete: NoAction, onUpdate: NoAction)
-  originBranchId   String?
-  originBranch     Branch?       @relation("OriginBranchJobs", fields: [originBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pickupBranchId   String?       // สาขาจุดรับรถขึ้นสไลด์ (ต้นทางที่สไลด์จาก)
+  pickupBranch     Branch?       @relation("PickupBranchJobs", fields: [pickupBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   destBranchId     String?
   destBranch       Branch?       @relation("DestBranchJobs", fields: [destBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   destWarehouseId  String?       // รหัสคลัง D365 ปลายทาง (InventLocationId) ที่ผู้สั่งงานระบุ — ใช้ยิง Transfer Journal เมื่ออนุมัติ
@@ -260,7 +260,7 @@ model Job {
   @@index([companyId, createdAt])
   @@index([supplierId, createdAt])
   @@index([branchId])
-  @@index([originBranchId])
+  @@index([pickupBranchId])
   @@index([destBranchId])
   @@index([status])
   @@index([createdAt])
@@ -383,8 +383,8 @@ model VehicleSlideLog {
   jobNumber      String
   action         String    // CREATED, PICKUP_VERIFIED, DELIVERED, APPROVED, CANCELLED
   
-  // ต้นทาง (Origin)
-  originBranchId String?
+  // จุดรับรถต้นทาง (Pickup Branch)
+  pickupBranchId String?
   originName     String    // เช่น "สาขา GI11 (พระนครศรีอยุธยา)" หรือที่อยู่จุดรับรถ
   originAddress  String?
   originLat      Float?
@@ -414,7 +414,7 @@ model VehicleSlideLog {
   @@index([action])
   @@index([createdAt])
   @@index([supplierId])
-  @@index([originBranchId])
+  @@index([pickupBranchId])
   @@index([destBranchId])
 }
 

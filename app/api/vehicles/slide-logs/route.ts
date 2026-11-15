@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     } else if (user.role === 'BRANCH') {
       if (user.branchId) {
         where.OR = [
-          { originBranchId: user.branchId },
+          { pickupBranchId: user.branchId },
           { destBranchId: user.branchId },
           { vehicle: { currentBranchId: user.branchId } },
         ];
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     }
     if (branchId && user.role !== 'BRANCH') {
       where.OR = [
-        { originBranchId: branchId },
+        { pickupBranchId: branchId },
         { destBranchId: branchId },
       ];
     }
@@ -116,7 +116,8 @@ export async function GET(request: NextRequest) {
       jobId: l.jobId,
       jobNumber: l.jobNumber,
       action: l.action,
-      originBranchId: l.originBranchId,
+      pickupBranchId: l.pickupBranchId,
+      originBranchId: l.pickupBranchId,
       originName: l.originName,
       originAddress: l.originAddress,
       originLat: l.originLat,

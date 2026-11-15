@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
             vehicles: true,
             users: true,
             jobs: true,
-            originJobs: true,
+            pickupJobs: true,
             destJobs: true,
           },
         },
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
           ? {
               OR: [
                 { branchId: user.branchId },
-                { originBranchId: user.branchId },
+                { pickupBranchId: user.branchId },
                 { destBranchId: user.branchId },
               ],
             }
@@ -55,15 +55,15 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         branchId: true,
-        originBranchId: true,
+        pickupBranchId: true,
         destBranchId: true,
       },
     });
 
-    // นับงานที่ active ต่อสาขาในรอบเดียว (งานเดียวนับครั้งเดียวต่อสาขา แม้ branchId = origin/dest)
+    // นับงานที่ active ต่อสาขาในรอบเดียว (งานเดียวนับครั้งเดียวต่อสาขา แม้ branchId = pickup/dest)
     const activeCountByBranch = new Map<string, number>();
     for (const j of activeJobs) {
-      for (const bid of new Set([j.branchId, j.originBranchId, j.destBranchId])) {
+      for (const bid of new Set([j.branchId, j.pickupBranchId, j.destBranchId])) {
         if (bid) activeCountByBranch.set(bid, (activeCountByBranch.get(bid) || 0) + 1);
       }
     }
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         activeJobsCount: activeCount,
         vehiclesCount: b._count.vehicles,
         usersCount: b._count.users,
-        totalJobsCount: b._count.jobs + b._count.originJobs + b._count.destJobs,
+        totalJobsCount: b._count.jobs + b._count.pickupJobs + b._count.destJobs,
       };
     });
 

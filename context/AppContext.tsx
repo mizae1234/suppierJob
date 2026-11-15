@@ -490,7 +490,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        return { success: false, error: data.error || 'ไม่สามารถอัปเดตสถานะงานได้' };
+        if (data.d365Po) {
+          setJobs(prev =>
+            prev.map(j =>
+              j.id === jobId
+                ? {
+                    ...j,
+                    d365PoStatus: 'FAILED',
+                    d365PoMessage: data.d365Po.message,
+                  }
+                : j
+            )
+          );
+        }
+        return {
+          success: false,
+          error: data.error || 'ไม่สามารถอัปเดตสถานะงานได้',
+          d365Po: data.d365Po,
+        };
       }
       // อัปเดต state ทันทีเพื่อให้ UI และเลข PO แสดงผลโดยไม่ต้องรอโหลดข้อมูลรถทั้งหมดซ้ำ
       setJobs(prev =>
@@ -536,6 +553,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ status, remarks }),
       });
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        if (data.d365Po) {
+          setJobs(prev =>
+            prev.map(j =>
+              j.id === jobId
+                ? {
+                    ...j,
+                    d365PoStatus: 'FAILED',
+                    d365PoMessage: data.d365Po.message,
+                  }
+                : j
+            )
+          );
+        }
+        return {
+          completed: 0,
+          approved: 0,
+          cancelled: 0,
+          total: 0,
+          allResolved: false,
+          allApproved: false,
+          allCompleted: false,
+          error: data.error || 'ไม่สามารถอนุมัติรายการได้',
+          d365Po: data.d365Po,
+        };
+      }
       if (data.success) {
         const d365Po = data.d365Po ?? data.progress?.d365Po;
         // อัปเดตสถานะรถและใบงานใน state ทันทีโดยไม่บล็อกรอ fetch ทั้งระบบ

@@ -43,7 +43,7 @@ export async function POST(
       where: { id: jobId },
       include: {
         vehicle: true,
-        originBranch: { select: { code: true, name: true, address: true } },
+        pickupBranch: { select: { code: true, name: true, address: true } },
         destBranch: { select: { code: true, name: true, address: true } },
         supplier: { select: { name: true } },
         carWashItems: { include: { vehicle: true } },
@@ -139,7 +139,7 @@ export async function POST(
 
     if (job.jobType === 'VEHICLE_SLIDE') {
       const { originName, destName } = getSlideRouteLabels({
-        originBranch: job.originBranch,
+        pickupBranch: job.pickupBranch,
         destBranch: job.destBranch,
         customOriginAddress: job.customOriginAddress,
         customDestAddress: job.customDestAddress,
@@ -150,7 +150,7 @@ export async function POST(
         jobNumber: job.jobNumber,
         vins: [matchedVin],
         action: 'PICKUP_VERIFIED',
-        originBranchId: job.originBranchId,
+        pickupBranchId: job.pickupBranchId,
         originName,
         destBranchId: job.destBranchId,
         destName,
