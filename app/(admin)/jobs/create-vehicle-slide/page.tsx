@@ -212,9 +212,8 @@ export default function CreateVehicleSlidePage() {
 
   // Form State
   const [selectedVins, setSelectedVins] = useState<string[]>([]);
-  const [destBranchId, setDestBranchId] = useState<string>(
-    availableBranches.find(b => b.id !== selectedOriginBranchId)?.id || branches.find(b => b.id !== selectedOriginBranchId)?.id || ''
-  );
+  // ปลายทางเริ่มต้นว่าง — ให้ผู้สั่งงานเลือกเอง (ไม่เติมค่าให้ล่วงหน้า)
+  const [destBranchId, setDestBranchId] = useState<string>('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   const [pickupDateTime, setPickupDateTime] = useState<string>(
     new Date(Date.now() + 3600 * 1000 * 2).toISOString().slice(0, 16)
@@ -230,12 +229,11 @@ export default function CreateVehicleSlidePage() {
   const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
   // ── วิธีคิดค่าบริการ: AUTO = ระบบคำนวณ (ค่าเริ่มต้น), MANUAL = พนักงานกรอกระยะทาง/ราคาต่อคันเอง ──
   const [pricingMode, setPricingMode] = useState<SlidePricingMode>(SLIDE_PRICING_AUTO);
-  const [autoDistance, setAutoDistance] = useState<number>(32);
+  const [autoDistance, setAutoDistance] = useState<number>(0);
   const [manualDistance, setManualDistance] = useState<number>(0);
   const [manualCost, setManualCost] = useState<number>(0);
   const [manualPriceNote, setManualPriceNote] = useState<string>('');
   const isManualPricing = pricingMode === SLIDE_PRICING_MANUAL;
-  const distance = isManualPricing ? manualDistance : autoDistance;
 
   // ── Hybrid Destination Mode ──
   const [destMode, setDestMode] = useState<'branch' | 'custom'>('branch');
@@ -405,17 +403,7 @@ export default function CreateVehicleSlidePage() {
     }
   }, [branches, availableBranches, currentBranchId, authUser?.branchId, selectedOriginBranchId, selectedVins.length]);
 
-  // Sync default destination branch when branches load or origin branch changes
-  useEffect(() => {
-    if (branches.length === 0) return;
-    if (!destBranchId || destBranchId === selectedOriginBranchId || !branches.find(b => b.id === destBranchId)) {
-      const fallbackDest =
-        availableBranches.find(b => b.id !== selectedOriginBranchId)?.id ||
-        branches.find(b => b.id !== selectedOriginBranchId)?.id ||
-        '';
-      if (fallbackDest) setDestBranchId(fallbackDest);
-    }
-  }, [branches, availableBranches, destBranchId, selectedOriginBranchId]);
+  // (ไม่เติมสาขาปลายทางให้อัตโนมัติ — ผู้สั่งงานต้องเลือกเอง)
 
   // Smart route supplier recommendation (used as recommendation hints, not auto-selected)
   const supplierRecommendation = useMemo(() => {
@@ -455,6 +443,10 @@ export default function CreateVehicleSlidePage() {
     }
     return null;
   }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name, destBranch?.code, destBranchId]);
+
+  // ระยะทางที่ใช้: โหมดกรอกเองใช้ค่าที่กรอก / โหมดอัตโนมัติแสดงเฉพาะเมื่อมีทั้งจุดรับและจุดส่งแล้ว (ยังไม่เลือก = ว่าง)
+  const routeDistance = originPoint && destPoint ? autoDistance : 0;
+  const distance = isManualPricing ? manualDistance : routeDistance;
 
   // Auto-calculate real road distance whenever pickup or drop-off point changes
   // (โหมดกรอกเองใช้ manualDistance แยก จึงไม่ถูกเขียนทับ)
@@ -518,7 +510,7 @@ export default function CreateVehicleSlidePage() {
     if (mode === pricingMode) return;
     if (mode === SLIDE_PRICING_MANUAL) {
       // ตั้งต้นจากค่าที่ระบบคำนวณ ให้พนักงานแก้ต่อได้ทันที
-      setManualDistance(autoDistance);
+      setManualDistance(routeDistance);
       setManualCost(contractCostPerCar);
     }
     setPricingMode(mode);
@@ -1399,7 +1391,11 @@ export default function CreateVehicleSlidePage() {
                         value={destWarehouseId}
                         onChange={(wh) => setDestWarehouseInput({ branchId: destBranchId, value: wh })}
                         options={destWarehouseDropdownOptions}
-                        placeholder={destWarehouseDropdownOptions.length > 0 ? 'เลือกคลังปลายทาง' : 'ไม่พบคลัง D365 ของสาขานี้'}
+                        placeholder={
+                          !destBranchId
+                            ? 'กรุณาเลือกสาขาปลายทางก่อน'
+                            : destWarehouseDropdownOptions.length > 0 ? 'เลือกคลังปลายทาง' : 'ไม่พบคลัง D365 ของสาขานี้'
+                        }
                         icon={Warehouse}
                         disabled={destWarehouseDropdownOptions.length === 0}
                         dropdownWidth="w-full"
@@ -1491,50 +1487,6 @@ export default function CreateVehicleSlidePage() {
                     )}
                   </div>
                 )}
-
-                {/* Origin D365 Warehouse (คลังที่รถจอดอยู่ปัจจุบัน) */}
-                <div className="mt-2 p-2.5 rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[11px] font-semibold text-gray-700 flex items-center gap-1.5">
-                      <Warehouse className="w-3.5 h-3.5 text-gray-500" />
-                      <span>Warehouse ต้นทาง (คลัง D365 ที่รถจอดอยู่):</span>
-                    </span>
-                    {originBranchMainWarehouse && (
-                      <span className="text-[10px] text-gray-500">
-                        คลังหลักของสาขา: <b className="font-mono text-gray-700">{originBranchMainWarehouse}</b>
-                      </span>
-                    )}
-                  </div>
-                  {originWarehouseGroups.length === 0 ? (
-                    <p className="text-[10px] text-gray-400">เลือกรถเพื่อดูคลังที่รถจอดอยู่ปัจจุบัน</p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {originWarehouseGroups.map(g => (
-                        <div
-                          key={g.warehouseId || 'none'}
-                          className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg border text-[11px] ${
-                            g.warehouseId ? 'bg-white border-gray-200' : 'bg-red-50 border-red-200'
-                          }`}
-                          title={g.labels.join(', ')}
-                        >
-                          <span className="min-w-0 truncate">
-                            {g.warehouseId ? (
-                              <>
-                                <b className="font-mono text-gray-900">{g.warehouseId}</b>
-                                {g.warehouseName && <span className="text-gray-500"> · {g.warehouseName}</span>}
-                              </>
-                            ) : (
-                              <b className="text-red-600">ไม่ระบุคลังใน D365</b>
-                            )}
-                          </span>
-                          <span className={`shrink-0 font-semibold ${g.warehouseId ? 'text-gray-600' : 'text-red-600'}`}>
-                            {g.labels.length} คัน
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
 
               {/* Pricing Mode Toggle (AUTO / MANUAL) */}
@@ -1580,7 +1532,7 @@ export default function CreateVehicleSlidePage() {
                     ระยะทาง (Distance): <span className="text-red-500">*</span>
                   </label>
                   <span className={`text-[10px] font-medium whitespace-nowrap ${isManualPricing ? 'text-amber-700' : 'text-gray-400'}`}>
-                    {isManualPricing ? `ระบบคำนวณได้ ${autoDistance.toFixed(1)} กม.` : 'คำนวณตามเส้นทาง'}
+                    {isManualPricing ? (routeDistance > 0 ? `ระบบคำนวณได้ ${routeDistance.toFixed(1)} กม.` : 'ยังไม่ได้เลือกเส้นทาง') : 'คำนวณตามเส้นทาง'}
                   </span>
                 </div>
                 <div className="relative">
@@ -1619,7 +1571,7 @@ export default function CreateVehicleSlidePage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setManualDistance(autoDistance);
+                        setManualDistance(routeDistance);
                         setManualCost(contractCostPerCar);
                       }}
                       className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300 transition-colors cursor-pointer whitespace-nowrap"
