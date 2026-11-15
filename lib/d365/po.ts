@@ -275,9 +275,14 @@ export async function sendJobToD365PurchaseOrder(
     include: {
       supplier: true,
       branch: true,
+      originBranch: true,
       company: true,
       vehicle: true,
-      carWashItems: true,
+      carWashItems: {
+        include: {
+          vehicle: true,
+        },
+      },
     },
   });
 
@@ -319,17 +324,49 @@ export async function sendJobToD365PurchaseOrder(
       : (job.actualCost ?? job.estimatedCost ?? 0);
   const serviceItemNumber = getD365ServiceItem(job.jobType);
   const systemName = getD365SystemName(job.jobType);
-  const d365Company = job.branch?.code?.trim() || null;
 
-  // ตรวจสอบรหัสคู่ค้าใน D365 ของสาขานี้ (แต่ละบริษัท/สาขามีรหัส Vendor ไม่เหมือนกัน — ไม่มีการใช้รหัสสาขาอื่นแทน)
-  const branchVendor = job.supplierId
+  // ค้นหา "สาขาที่เป็นเจ้าของรถต้นสังกัด" (Original Vehicle Owner Branch) เพื่อใช้ยิงเปิด PO และรับผิดชอบค่าใช้จ่ายใน D365
+  // ลำดับความสำคัญ:
+  // 1) d365SiteId ของรถในใบงาน (รหัสสาขาเจ้าของรถ Original ที่ไม่เปลี่ยนแม้รถจะย้ายสาขา)
+  // 2) สาขาต้นทาง (originBranch) กรณีงานรถสไลด์ที่รถไม่มี d365SiteId
+  // 3) สาขาของใบงาน (job.branch)
+  const itemWithSite = activeItems.find((i) => i.vehicle?.d365SiteId?.trim());
+  const ownerSiteCode = (
+    itemWithSite?.vehicle?.d365SiteId ||
+    job.vehicle?.d365SiteId ||
+    ''
+  )
+    .trim()
+    .toUpperCase();
+
+  let poBranch: { id: string; code: string; name: string } | null = null;
+  if (ownerSiteCode) {
+    poBranch = await prisma.branch.findFirst({
+      where: { code: ownerSiteCode },
+      select: { id: true, code: true, name: true },
+    });
+  }
+  if (!poBranch) {
+    if (job.jobType === 'VEHICLE_SLIDE' && job.originBranch) {
+      poBranch = { id: job.originBranch.id, code: job.originBranch.code, name: job.originBranch.name };
+    } else if (job.branch) {
+      poBranch = { id: job.branch.id, code: job.branch.code, name: job.branch.name };
+    }
+  }
+
+  const poBranchId = poBranch?.id || job.branchId;
+  const poBranchName = poBranch?.name || job.branch?.name;
+  const d365Company = poBranch?.code?.trim() || ownerSiteCode || job.branch?.code?.trim() || null;
+
+  // ตรวจสอบรหัสคู่ค้าใน D365 ของสาขาเจ้าของรถ (แต่ละบริษัท/สาขามีรหัส Vendor ไม่เหมือนกัน — ไม่มีการใช้รหัสสาขาอื่นแทน)
+  const branchVendor = job.supplierId && poBranchId
     ? await prisma.supplierVendorCode.findUnique({
-        where: { supplierId_branchId: { supplierId: job.supplierId, branchId: job.branchId } },
+        where: { supplierId_branchId: { supplierId: job.supplierId, branchId: poBranchId } },
       })
     : null;
   const vendorAccount = branchVendor?.vendorCode?.trim();
   if (!vendorAccount) {
-    const errorMsg = `Supplier "${job.supplier?.name || '-'}" ยังไม่มีรหัส Vendor D365 ของสาขา ${job.branch?.code || '-'}`;
+    const errorMsg = `Supplier "${job.supplier?.name || '-'}" ยังไม่มีรหัส Vendor D365 ของสาขาเจ้าของรถ ${d365Company || '-'}`;
     await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -344,7 +381,7 @@ export async function sendJobToD365PurchaseOrder(
       jobType: job.jobType,
       trigger,
       companyCode: d365Company,
-      branchName: job.branch?.name,
+      branchName: poBranchName,
       supplierId: job.supplierId,
       supplierCode: job.supplier?.code,
       supplierName: job.supplier?.name,
@@ -383,7 +420,7 @@ export async function sendJobToD365PurchaseOrder(
       jobType: job.jobType,
       trigger,
       companyCode: d365Company,
-      branchName: job.branch?.name,
+      branchName: poBranchName,
       supplierId: job.supplierId,
       supplierCode: job.supplier?.code,
       supplierName: job.supplier?.name,
@@ -415,7 +452,7 @@ export async function sendJobToD365PurchaseOrder(
       jobType: job.jobType,
       trigger,
       companyCode: null,
-      branchName: job.branch?.name,
+      branchName: poBranchName,
       supplierId: job.supplierId,
       supplierCode: job.supplier?.code,
       supplierName: job.supplier?.name,
@@ -561,7 +598,7 @@ export async function sendJobToD365PurchaseOrder(
             jobType: job.jobType,
             trigger: 'ODATA_RECOVERY',
             companyCode: d365Company,
-            branchName: job.branch?.name,
+            branchName: poBranchName,
             supplierId: job.supplierId,
             supplierCode: job.supplier?.code,
             supplierName: job.supplier?.name,
@@ -632,7 +669,7 @@ export async function sendJobToD365PurchaseOrder(
           jobType: job.jobType,
           trigger,
           companyCode: d365Company,
-          branchName: job.branch?.name,
+          branchName: poBranchName,
           supplierId: job.supplierId,
           supplierCode: job.supplier?.code,
           supplierName: job.supplier?.name,
@@ -672,7 +709,7 @@ export async function sendJobToD365PurchaseOrder(
           jobType: job.jobType,
           trigger,
           companyCode: d365Company,
-          branchName: job.branch?.name,
+          branchName: poBranchName,
           supplierId: job.supplierId,
           supplierCode: job.supplier?.code,
           supplierName: job.supplier?.name,
@@ -725,7 +762,7 @@ export async function sendJobToD365PurchaseOrder(
           jobType: job.jobType,
           trigger: 'ODATA_RECOVERY',
           companyCode: d365Company,
-          branchName: job.branch?.name,
+          branchName: poBranchName,
           supplierId: job.supplierId,
           supplierCode: job.supplier?.code,
           supplierName: job.supplier?.name,
@@ -766,7 +803,7 @@ export async function sendJobToD365PurchaseOrder(
       jobType: job.jobType,
       trigger,
       companyCode: d365Company,
-      branchName: job.branch?.name,
+      branchName: poBranchName,
       supplierId: job.supplierId,
       supplierCode: job.supplier?.code,
       supplierName: job.supplier?.name,

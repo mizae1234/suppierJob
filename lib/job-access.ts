@@ -5,6 +5,7 @@ type JobScope = {
   branchId: string;
   originBranchId?: string | null;
   destBranchId?: string | null;
+  requestedById?: string | null;
   supplierId: string;
 };
 
@@ -16,13 +17,14 @@ export function canViewJob(user: SessionUser, job: JobScope): boolean {
     case 'MASTER':
       return true;
     case 'ADMIN':
-      return !user.companyId || job.companyId === user.companyId;
+      return !user.companyId || job.companyId === user.companyId || Boolean(job.originBranchId || job.destBranchId);
     case 'BRANCH':
       if (!user.branchId) return !user.companyId || job.companyId === user.companyId;
       return (
         job.branchId === user.branchId ||
         job.originBranchId === user.branchId ||
-        job.destBranchId === user.branchId
+        job.destBranchId === user.branchId ||
+        job.requestedById === user.id
       );
     case 'SUPPLIER':
       return !!user.supplierId && job.supplierId === user.supplierId;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast';
 import TagSearch from '@/components/ui/TagSearch';
 import BranchSelect from '@/components/ui/BranchSelect';
 import { CustomDropdown, DropdownOption } from '@/components/ui/CustomDropdown';
-import { CompanyCode, Job } from '@/types';
+import { CompanyCode, Job, Vehicle } from '@/types';
 import { haversineDistance, getSupplierVendorCode } from '@/lib/job-utils';
 import {
   calculateSlideJobCost,
@@ -271,9 +271,40 @@ export default function CreateVehicleSlidePage() {
     return vehicles.filter(v => selectedVins.includes(v.vin));
   }, [vehicles, selectedVins]);
 
-  // สาขาผู้ว่าจ้าง (สาขาของคนที่กดสั่งงาน — รับผิดชอบค่าใช้จ่ายและเปิด PO ใน D365)
-  const orderingBranchId = authUser?.branchId || currentBranchId || selectedOriginBranchId;
-  const orderingBranchObj = branches.find(b => b.id === orderingBranchId) || originBranchObj;
+  // ค้นหาสาขาที่เป็นเจ้าของรถต้นสังกัด (Original Vehicle Owner Branch ตาม d365SiteId)
+  const getVehicleOwnerBranch = useCallback(
+    (v?: Vehicle | null) => {
+      if (!v) return undefined;
+      const siteCode = (v.d365SiteId || v.ownerBranchCode || '').trim().toUpperCase();
+      if (siteCode) {
+        const byCode = branches.find(b => b.code.trim().toUpperCase() === siteCode);
+        if (byCode) return byCode;
+      }
+      if (v.ownerBranchId) {
+        const byOwnerId = branches.find(b => b.id === v.ownerBranchId);
+        if (byOwnerId) return byOwnerId;
+      }
+      if (v.currentBranchId) {
+        const byCurrentId = branches.find(b => b.id === v.currentBranchId);
+        if (byCurrentId) return byCurrentId;
+      }
+      return undefined;
+    },
+    [branches]
+  );
+
+  // สาขาที่รับผิดชอบค่าใช้จ่ายและใช้ยิงเปิด PO ใน D365 = สาขาที่เป็นเจ้าของรถต้นสังกัดเสมอ
+  const orderingBranchObj = useMemo(() => {
+    if (selectedVehicles.length > 0) {
+      const ownerBranch = getVehicleOwnerBranch(selectedVehicles[0]);
+      if (ownerBranch) return ownerBranch;
+    }
+    if (selectedBranchFilter !== 'ALL') {
+      const filterBranch = branches.find(b => b.id === selectedBranchFilter);
+      if (filterBranch) return filterBranch;
+    }
+    return originBranchObj;
+  }, [selectedVehicles, getVehicleOwnerBranch, selectedBranchFilter, branches, originBranchObj]);
 
   const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
   const hasVendorCode = Boolean(
@@ -559,24 +590,34 @@ export default function CreateVehicleSlidePage() {
         return next;
       });
     } else {
-      // Check if selectable vehicles come from multiple branches
-      const branchIds = Array.from(new Set(selectableVehicles.map(v => v.currentBranchId).filter(Boolean)));
-      if (branchIds.length > 1) {
-        // Target branch: already selected branch or first branch in list
-        const targetBranchId = selectedVins.length > 0
-          ? (vehicles.find(v => v.vin === selectedVins[0])?.currentBranchId || branchIds[0])
-          : branchIds[0];
-        const targetVehicles = selectableVehicles.filter(v => v.currentBranchId === targetBranchId);
+      const anchorVehicle =
+        (selectedVins.length > 0 ? vehicles.find(v => v.vin === selectedVins[0]) : undefined) ||
+        selectableVehicles[0];
+      if (!anchorVehicle) return;
+
+      const targetBranchId = anchorVehicle.currentBranchId;
+      const targetOwnerBranch = getVehicleOwnerBranch(anchorVehicle);
+      const targetVehicles = selectableVehicles.filter(v => {
+        if (v.currentBranchId !== targetBranchId) return false;
+        const vOwner = getVehicleOwnerBranch(v);
+        if (targetOwnerBranch && vOwner && vOwner.id !== targetOwnerBranch.id) return false;
+        return true;
+      });
+
+      if (targetBranchId) {
+        setSelectedOriginBranchId(targetBranchId);
+      }
+      const newVins = new Set([...selectedVins, ...targetVehicles.map(v => v.vin)]);
+      setSelectedVins(Array.from(newVins));
+
+      if (targetVehicles.length < selectableVehicles.length) {
         const targetBranch = branches.find(b => b.id === targetBranchId);
         const targetBranchLabel = getBranchShortLabel(targetBranch?.code, targetBranch?.name);
-        const newVins = new Set([...selectedVins, ...targetVehicles.map(v => v.vin)]);
-        setSelectedVins(Array.from(newVins));
-        setSelectedOriginBranchId(targetBranchId);
-        showToast(`เลือกเฉพาะรถสาขา ${targetBranchLabel} (${targetVehicles.length} คัน)`, 'info');
-      } else if (branchIds.length === 1) {
-        setSelectedOriginBranchId(branchIds[0]);
-        const newVins = new Set([...selectedVins, ...selectableVehicles.map(v => v.vin)]);
-        setSelectedVins(Array.from(newVins));
+        const ownerLabel = targetOwnerBranch ? getBranchShortLabel(targetOwnerBranch.code, targetOwnerBranch.name) : targetBranchLabel;
+        showToast(
+          `เลือกเฉพาะรถที่จอดอยู่ ${targetBranchLabel} และเป็นรถของสาขา ${ownerLabel} (${targetVehicles.length} คัน)`,
+          'info'
+        );
       }
     }
   };
@@ -592,7 +633,7 @@ export default function CreateVehicleSlidePage() {
         return;
       }
 
-      // If other vehicles are already selected, ensure they are from the same origin branch
+      // If other vehicles are already selected, ensure they are from the same origin branch and same owner branch (PO branch)
       if (selectedVins.length > 0) {
         const firstSelected = vehicles.find(v => v.vin === selectedVins[0]);
         if (firstSelected && firstSelected.currentBranchId !== clickedVehicle.currentBranchId) {
@@ -602,6 +643,17 @@ export default function CreateVehicleSlidePage() {
           const clickedLabel = getBranchShortLabel(clickedBranch?.code || clickedVehicle.currentBranchCode, clickedBranch?.name);
           showToast(
             `เลือกได้เฉพาะรถสาขา ${firstLabel} (คันนี้อยู่ ${clickedLabel})`,
+            'warning'
+          );
+          return;
+        }
+        const firstOwnerBranch = getVehicleOwnerBranch(firstSelected);
+        const clickedOwnerBranch = getVehicleOwnerBranch(clickedVehicle);
+        if (firstOwnerBranch && clickedOwnerBranch && firstOwnerBranch.id !== clickedOwnerBranch.id) {
+          const firstOwnerLabel = getBranchShortLabel(firstOwnerBranch.code, firstOwnerBranch.name);
+          const clickedOwnerLabel = getBranchShortLabel(clickedOwnerBranch.code, clickedOwnerBranch.name);
+          showToast(
+            `เลือกได้เฉพาะรถที่มีสาขาเจ้าของรถเดียวกัน (${firstOwnerLabel}) เพื่อเปิด PO ใน D365 (คันนี้เป็นรถของ ${clickedOwnerLabel})`,
             'warning'
           );
           return;

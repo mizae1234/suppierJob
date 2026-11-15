@@ -38,11 +38,11 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
     companyCode: job.companyCode,
   });
 
-  // Branch info
-  const orderingBranchName = branch?.name || job.branchName || companyInfo.branchName || '-';
-  const orderingBranchCode = branch?.code || job.branchCode || companyInfo.branchCode || '';
-  const orderingBranchAddress = branch?.address || companyInfo.address || '';
-  const orderingBranchPhone = job.requesterPhone || branch?.phone || '';
+  // Branch info (ใช้สาขาเจ้าของรถต้นสังกัดตาม companyInfo เป็นหลัก)
+  const orderingBranchName = companyInfo.branchName || branch?.name || job.branchName || '-';
+  const orderingBranchCode = companyInfo.branchCode || branch?.code || job.branchCode || '';
+  const orderingBranchAddress = companyInfo.address || branch?.address || '';
+  const orderingBranchPhone = job.requesterPhone || companyInfo.phone || branch?.phone || '';
 
   // Supplier info
   const supplierCode =

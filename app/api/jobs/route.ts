@@ -126,6 +126,7 @@ export async function GET(request: NextRequest) {
           { branchId: user.branchId },
           { originBranchId: user.branchId },
           { destBranchId: user.branchId },
+          { requestedById: user.id },
         ];
       }
     } else if (user.role === 'ADMIN') {
@@ -244,17 +245,61 @@ export async function POST(request: NextRequest) {
     const snapshotPosition = dbUser?.position || requesterPosition || '';
     const snapshotPhone = dbUser?.phone || requesterPhone || '';
 
-    // สำหรับงานรถสไลด์ (VEHICLE_SLIDE): ผูกสาขาผู้ว่าจ้าง (branchId) กับสาขาของผู้สั่งงานโดยอัตโนมัติ (แนวทางที่ 1)
+    const requestedVins: string[] = jobType === 'CAR_WASH'
+      ? (Array.isArray(body.items) ? body.items.map((it: { vin: string }) => it.vin) : [])
+      : (Array.isArray(body.vins) && body.vins.length > 0 ? body.vins : (body.vin ? [body.vin] : []));
+
+    // สำหรับงานรถสไลด์ (VEHICLE_SLIDE): สาขาที่รับผิดชอบค่าใช้จ่ายและใช้ยิงเปิด PO ใน D365 คือ "สาขาที่เป็นเจ้าของรถต้นสังกัด" (d365SiteId) เสมอ
     if (jobType === 'VEHICLE_SLIDE') {
-      branchId = dbUser?.branchId || user.branchId || branchId || body.originBranchId;
-      if (branchId) {
-        const orderingBranch = await prisma.branch.findUnique({
-          where: { id: branchId },
-          select: { companyId: true },
-        });
-        if (orderingBranch?.companyId) {
-          companyId = orderingBranch.companyId;
+      const slideVehicles = requestedVins.length > 0
+        ? await prisma.vehicle.findMany({
+            where: { vin: { in: requestedVins } },
+            select: { vin: true, d365SiteId: true, currentBranchId: true, companyId: true },
+          })
+        : [];
+
+      // ตรวจสอบว่ารถทุกคันในใบงานสไลด์เดียวกันต้องมีสาขาเจ้าของรถต้นสังกัดเดียวกัน (เพราะ 1 ใบงาน = 1 PO ใน D365)
+      if (slideVehicles.length > 1) {
+        const ownerKeys = new Set(
+          slideVehicles
+            .map((v) => v.d365SiteId?.trim().toUpperCase() || v.currentBranchId)
+            .filter(Boolean)
+        );
+        if (ownerKeys.size > 1) {
+          return NextResponse.json(
+            { error: 'ไม่สามารถสั่งสไลด์รถที่มีสาขาเจ้าของรถต่างกันในใบงานเดียวกันได้ กรุณาแยกใบงานตามสาขาเจ้าของรถ' },
+            { status: 400 }
+          );
         }
+      }
+
+      const firstVehicle = slideVehicles[0];
+      const ownerSiteCode = firstVehicle?.d365SiteId?.trim().toUpperCase();
+      let ownerBranch = ownerSiteCode
+        ? await prisma.branch.findFirst({
+            where: { code: ownerSiteCode },
+            select: { id: true, code: true, companyId: true },
+          })
+        : null;
+
+      if (!ownerBranch) {
+        const fallbackBranchId =
+          firstVehicle?.currentBranchId ||
+          body.originBranchId ||
+          branchId ||
+          dbUser?.branchId ||
+          user.branchId;
+        if (fallbackBranchId) {
+          ownerBranch = await prisma.branch.findUnique({
+            where: { id: fallbackBranchId },
+            select: { id: true, code: true, companyId: true },
+          });
+        }
+      }
+
+      if (ownerBranch) {
+        branchId = ownerBranch.id;
+        companyId = ownerBranch.companyId;
       }
     }
 
@@ -266,8 +311,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Role-specific company validation
-    if (user.role === 'ADMIN' && user.companyId && user.companyId !== companyId) {
+    // Role-specific company validation (งานรถสไลด์อนุญาตให้สั่งข้ามสาขา/บริษัทในเครือได้ โดย PO จะเปิดในนามสาขาเจ้าของรถ)
+    if (user.role === 'ADMIN' && jobType !== 'VEHICLE_SLIDE' && user.companyId && user.companyId !== companyId) {
       return NextResponse.json(
         { error: 'คุณไม่มีสิทธิ์สร้างงานให้บริษัทอื่น' },
         { status: 403 }
@@ -275,27 +320,29 @@ export async function POST(request: NextRequest) {
     }
 
     if (user.role === 'BRANCH') {
-      if (user.companyId && user.companyId !== companyId) {
-        return NextResponse.json(
-          { error: 'คุณไม่มีสิทธิ์สร้างงานให้บริษัทอื่น' },
-          { status: 403 }
-        );
-      }
       if (jobType === 'VEHICLE_SLIDE') {
         const origId = body.originBranchId || body.branchId;
         const dstId = body.destBranchId;
-        // Branch user can request a slide if their branch is either origin (sending car) or destination (pulling car to their branch)
+        // Branch user can request a slide if their branch is either origin (sending car), destination (pulling car to their branch), or owner branch
         if (user.branchId && user.branchId !== origId && user.branchId !== dstId && user.branchId !== branchId) {
           return NextResponse.json(
             { error: 'สาขาของคุณต้องเป็นสาขาต้นทางหรือสาขาปลายทางของงานรถสไลด์นี้' },
             { status: 403 }
           );
         }
-      } else if (user.branchId && user.branchId !== branchId) {
-        return NextResponse.json(
-          { error: 'คุณสามารถสร้างงานได้เฉพาะสาขาตนเองเท่านั้น' },
-          { status: 403 }
-        );
+      } else {
+        if (user.companyId && user.companyId !== companyId) {
+          return NextResponse.json(
+            { error: 'คุณไม่มีสิทธิ์สร้างงานให้บริษัทอื่น' },
+            { status: 403 }
+          );
+        }
+        if (user.branchId && user.branchId !== branchId) {
+          return NextResponse.json(
+            { error: 'คุณสามารถสร้างงานได้เฉพาะสาขาตนเองเท่านั้น' },
+            { status: 403 }
+          );
+        }
       }
     }
 
@@ -305,7 +352,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ไม่พบบริษัทนี้' }, { status: 404 });
     }
 
-    // ─── Guard: ต้องใช้ Supplier ที่มีรหัส Vendor D365 ของสาขาผู้ว่าจ้าง (branchId) แล้วเท่านั้น ───
+    // ─── Guard: ต้องใช้ Supplier ที่มีรหัส Vendor D365 ของสาขาที่รับผิดชอบเปิด PO (สาขาเจ้าของรถ) แล้วเท่านั้น ───
     const targetBranchId = branchId;
     const branchVendor = await prisma.supplierVendorCode.findUnique({
       where: {
@@ -318,7 +365,7 @@ export async function POST(request: NextRequest) {
     });
     if (!branchVendor || !branchVendor.vendorCode?.trim()) {
       return NextResponse.json(
-        { error: 'ไม่สามารถสั่งงานได้ เนื่องจาก Supplier ที่เลือกยังไม่มีรหัส Vendor D365 สำหรับสาขานี้' },
+        { error: 'ไม่สามารถสั่งงานได้ เนื่องจาก Supplier ที่เลือกยังไม่มีรหัส Vendor D365 สำหรับสาขาเจ้าของรถนี้' },
         { status: 400 }
       );
     }
@@ -330,10 +377,6 @@ export async function POST(request: NextRequest) {
     const jobNumber = `${prefix}-${company.code}-${dateStr}-${uniqueSuffix}`;
 
     // ─── Guard: a car can't be ordered again until its current job is finished ───
-    const requestedVins: string[] = jobType === 'CAR_WASH'
-      ? (Array.isArray(body.items) ? body.items.map((it: { vin: string }) => it.vin) : [])
-      : (Array.isArray(body.vins) && body.vins.length > 0 ? body.vins : (body.vin ? [body.vin] : []));
-
     const dupVins = requestedVins.filter((v, i) => requestedVins.indexOf(v) !== i);
     if (dupVins.length > 0) {
       return NextResponse.json(
