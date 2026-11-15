@@ -113,6 +113,13 @@ export async function sendJobToD365TransferJournal(
     };
   }
 
+  if (job.destWarehouseId === undefined) {
+    const rawRows = await prisma.$queryRaw<Array<{ destWarehouseId: string | null }>>`
+      SELECT [destWarehouseId] FROM [Job] WHERE [id] = ${job.id}
+    `;
+    (job as { destWarehouseId?: string | null }).destWarehouseId = rawRows[0]?.destWarehouseId ?? null;
+  }
+
   const toWarehouse = resolveJobDestWarehouse(job);
   if (!toWarehouse) {
     return {

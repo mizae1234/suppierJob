@@ -215,6 +215,12 @@ export async function PATCH(
               preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
             }
 
+            if (job.destWarehouseId === undefined) {
+              const rawRows = await tx.$queryRaw<Array<{ destWarehouseId: string | null }>>`
+                SELECT [destWarehouseId] FROM [Job] WHERE [id] = ${job.id}
+              `;
+              (job as { destWarehouseId?: string | null }).destWarehouseId = rawRows[0]?.destWarehouseId ?? null;
+            }
             const destWarehouse = resolveJobDestWarehouse(job);
             // อัปเดตเฉพาะที่จอดปัจจุบัน (currentBranchId + d365WarehouseId) โดยไม่แตะ d365SiteId (สาขาเจ้าของรถ Original)
             await tx.vehicle.updateMany({

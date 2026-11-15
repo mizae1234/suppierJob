@@ -38,19 +38,57 @@ function buildDatasourceUrl(rawUrl?: string): string | undefined {
 
 const datasourceUrl = buildDatasourceUrl(process.env.DATABASE_URL);
 
-// หากมี PrismaClient ตัวเก่าค้างอยู่ใน globalThis (เช่น ก่อนใส่ socket_timeout หรือหลังเครื่องพับจอ/Sleep)
+function isCurrentSchemaUpToDate(client?: PrismaClient): boolean {
+  if (!client) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jobFields = (client as any)._runtimeDataModel?.models?.Job?.fields as Array<{ name: string }> | undefined;
+  if (!Array.isArray(jobFields)) return true;
+  return jobFields.some((f) => f.name === 'destWarehouseId');
+}
+
+function createFreshPrismaClient(): PrismaClient {
+  const clientOptions = {
+    ...(datasourceUrl ? { datasourceUrl } : {}),
+    log: (process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error']) as ('warn' | 'error')[],
+  };
+  let ClientCtor = PrismaClient;
+  try {
+    // กรณีรัน dev server ค้างไว้ก่อนรัน prisma generate ให้ล้าง require.cache ของ .prisma/client เพื่อโหลด schema ล่าสุดทันทีโดยไม่ต้องรีสตาร์ทเซิร์ฟเวอร์
+    const testInstance = new ClientCtor(clientOptions);
+    if (isCurrentSchemaUpToDate(testInstance)) {
+      return testInstance;
+    }
+    testInstance.$disconnect().catch(() => {});
+    // eslint-disable-next-line no-eval
+    const req = eval('require') as NodeRequire;
+    if (req?.cache) {
+      for (const key of Object.keys(req.cache)) {
+        if (key.includes('.prisma/client') || key.includes('@prisma/client/default')) {
+          delete req.cache[key];
+        }
+      }
+      const reloaded = req('@prisma/client') as { PrismaClient?: typeof PrismaClient };
+      if (reloaded?.PrismaClient) {
+        ClientCtor = reloaded.PrismaClient;
+      }
+    }
+  } catch {
+    // fallback ใช้ PrismaClient ปกติ
+  }
+  return new ClientCtor(clientOptions);
+}
+
+// หากมี PrismaClient ตัวเก่าค้างอยู่ใน globalThis (เช่น ก่อนใส่ socket_timeout, หลังรัน prisma generate ใหม่, หรือหลังเครื่องพับจอ/Sleep)
 // ให้สั่ง disconnect ตัวเก่าและสร้าง Pool ใหม่ทันทีเมื่อ HMR โหลดไฟล์นี้
-if (globalForPrisma.prisma && globalForPrisma.prismaDatasourceUrl !== datasourceUrl) {
+if (
+  globalForPrisma.prisma &&
+  (globalForPrisma.prismaDatasourceUrl !== datasourceUrl || !isCurrentSchemaUpToDate(globalForPrisma.prisma))
+) {
   globalForPrisma.prisma.$disconnect().catch(() => {});
   globalForPrisma.prisma = undefined;
 }
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    ...(datasourceUrl ? { datasourceUrl } : {}),
-    log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  });
+export const prisma = globalForPrisma.prisma ?? createFreshPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
