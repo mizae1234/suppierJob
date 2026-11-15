@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { CancelJobConfirmModal } from './CancelJobConfirmModal';
 import { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
 import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { ManualPricingNotice } from './ManualPricingNotice';
 import {
   AlertCircle,
   AlertTriangle,
@@ -1278,6 +1279,8 @@ export function JobDetailDrawer({
                           </p>
                         </div>
                       )}
+                      {/* ── ค่าบริการกรอกเอง ── */}
+                      <ManualPricingNotice job={activeJob} />
                       {/* Vehicle Main Card with Status (Only for single vehicle slide without items) */}
                       {(!activeJob.carWashItems || activeJob.carWashItems.length === 0) && (
                       <div className="p-4 rounded-2xl border border-gray-100 bg-white shadow-2xs space-y-3.5">

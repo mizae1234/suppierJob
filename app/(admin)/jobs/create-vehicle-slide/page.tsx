@@ -42,8 +42,19 @@ import {
   Minus,
   Lock,
   Sparkles,
+  Calculator,
+  PencilLine,
+  RotateCcw,
   X
 } from 'lucide-react';
+import {
+  SlidePricingMode,
+  SLIDE_PRICING_AUTO,
+  SLIDE_PRICING_MANUAL,
+  MANUAL_PRICE_NOTE_MIN_LENGTH,
+  MANUAL_PRICE_NOTE_MAX_LENGTH,
+  getManualPriceDiff,
+} from '@/lib/slide-pricing';
 
 // Dynamic import to avoid SSR issues with Leaflet
 const MapPickerModal = dynamic(() => import('@/components/jobs/MapPickerModal'), { ssr: false });
@@ -207,10 +218,14 @@ export default function CreateVehicleSlidePage() {
   const [requestedBy, setRequestedBy] = useState<string>(autoName);
   const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
   const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
-  const [estimatedCost, setEstimatedCost] = useState<number>(0);
-  const [distance, setDistance] = useState<number>(32);
-  const [pricingCalculation, setPricingCalculation] = useState<SlideCalculationResult | null>(null);
-  const [isCustomPrice, setIsCustomPrice] = useState(false);
+  // ── วิธีคิดค่าบริการ: AUTO = ระบบคำนวณ (ค่าเริ่มต้น), MANUAL = พนักงานกรอกระยะทาง/ราคาต่อคันเอง ──
+  const [pricingMode, setPricingMode] = useState<SlidePricingMode>(SLIDE_PRICING_AUTO);
+  const [autoDistance, setAutoDistance] = useState<number>(32);
+  const [manualDistance, setManualDistance] = useState<number>(0);
+  const [manualCost, setManualCost] = useState<number>(0);
+  const [manualPriceNote, setManualPriceNote] = useState<string>('');
+  const isManualPricing = pricingMode === SLIDE_PRICING_MANUAL;
+  const distance = isManualPricing ? manualDistance : autoDistance;
 
   // ── Hybrid Destination Mode ──
   const [destMode, setDestMode] = useState<'branch' | 'custom'>('branch');
@@ -334,18 +349,19 @@ export default function CreateVehicleSlidePage() {
   }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name, destBranch?.code, destBranchId]);
 
   // Auto-calculate real road distance whenever pickup or drop-off point changes
+  // (โหมดกรอกเองใช้ manualDistance แยก จึงไม่ถูกเขียนทับ)
   useEffect(() => {
     if (!originPoint || !destPoint) return;
     const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
     const initialRoadDist = Math.round(straight * 1.25 * 10) / 10;
-    setDistance(initialRoadDist);
+    setAutoDistance(initialRoadDist);
 
     let cancelled = false;
     fetch(`/api/routes/driving?originLat=${originPoint.lat}&originLng=${originPoint.lng}&destLat=${destPoint.lat}&destLng=${destPoint.lng}`)
       .then(res => res.json())
       .then(data => {
         if (!cancelled && data.success && data.distanceKm) {
-          setDistance(data.distanceKm);
+          setAutoDistance(data.distanceKm);
         }
       })
       .catch(err => {
@@ -358,16 +374,9 @@ export default function CreateVehicleSlidePage() {
   }, [originPoint?.lat, originPoint?.lng, destPoint?.lat, destPoint?.lng]);
 
   // Dynamic slide pricing recalculation based on contract matrices
-  useEffect(() => {
-    if (!selectedSupplierId) {
-      setPricingCalculation(null);
-      if (!isCustomPrice) {
-        setEstimatedCost(0);
-      }
-      return;
-    }
-
-    const result = calculateSlideJobCost({
+  const pricingCalculation = useMemo<SlideCalculationResult | null>(() => {
+    if (!selectedSupplierId) return null;
+    return calculateSlideJobCost({
       supplierCodeOrId: selectedSupplier?.code || selectedSupplierId,
       supplierName: selectedSupplier?.name,
       distanceKm: distance,
@@ -379,11 +388,6 @@ export default function CreateVehicleSlidePage() {
       destBranchName: destMode === 'branch' ? destBranch?.name : null,
       carCount: selectedVins.length || 1,
     });
-
-    setPricingCalculation(result);
-    if (!isCustomPrice) {
-      setEstimatedCost(result.costPerCar);
-    }
   }, [
     selectedSupplier?.code,
     selectedSupplier?.name,
@@ -396,8 +400,21 @@ export default function CreateVehicleSlidePage() {
     destBranch?.code,
     destBranch?.name,
     selectedVins.length,
-    isCustomPrice,
   ]);
+
+  const contractCostPerCar = pricingCalculation?.costPerCar ?? 0;
+  const estimatedCost = isManualPricing ? manualCost : contractCostPerCar;
+  const manualPriceDiff = isManualPricing ? getManualPriceDiff(manualCost, contractCostPerCar) : null;
+
+  const handleChangePricingMode = (mode: SlidePricingMode) => {
+    if (mode === pricingMode) return;
+    if (mode === SLIDE_PRICING_MANUAL) {
+      // ตั้งต้นจากค่าที่ระบบคำนวณ ให้พนักงานแก้ต่อได้ทันที
+      setManualDistance(autoDistance);
+      setManualCost(contractCostPerCar);
+    }
+    setPricingMode(mode);
+  };
 
   const originLabel = originMode === 'custom' && customOrigin
     ? customOrigin.address.split(',').slice(0, 2).join(',')
@@ -573,6 +590,23 @@ export default function CreateVehicleSlidePage() {
       showToast('กรุณากรอกเบอร์โทรผู้ติดต่อให้ครบ 10 หลัก', 'warning');
       return;
     }
+    if (isManualPricing) {
+      if (!(manualDistance > 0)) {
+        showToast('กรุณากรอกระยะทาง (กม.) สำหรับการกรอกค่าบริการเอง', 'warning');
+        return;
+      }
+      if (!(manualCost > 0)) {
+        showToast('กรุณากรอกค่าใช้จ่ายต่อคันสำหรับการกรอกค่าบริการเอง', 'warning');
+        return;
+      }
+      if (manualPriceNote.trim().length < MANUAL_PRICE_NOTE_MIN_LENGTH) {
+        showToast(`กรุณาระบุหมายเหตุการกรอกค่าบริการเองอย่างน้อย ${MANUAL_PRICE_NOTE_MIN_LENGTH} ตัวอักษร`, 'warning');
+        return;
+      }
+    } else if (!(estimatedCost > 0)) {
+      showToast('ไม่สามารถคำนวณค่าบริการตามสัญญาได้ กรุณาตรวจสอบเส้นทาง หรือเลือกกรอกค่าบริการเอง', 'warning');
+      return;
+    }
 
     setShowConfirmModal(true);
   };
@@ -601,6 +635,8 @@ export default function CreateVehicleSlidePage() {
         requesterPhone,
         estimatedCost,
         distance,
+        pricingMode,
+        manualPriceNote: isManualPricing ? manualPriceNote.trim() : undefined,
         ...(destMode === 'custom' && customDest ? {
           customDestAddress: customDest.address,
           customDestLat: customDest.lat,
@@ -657,7 +693,6 @@ export default function CreateVehicleSlidePage() {
             selectedSupplierId={selectedSupplierId}
             onSelect={(id) => {
               setSelectedSupplierId(id);
-              setIsCustomPrice(false);
             }}
             serviceType="VEHICLE_SLIDE"
             stepNumber={1}
@@ -995,7 +1030,7 @@ export default function CreateVehicleSlidePage() {
                     <BranchSelect
                       branches={branches}
                       value={selectedOriginBranchId}
-                      onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); setIsCustomPrice(false); }}
+                      onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); }}
                     />
                   ) : (
                     <div
@@ -1143,7 +1178,7 @@ export default function CreateVehicleSlidePage() {
                 <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 mb-3">
                   <button
                     type="button"
-                    onClick={() => { setDestMode('branch'); setIsCustomPrice(false); }}
+                    onClick={() => { setDestMode('branch'); }}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       destMode === 'branch'
                         ? 'bg-white text-[#0f5238] shadow-sm'
@@ -1155,7 +1190,7 @@ export default function CreateVehicleSlidePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setDestMode('custom'); setIsCustomPrice(false); }}
+                    onClick={() => { setDestMode('custom'); }}
                     className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
                       destMode === 'custom'
                         ? 'bg-white text-[#0f5238] shadow-sm'
@@ -1172,7 +1207,7 @@ export default function CreateVehicleSlidePage() {
                   <BranchSelect
                     branches={branches}
                     value={destBranchId}
-                    onChange={(id) => { setDestBranchId(id); setIsCustomPrice(false); }}
+                    onChange={(id) => { setDestBranchId(id); }}
                     disabledIds={selectedOriginBranchId ? { [selectedOriginBranchId]: 'ต้นทาง' } : {}}
                     placeholder="เลือกสาขาปลายทาง"
                   />
@@ -1241,13 +1276,51 @@ export default function CreateVehicleSlidePage() {
                 )}
               </div>
 
-              {/* Distance & Cost */}
+              {/* Pricing Mode Toggle (AUTO / MANUAL) */}
+              <div className="md:col-span-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    วิธีคิดค่าบริการ (Pricing Method):
+                  </label>
+                  <div className="grid grid-cols-2 p-1 rounded-xl bg-gray-100 border border-gray-200/80 gap-1 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleChangePricingMode(SLIDE_PRICING_AUTO)}
+                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        !isManualPricing ? 'bg-white text-[#0f5238] shadow-xs' : 'text-gray-500 hover:text-gray-800'
+                      }`}
+                    >
+                      <Calculator className="w-3.5 h-3.5" />
+                      <span>คำนวณอัตโนมัติ</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleChangePricingMode(SLIDE_PRICING_MANUAL)}
+                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isManualPricing ? 'bg-white text-amber-800 shadow-xs' : 'text-gray-500 hover:text-gray-800'
+                      }`}
+                    >
+                      <PencilLine className="w-3.5 h-3.5" />
+                      <span>กรอกเอง</span>
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  {isManualPricing
+                    ? 'กรอกระยะทางและค่าใช้จ่ายต่อคันเอง (เช่น Supplier คิดระยะทางจากจุดจอดรถ → จุดรับ → จุดส่ง) พร้อมระบุหมายเหตุ'
+                    : 'ระบบคำนวณระยะทางจากแผนที่ และค่าบริการต่อคันตามสัญญาของ Supplier'}
+                </p>
+              </div>
+
+              {/* Distance */}
               <div>
                 <div className="flex items-center justify-between mb-1 gap-2">
                   <label className="block text-xs font-semibold text-gray-700 whitespace-nowrap">
                     ระยะทาง (Distance): <span className="text-red-500">*</span>
                   </label>
-                  <span className="text-[10px] text-gray-400 font-medium whitespace-nowrap">คำนวณตามเส้นทาง</span>
+                  <span className={`text-[10px] font-medium whitespace-nowrap ${isManualPricing ? 'text-amber-700' : 'text-gray-400'}`}>
+                    {isManualPricing ? `ระบบคำนวณได้ ${autoDistance.toFixed(1)} กม.` : 'คำนวณตามเส้นทาง'}
+                  </span>
                 </div>
                 <div className="relative">
                   <input
@@ -1255,13 +1328,19 @@ export default function CreateVehicleSlidePage() {
                     min={0}
                     step="any"
                     value={distance === 0 ? '' : distance}
+                    readOnly={!isManualPricing}
                     onChange={(e) => {
+                      if (!isManualPricing) return;
                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                      setDistance(val);
+                      setManualDistance(Number.isFinite(val) ? val : 0);
                     }}
                     placeholder="เช่น 35"
                     required
-                    className="w-full h-10 pl-3 pr-12 rounded-xl border border-gray-200 text-xs font-bold text-gray-900 focus:ring-2 focus:ring-[#0f5238] outline-none bg-white transition-all"
+                    className={`w-full h-10 pl-3 pr-12 rounded-xl border text-xs font-bold text-gray-900 outline-none transition-all ${
+                      isManualPricing
+                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-400'
+                        : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                    }`}
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-xs font-semibold text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
                     กม.
@@ -1269,28 +1348,33 @@ export default function CreateVehicleSlidePage() {
                 </div>
               </div>
 
+              {/* Cost per car */}
               <div>
                 <div className="flex items-center justify-between mb-1 gap-2">
                   <label className="block text-xs font-semibold text-gray-700 whitespace-nowrap">
-                    ค่าใช้จ่าย (Cost): <span className="text-red-500">*</span>
+                    ค่าใช้จ่ายต่อคัน (Cost): <span className="text-red-500">*</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomPrice(false);
-                      if (pricingCalculation) {
-                        setEstimatedCost(pricingCalculation.costPerCar);
-                      }
-                    }}
-                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg border transition-colors cursor-pointer whitespace-nowrap max-w-[210px] truncate ${
-                      isCustomPrice
-                        ? 'text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300'
-                        : 'text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-200/80'
-                    }`}
-                    title={isCustomPrice ? 'คลิกเพื่อรีเซ็ตกลับเป็นราคาตามสัญญา' : 'ราคาคำนวณตามสัญญาของ Supplier นี้'}
-                  >
-                    {isCustomPrice ? '↺ คืนค่าสัญญา' : (pricingCalculation?.formulaBadge || (selectedSupplierId ? 'คำนวณตามสัญญา' : 'กรุณาเลือก Supplier'))}
-                  </button>
+                  {isManualPricing ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setManualDistance(autoDistance);
+                        setManualCost(contractCostPerCar);
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300 transition-colors cursor-pointer whitespace-nowrap"
+                      title="ตั้งค่าระยะทางและราคากลับเป็นค่าที่ระบบคำนวณ (ยังอยู่ในโหมดกรอกเอง)"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>ใช้ค่าที่ระบบคำนวณ</span>
+                    </button>
+                  ) : (
+                    <span
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-lg border text-emerald-700 bg-emerald-50 border-emerald-200/80 whitespace-nowrap max-w-[210px] truncate"
+                      title={pricingCalculation?.formulaDetail || 'ราคาคำนวณตามสัญญาของ Supplier นี้'}
+                    >
+                      {pricingCalculation?.formulaBadge || (selectedSupplierId ? 'คำนวณตามสัญญา' : 'กรุณาเลือก Supplier')}
+                    </span>
+                  )}
                 </div>
                 <div className="relative">
                   <input
@@ -1298,14 +1382,19 @@ export default function CreateVehicleSlidePage() {
                     min={0}
                     step="any"
                     value={estimatedCost === 0 ? '' : estimatedCost}
+                    readOnly={!isManualPricing}
                     onChange={(e) => {
+                      if (!isManualPricing) return;
                       const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                      setEstimatedCost(val);
-                      setIsCustomPrice(true);
+                      setManualCost(Number.isFinite(val) ? val : 0);
                     }}
                     placeholder="เช่น 1600"
                     required
-                    className="w-full h-10 pl-3 pr-14 rounded-xl border border-gray-200 text-xs font-bold text-[#0f5238] focus:ring-2 focus:ring-[#0f5238] outline-none bg-white transition-all"
+                    className={`w-full h-10 pl-3 pr-14 rounded-xl border text-xs font-bold text-[#0f5238] outline-none transition-all ${
+                      isManualPricing
+                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-400'
+                        : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                    }`}
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-xs font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                     บาท
@@ -1319,21 +1408,54 @@ export default function CreateVehicleSlidePage() {
                   )}
                   {!selectedSupplierId ? (
                     <p className="text-[10px] text-amber-600 font-medium">
-                      ⚠️ กรุณาเลือก Supplier รถสไลด์ในขั้นตอนที่ 1 เพื่อคำนวณอัตราค่าบริการตามสัญญา
+                      กรุณาเลือก Supplier รถสไลด์ในขั้นตอนที่ 1 เพื่อคำนวณอัตราค่าบริการตามสัญญา
+                    </p>
+                  ) : isManualPricing ? (
+                    <p className="text-[10px] text-gray-500 leading-tight">
+                      ราคาตามสัญญา (ที่ระยะ {distance.toFixed(1)} กม.): ฿{contractCostPerCar.toLocaleString()}/คัน
+                      {manualPriceDiff && manualPriceDiff.diff !== 0 && (
+                        <span className={`ml-1 font-bold ${manualPriceDiff.diff > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                          ({manualPriceDiff.diff > 0 ? '+' : ''}{manualPriceDiff.diff.toLocaleString()} บาท / {manualPriceDiff.diff > 0 ? '+' : ''}{manualPriceDiff.percent}%)
+                        </span>
+                      )}
                     </p>
                   ) : pricingCalculation ? (
                     <p className="text-[10px] text-gray-500 leading-tight">
-                      💡 {pricingCalculation.formulaDetail}
+                      {pricingCalculation.formulaDetail}
                     </p>
                   ) : null}
-                  {pricingCalculation?.isSpecialQuote && (
+                  {!isManualPricing && pricingCalculation?.isSpecialQuote && (
                     <div className="mt-1 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-medium flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                      <span>ระยะทางเกิน 1,000 กม. กรุณาติดต่อขอราคาพิเศษ</span>
+                      <span>ระยะทางเกิน 1,000 กม. กรุณาติดต่อขอราคาพิเศษ หรือเลือก &quot;กรอกเอง&quot;</span>
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* Manual pricing note (required) */}
+              {isManualPricing && (
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <label htmlFor="manual-price-note" className="block text-xs font-semibold text-gray-700">
+                      หมายเหตุการกรอกค่าบริการเอง: <span className="text-red-500">*</span>
+                    </label>
+                    <span className="text-[10px] text-gray-400">{manualPriceNote.length}/{MANUAL_PRICE_NOTE_MAX_LENGTH}</span>
+                  </div>
+                  <textarea
+                    id="manual-price-note"
+                    value={manualPriceNote}
+                    onChange={(e) => setManualPriceNote(e.target.value.slice(0, MANUAL_PRICE_NOTE_MAX_LENGTH))}
+                    placeholder="เช่น Supplier คิดระยะทางจากจุดจอดรถ (บางนา) → จุดรับรถ → จุดส่งรถ รวม 71 กม."
+                    rows={2}
+                    required
+                    className="w-full p-3 rounded-xl border border-amber-300 text-xs focus:ring-2 focus:ring-amber-400 outline-none resize-none bg-white"
+                  />
+                  {manualPriceNote.length > 0 && manualPriceNote.trim().length < MANUAL_PRICE_NOTE_MIN_LENGTH && (
+                    <p className="text-[10px] text-red-500 mt-1">กรุณาระบุอย่างน้อย {MANUAL_PRICE_NOTE_MIN_LENGTH} ตัวอักษร</p>
+                  )}
+                </div>
+              )}
 
               {/* Pickup Time */}
               <div>
@@ -1469,8 +1591,12 @@ export default function CreateVehicleSlidePage() {
         supplierName={selectedSupplier?.name || ''}
         pickupDateTime={pickupDateTime}
         estimatedCost={estimatedCost}
-        formulaBadge={pricingCalculation?.formulaBadge}
-        formulaDetail={pricingCalculation?.formulaDetail}
+        formulaBadge={isManualPricing ? 'กรอกค่าบริการเอง' : pricingCalculation?.formulaBadge}
+        formulaDetail={
+          isManualPricing
+            ? `หมายเหตุ: ${manualPriceNote.trim()} (ราคาตามสัญญา ฿${contractCostPerCar.toLocaleString()}/คัน)`
+            : pricingCalculation?.formulaDetail
+        }
         onClose={() => setShowConfirmModal(false)}
         onConfirm={handleConfirmSlideJob}
       />
@@ -1481,7 +1607,7 @@ export default function CreateVehicleSlidePage() {
         selectedVins={selectedVins}
         distance={distance}
         estimatedCost={estimatedCost}
-        formulaBadge={pricingCalculation?.formulaBadge}
+        formulaBadge={isManualPricing ? 'กรอกค่าบริการเอง' : pricingCalculation?.formulaBadge}
         onClose={() => setCreatedJob(null)}
       />
 
@@ -1499,7 +1625,7 @@ export default function CreateVehicleSlidePage() {
             setCustomDest(data);
           }
           if (typeof data.distance === 'number' && data.distance > 0) {
-            setDistance(data.distance);
+            setAutoDistance(data.distance);
           }
         }}
         {...(mapPickerMode === 'branch'

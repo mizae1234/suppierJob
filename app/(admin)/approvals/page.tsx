@@ -33,6 +33,7 @@ import {
   ProxyApprovalModal,
   CarWashItemReviewCard,
 } from '@/components/approvals';
+import { ManualPricingBadge, ManualPricingNotice } from '@/components/jobs/ManualPricingNotice';
 import {
   isFailedAttemptJob,
   SLIDE_FAILED_ATTEMPT_FEE,
@@ -351,6 +352,8 @@ function ApprovalsContent() {
                             </span>
                           )}
 
+                          <ManualPricingBadge job={job} className="rounded-full px-2 text-[10px]" />
+
                           {/* Direction Badge for Vehicle Slide */}
                           {job.jobType === 'VEHICLE_SLIDE' && (() => {
                             const myBranchId = activeBranch?.id || currentBranchId;
@@ -512,6 +515,9 @@ function ApprovalsContent() {
                       อนุมัติสำเร็จเมื่อ {formatThaiDate(job.approvedAt)}{job.approvedBy ? ` โดย ${job.approvedBy}` : ''}
                     </p>
                   )}
+
+                  {/* ── ค่าบริการกรอกเอง (Vehicle Slide) ── */}
+                  <ManualPricingNotice job={job} />
 
                   {/* ── เที่ยวเปล่า (สไลด์ไม่สำเร็จ) ── */}
                   {isFailedAttemptJob(job) && (() => {

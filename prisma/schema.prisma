@@ -221,6 +221,12 @@ model Job {
   failReasonCode   String?       // รหัสสาเหตุที่สไลด์ไม่สำเร็จ (ดู lib/slide-failed-attempt.ts)
   failNote         String?       // รายละเอียดเพิ่มเติมจาก Vendor
 
+  // วิธีคิดค่าบริการ (Vehicle Slide): AUTO = คำนวณตามสัญญา (ค่าเริ่มต้น / null), MANUAL = พนักงานกรอกระยะทางและราคาต่อคันเอง
+  pricingMode      String?
+  distance         Float?        // ระยะทาง (กม.) ที่ใช้คิดราคา ณ ตอนสร้างใบงาน
+  contractCost     Float?        // ราคาต่อคันตามสัญญา (ระบบคำนวณ) — เก็บไว้เทียบกรณีกรอกเอง
+  manualPriceNote  String?       // หมายเหตุ/เหตุผลที่กรอกราคาเอง (บังคับเมื่อ MANUAL)
+
   // รูปหลักฐาน
   evidences        JobEvidence[]
 

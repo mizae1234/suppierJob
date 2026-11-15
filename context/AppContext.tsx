@@ -59,6 +59,9 @@ interface CreateVehicleSlideParams {
   requesterPhone?: string;
   estimatedCost: number;
   distance?: number;
+  // วิธีคิดค่าบริการ: AUTO (ตามสัญญา) | MANUAL (กรอกเอง — ต้องมีหมายเหตุ)
+  pricingMode?: 'AUTO' | 'MANUAL';
+  manualPriceNote?: string;
   // Custom destination (map pin) — optional
   customDestAddress?: string;
   customDestLat?: number;
@@ -449,6 +452,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           requesterPhone: params.requesterPhone,
           estimatedCost: params.estimatedCost,
           distance: params.distance,
+          pricingMode: params.pricingMode,
+          manualPriceNote: params.manualPriceNote,
         }),
       });
       const data = await res.json();

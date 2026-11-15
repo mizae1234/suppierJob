@@ -19,4 +19,8 @@ export interface VehicleRecord {
   d365PoNumber?: string | null;
   invoiceNumber: string | null;
   remarks: string | null;
+  // วิธีคิดค่าบริการรถสไลด์ (AUTO = ตามสัญญา / MANUAL = กรอกเอง)
+  pricingMode?: 'AUTO' | 'MANUAL' | null;
+  contractCost?: number | null;
+  manualPriceNote?: string | null;
 }

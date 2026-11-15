@@ -103,7 +103,7 @@ export function SlideConfirmModal({
           )}
           {formulaDetail && (
             <p className="text-[10px] text-gray-500 pb-1 border-b border-gray-200">
-              💡 {formulaDetail}
+              {formulaDetail}
             </p>
           )}
           <div className="flex items-center justify-between pt-1">

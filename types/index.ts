@@ -250,6 +250,10 @@ export interface Job {
   completionType?: 'DELIVERED' | 'FAILED_ATTEMPT' | null;
   failReasonCode?: string | null;
   failNote?: string | null;
+  // วิธีคิดค่าบริการรถสไลด์: AUTO (ตามสัญญา) | MANUAL (กรอกเอง)
+  pricingMode?: 'AUTO' | 'MANUAL' | null;
+  contractCost?: number | null;
+  manualPriceNote?: string | null;
 
   // หลักฐานภาพถ่าย
   evidences: JobEvidence[];

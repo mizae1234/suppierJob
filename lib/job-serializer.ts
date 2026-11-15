@@ -117,6 +117,10 @@ export function serializeJob(job: any) {
     completionType: job.completionType || null,
     failReasonCode: job.failReasonCode || null,
     failNote: job.failNote || null,
+    pricingMode: job.pricingMode === 'MANUAL' ? 'MANUAL' : (job.pricingMode === 'AUTO' ? 'AUTO' : null),
+    distance: job.distance ?? undefined,
+    contractCost: job.contractCost ?? null,
+    manualPriceNote: job.manualPriceNote || null,
     // Evidence
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     evidences: job.evidences.map((e: any) => ({

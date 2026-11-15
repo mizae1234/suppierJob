@@ -110,6 +110,9 @@ export default function VehicleReportsPage() {
             d365PoNumber: job.d365PoNumber || null,
             invoiceNumber: job.invoiceNumber || null,
             remarks: item.remarks || null,
+            pricingMode: job.jobType === 'VEHICLE_SLIDE' ? (job.pricingMode || 'AUTO') : null,
+            contractCost: job.contractCost ?? null,
+            manualPriceNote: job.manualPriceNote || null,
           });
         }
       }
@@ -135,6 +138,9 @@ export default function VehicleReportsPage() {
           supplierName: job.supplierName,
           d365PoNumber: job.d365PoNumber || null,
           invoiceNumber: job.invoiceNumber || null,
+          pricingMode: job.pricingMode || 'AUTO',
+          contractCost: job.contractCost ?? null,
+          manualPriceNote: job.manualPriceNote || null,
           remarks: null,
         });
       }
@@ -336,7 +342,10 @@ export default function VehicleReportsPage() {
       'Supplier': r.supplierName,
       'สถานะ': STATUS_STYLES[r.itemStatus]?.label || r.itemStatus,
       'เลข Invoice': r.invoiceNumber || '-',
+      'วิธีคิดค่าบริการ': r.jobType === 'VEHICLE_SLIDE' ? (r.pricingMode === 'MANUAL' ? 'กรอกเอง' : 'คำนวณอัตโนมัติ') : '-',
+      'ราคาตามสัญญา (บาท)': r.pricingMode === 'MANUAL' ? (r.contractCost ?? '-') : '-',
       'ราคา (บาท)': r.unitPrice,
+      'หมายเหตุการกรอกราคาเอง': r.pricingMode === 'MANUAL' ? (r.manualPriceNote || '') : '',
       'หมายเหตุ': r.remarks || '',
     }));
 
@@ -357,7 +366,10 @@ export default function VehicleReportsPage() {
       { wch: 32 },  // Supplier
       { wch: 14 },  // สถานะ
       { wch: 18 },  // เลข Invoice
+      { wch: 16 },  // วิธีคิดค่าบริการ
+      { wch: 18 },  // ราคาตามสัญญา (บาท)
       { wch: 14 },  // ราคา (บาท)
+      { wch: 32 },  // หมายเหตุการกรอกราคาเอง
       { wch: 24 },  // หมายเหตุ
     ];
 

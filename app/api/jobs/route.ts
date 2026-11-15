@@ -8,6 +8,13 @@ import { getVehicleLabel } from '@/lib/job-utils';
 import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-wash-rates';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { buildJobInclude, serializeJob } from '@/lib/job-serializer';
+import { calculateSlideJobCost } from '@/lib/vehicle-slide-rates';
+import {
+  normalizePricingMode,
+  SLIDE_PRICING_MANUAL,
+  MANUAL_PRICE_NOTE_MIN_LENGTH,
+  MANUAL_PRICE_NOTE_MAX_LENGTH,
+} from '@/lib/slide-pricing';
 
 /** เพดานจำนวนงานเมื่อไม่ส่ง page (กันหน่วยความจำ/response ใหญ่เกิน) */
 const MAX_UNPAGED_JOBS = 5000;
@@ -474,7 +481,14 @@ export async function POST(request: NextRequest) {
         transferReason, 
         estimatedCost,
         distance,
+        pricingMode: rawPricingMode,
+        manualPriceNote: rawManualPriceNote,
       } = body;
+
+      const pricingMode = normalizePricingMode(rawPricingMode);
+      const isManualPricing = pricingMode === SLIDE_PRICING_MANUAL;
+      const manualPriceNote = typeof rawManualPriceNote === 'string' ? rawManualPriceNote.trim() : '';
+      const distanceKm = distance != null && distance !== '' ? parseFloat(distance) : NaN;
 
       const finalTransferReason = transferReason
         ? (distance && !transferReason.includes('ระยะทาง') ? `${transferReason} (ระยะทาง ${distance} กม.)` : transferReason)
@@ -488,7 +502,62 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุเลขตัวถัง และสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
       }
 
-      const costPerCar = estimatedCost ? parseFloat(estimatedCost) : 0;
+      const clientCostPerCar = estimatedCost ? parseFloat(estimatedCost) : 0;
+
+      if (isManualPricing) {
+        if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
+          return NextResponse.json({ error: 'กรุณากรอกระยะทาง (กม.) ให้ถูกต้อง' }, { status: 400 });
+        }
+        if (!Number.isFinite(clientCostPerCar) || clientCostPerCar <= 0) {
+          return NextResponse.json({ error: 'กรุณากรอกค่าใช้จ่ายต่อคันให้ถูกต้อง' }, { status: 400 });
+        }
+        if (manualPriceNote.length < MANUAL_PRICE_NOTE_MIN_LENGTH) {
+          return NextResponse.json(
+            { error: `กรุณาระบุหมายเหตุการกรอกราคาเองอย่างน้อย ${MANUAL_PRICE_NOTE_MIN_LENGTH} ตัวอักษร` },
+            { status: 400 }
+          );
+        }
+        if (manualPriceNote.length > MANUAL_PRICE_NOTE_MAX_LENGTH) {
+          return NextResponse.json(
+            { error: `หมายเหตุการกรอกราคาเองต้องไม่เกิน ${MANUAL_PRICE_NOTE_MAX_LENGTH} ตัวอักษร` },
+            { status: 400 }
+          );
+        }
+      }
+
+      // ราคาตามสัญญา — คำนวณซ้ำฝั่ง server (ใช้เป็นราคาจริงในโหมด AUTO และเก็บไว้เทียบในโหมด MANUAL)
+      const [slideSupplier, originBranchRow, destBranchRow] = await Promise.all([
+        prisma.supplier.findUnique({ where: { id: supplierId }, select: { code: true, name: true } }),
+        prisma.branch.findUnique({ where: { id: originBranchId }, select: { code: true, name: true } }),
+        destBranchId
+          ? prisma.branch.findUnique({ where: { id: destBranchId }, select: { code: true, name: true } })
+          : Promise.resolve(null),
+      ]);
+      const contractCalc = calculateSlideJobCost({
+        supplierCodeOrId: slideSupplier?.code || supplierId,
+        supplierName: slideSupplier?.name,
+        distanceKm: Number.isFinite(distanceKm) ? distanceKm : 0,
+        originMode: customOriginAddress ? 'custom' : 'branch',
+        destMode: destBranchId && !customDestAddress ? 'branch' : 'custom',
+        originBranchCode: originBranchRow?.code,
+        originBranchName: originBranchRow?.name,
+        destBranchCode: destBranchRow?.code,
+        destBranchName: destBranchRow?.name,
+        carCount: vinsList.length,
+      });
+      const contractCostPerCar = contractCalc.costPerCar;
+
+      let costPerCar: number;
+      if (isManualPricing) {
+        costPerCar = clientCostPerCar;
+      } else {
+        costPerCar = contractCostPerCar > 0 ? contractCostPerCar : clientCostPerCar;
+        if (clientCostPerCar > 0 && Math.abs(clientCostPerCar - costPerCar) >= 1) {
+          console.warn(
+            `[create-slide] ราคาจากหน้าจอ (${clientCostPerCar}) ไม่ตรงกับราคาตามสัญญาที่ server คำนวณ (${costPerCar}) — ใช้ราคาตามสัญญา`
+          );
+        }
+      }
       const totalEstimatedCost = costPerCar * vinsList.length;
 
       // Optional custom pickup pin (overrides origin branch location for navigation)
@@ -529,6 +598,10 @@ export async function POST(request: NextRequest) {
             requesterPhone: snapshotPhone,
             estimatedCost: totalEstimatedCost,
             actualCost: totalEstimatedCost,
+            pricingMode,
+            distance: Number.isFinite(distanceKm) ? distanceKm : null,
+            contractCost: contractCostPerCar > 0 ? contractCostPerCar : null,
+            manualPriceNote: isManualPricing ? manualPriceNote : null,
             carWashItems: {
               create: vinsList.map((v) => ({
                 vin: v,
@@ -557,9 +630,22 @@ export async function POST(request: NextRequest) {
             actor: snapshotName,
             actorRole: user.role,
             description: `สร้างคำสั่งรถสไลด์ ขนส่งจาก ${labels.originName} ➔ ไปยัง ${labels.destName} (${vinsList.length} คัน)`,
-            metadata: JSON.stringify({ originName: labels.originName, destName: labels.destName, distance, vins: vinsList }),
+            metadata: JSON.stringify({ originName: labels.originName, destName: labels.destName, distance, vins: vinsList, pricingMode }),
           },
         });
+
+        if (isManualPricing) {
+          await tx.jobActivity.create({
+            data: {
+              jobId: createdJob.id,
+              action: 'MANUAL_PRICING',
+              actor: snapshotName,
+              actorRole: user.role,
+              description: `กรอกค่าบริการเอง: ระยะทาง ${distanceKm} กม. ราคา ฿${costPerCar.toLocaleString()}/คัน (ราคาตามสัญญา ฿${contractCostPerCar.toLocaleString()}/คัน) — หมายเหตุ: ${manualPriceNote}`,
+              metadata: JSON.stringify({ distance: distanceKm, costPerCar, contractCostPerCar, note: manualPriceNote }),
+            },
+          });
+        }
 
         return { job: createdJob, ...labels };
       }, { timeout: CREATE_JOB_TX_TIMEOUT_MS });
@@ -594,7 +680,7 @@ export async function POST(request: NextRequest) {
         action: 'CREATE_JOB',
         entityType: 'Job',
         entityId: job.id,
-        description: `สร้างใบงานรถสไลด์ ${jobNumber} (${vinsList.length} คัน) จาก ${originName} ไป ${destName} (฿${totalEstimatedCost.toLocaleString()})`,
+        description: `สร้างใบงานรถสไลด์ ${jobNumber} (${vinsList.length} คัน) จาก ${originName} ไป ${destName} (฿${totalEstimatedCost.toLocaleString()}${isManualPricing ? ', กรอกราคาเอง' : ''})`,
         metadata: { 
           jobNumber, 
           jobType: 'VEHICLE_SLIDE', 
@@ -602,7 +688,11 @@ export async function POST(request: NextRequest) {
           totalEstimatedCost,
           originName,
           destName,
-          distance: distance ? parseFloat(distance) : null 
+          distance: Number.isFinite(distanceKm) ? distanceKm : null,
+          pricingMode,
+          costPerCar,
+          contractCostPerCar,
+          manualPriceNote: isManualPricing ? manualPriceNote : undefined,
         },
         request,
       });

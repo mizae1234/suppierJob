@@ -6,6 +6,7 @@ import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
 import { getFailedAttemptItemPrice, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
+import { ManualPricingBadge } from './ManualPricingNotice';
 import { useApp } from '@/context/AppContext';
 import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2, Loader2 } from 'lucide-react';
 import { KANBAN_COLUMNS } from './constants';
@@ -349,6 +350,8 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                                   เที่ยวเปล่า
                                 </span>
                               )}
+
+                              {!isCarWash && <ManualPricingBadge job={job} />}
 
                               {/* Direction chip for slide jobs */}
                               {!isCarWash && (() => {
