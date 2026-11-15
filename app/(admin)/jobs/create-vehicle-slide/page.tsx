@@ -20,21 +20,11 @@ import { SlideConfirmModal, SlideSuccessModal, CancelJobConfirmModal, SupplierSe
 import dynamic from 'next/dynamic';
 import { 
   Truck, 
-  Car, 
   MapPin, 
-  Calendar, 
-  Clock, 
-  User, 
-  Phone, 
-  FileText, 
   ArrowLeft, 
   CheckCircle2, 
-  Search,
-  Printer,
   Map,
   Building2,
-  ToggleLeft,
-  ToggleRight,
   Navigation,
   AlertCircle,
   Loader2,
@@ -62,12 +52,14 @@ import {
   getD365WarehouseForBranch,
   getD365WarehouseName,
   getFallbackWarehouseOptionsForBranch,
-  getKnownWarehousesForBranch,
   isValidWarehouseId,
 } from '@/lib/d365/warehouses';
 
 // Dynamic import to avoid SSR issues with Leaflet
 const MapPickerModal = dynamic(() => import('@/components/jobs/MapPickerModal'), { ssr: false });
+
+const getDefaultDateTimeInput = (hoursFromNow: number): string =>
+  new Date(Date.now() + 3600 * 1000 * hoursFromNow).toISOString().slice(0, 16);
 
 const getBranchShortLabel = (code?: string, name?: string) => {
   if (code) {
@@ -117,7 +109,21 @@ export default function CreateVehicleSlidePage() {
   }, [branches, companies, currentCompany]);
 
   // Branch selection for Origin
-  const [selectedOriginBranchId, setSelectedOriginBranchId] = useState<string>(currentBranchId || availableBranches[0]?.id || branches[0]?.id || '');
+  const [rawSelectedOriginBranchId, setSelectedOriginBranchId] = useState<string>(
+    currentBranchId || availableBranches[0]?.id || branches[0]?.id || ''
+  );
+  const selectedOriginBranchId = useMemo(() => {
+    if (rawSelectedOriginBranchId && branches.some(b => b.id === rawSelectedOriginBranchId)) {
+      return rawSelectedOriginBranchId;
+    }
+    return (
+      (currentBranchId && branches.find(b => b.id === currentBranchId)?.id) ||
+      (authUser?.branchId && branches.find(b => b.id === authUser.branchId)?.id) ||
+      availableBranches[0]?.id ||
+      branches[0]?.id ||
+      rawSelectedOriginBranchId
+    );
+  }, [rawSelectedOriginBranchId, branches, currentBranchId, authUser, availableBranches]);
   const originBranchObj = branches.find(b => b.id === selectedOriginBranchId);
 
   // Branch filter for vehicle stock list (defaults to ALL to show cars from all branches)
@@ -215,21 +221,17 @@ export default function CreateVehicleSlidePage() {
   // ปลายทางเริ่มต้นว่าง — ให้ผู้สั่งงานเลือกเอง (ไม่เติมค่าให้ล่วงหน้า)
   const [destBranchId, setDestBranchId] = useState<string>('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
-  const [pickupDateTime, setPickupDateTime] = useState<string>(
-    new Date(Date.now() + 3600 * 1000 * 2).toISOString().slice(0, 16)
-  );
-  const [deliveryDateTime, setDeliveryDateTime] = useState<string>(
-    new Date(Date.now() + 3600 * 1000 * 6).toISOString().slice(0, 16)
-  );
+  const [pickupDateTime, setPickupDateTime] = useState<string>(() => getDefaultDateTimeInput(2));
+  const [deliveryDateTime, setDeliveryDateTime] = useState<string>(() => getDefaultDateTimeInput(6));
   const [contactPerson, setContactPerson] = useState<string>('');
   const [contactPhone, setContactPhone] = useState<string>('');
   const [transferReason, setTransferReason] = useState<string>('');
-  const [requestedBy, setRequestedBy] = useState<string>(autoName);
-  const [requesterPosition, setRequesterPosition] = useState<string>(authUser?.position || '');
-  const [requesterPhone, setRequesterPhone] = useState<string>(authUser?.phone || '');
+  const [requestedBy] = useState<string>(autoName);
+  const [requesterPosition] = useState<string>(authUser?.position || '');
+  const [requesterPhone] = useState<string>(authUser?.phone || '');
   // ── วิธีคิดค่าบริการ: AUTO = ระบบคำนวณ (ค่าเริ่มต้น), MANUAL = พนักงานกรอกระยะทาง/ราคาต่อคันเอง ──
   const [pricingMode, setPricingMode] = useState<SlidePricingMode>(SLIDE_PRICING_AUTO);
-  const [autoDistance, setAutoDistance] = useState<number>(0);
+  const [fetchedDrivingDist, setFetchedDrivingDist] = useState<{ key: string; km: number } | null>(null);
   const [manualDistance, setManualDistance] = useState<number>(0);
   const [manualCost, setManualCost] = useState<number>(0);
   const [manualPriceNote, setManualPriceNote] = useState<string>('');
@@ -418,22 +420,6 @@ export default function CreateVehicleSlidePage() {
     }));
   }, [selectedVehicles]);
 
-  // Sync origin branch when branches/company/user branch load or change
-  useEffect(() => {
-    if (branches.length === 0) return;
-    if (selectedVins.length === 0) {
-      const preferredId =
-        (currentBranchId && branches.find(b => b.id === currentBranchId)?.id) ||
-        (authUser?.branchId && branches.find(b => b.id === authUser.branchId)?.id) ||
-        availableBranches[0]?.id ||
-        branches[0]?.id ||
-        '';
-      if (preferredId && (!selectedOriginBranchId || !branches.find(b => b.id === selectedOriginBranchId))) {
-        setSelectedOriginBranchId(preferredId);
-      }
-    }
-  }, [branches, availableBranches, currentBranchId, authUser?.branchId, selectedOriginBranchId, selectedVins.length]);
-
   // (ไม่เติมสาขาปลายทางให้อัตโนมัติ — ผู้สั่งงานต้องเลือกเอง)
 
   // Smart route supplier recommendation (used as recommendation hints, not auto-selected)
@@ -459,7 +445,7 @@ export default function CreateVehicleSlidePage() {
       return { lat: fallback.lat, lng: fallback.lng, name: originBranchObj?.name || selectedOriginBranchId };
     }
     return null;
-  }, [originMode, customOrigin, originBranchObj?.latitude, originBranchObj?.longitude, originBranchObj?.name, originBranchObj?.code, selectedOriginBranchId]);
+  }, [originMode, customOrigin, originBranchObj, selectedOriginBranchId]);
 
   const destPoint = useMemo(() => {
     if (destMode === 'custom') {
@@ -473,7 +459,21 @@ export default function CreateVehicleSlidePage() {
       return { lat: fallback.lat, lng: fallback.lng, name: destBranch?.name || destBranchId };
     }
     return null;
-  }, [destMode, customDest, destBranch?.latitude, destBranch?.longitude, destBranch?.name, destBranch?.code, destBranchId]);
+  }, [destMode, customDest, destBranch, destBranchId]);
+
+  const routeCoordKey = originPoint && destPoint
+    ? `${originPoint.lat},${originPoint.lng}->${destPoint.lat},${destPoint.lng}`
+    : '';
+  const fallbackRoadDist = useMemo(() => {
+    if (!originPoint || !destPoint) return 0;
+    const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
+    return Math.round(straight * 1.25 * 10) / 10;
+  }, [originPoint, destPoint]);
+
+  const autoDistance =
+    routeCoordKey && fetchedDrivingDist?.key === routeCoordKey
+      ? fetchedDrivingDist.km
+      : fallbackRoadDist;
 
   // ระยะทางที่ใช้: โหมดกรอกเองใช้ค่าที่กรอก / โหมดอัตโนมัติแสดงเฉพาะเมื่อมีทั้งจุดรับและจุดส่งแล้ว (ยังไม่เลือก = ว่าง)
   const routeDistance = originPoint && destPoint ? autoDistance : 0;
@@ -482,17 +482,14 @@ export default function CreateVehicleSlidePage() {
   // Auto-calculate real road distance whenever pickup or drop-off point changes
   // (โหมดกรอกเองใช้ manualDistance แยก จึงไม่ถูกเขียนทับ)
   useEffect(() => {
-    if (!originPoint || !destPoint) return;
-    const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
-    const initialRoadDist = Math.round(straight * 1.25 * 10) / 10;
-    setAutoDistance(initialRoadDist);
+    if (!originPoint || !destPoint || !routeCoordKey) return;
 
     let cancelled = false;
     fetch(`/api/routes/driving?originLat=${originPoint.lat}&originLng=${originPoint.lng}&destLat=${destPoint.lat}&destLng=${destPoint.lng}`)
       .then(res => res.json())
       .then(data => {
         if (!cancelled && data.success && data.distanceKm) {
-          setAutoDistance(data.distanceKm);
+          setFetchedDrivingDist({ key: routeCoordKey, km: data.distanceKm });
         }
       })
       .catch(err => {
@@ -502,7 +499,7 @@ export default function CreateVehicleSlidePage() {
     return () => {
       cancelled = true;
     };
-  }, [originPoint?.lat, originPoint?.lng, destPoint?.lat, destPoint?.lng]);
+  }, [originPoint, destPoint, routeCoordKey]);
 
   // Dynamic slide pricing recalculation based on contract matrices
   const pricingCalculation = useMemo<SlideCalculationResult | null>(() => {
@@ -958,8 +955,6 @@ export default function CreateVehicleSlidePage() {
                   const isSelected = selectedVins.includes(v.vin);
                   const busyJob = v.activeJob;
                   const isWash = busyJob?.jobType === 'CAR_WASH';
-                  const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
-                  const isMyBranch = myBranchId && v.currentBranchId === myBranchId;
                   const branchDisplay = v.currentBranchName || branches.find(b => b.id === v.currentBranchId)?.name || v.currentBranchCode || 'ไม่ระบุสาขา';
 
                   return (
@@ -1007,7 +1002,7 @@ export default function CreateVehicleSlidePage() {
                           {/* Branch badge */}
                           {(() => {
                             const branchCode = getBranchShortLabel(v.currentBranchCode, v.currentBranchName);
-                            const isEv7 = (v as any).companyCode === 'EV7' || branchCode === 'EV7';
+                            const isEv7 = (v as Vehicle & { companyCode?: string }).companyCode === 'EV7' || branchCode === 'EV7';
                             return (
                               <span 
                                 className={`text-[9px] px-1.5 py-0.5 rounded-md font-semibold shrink-0 border ${
@@ -1890,7 +1885,14 @@ export default function CreateVehicleSlidePage() {
             setCustomDest(data);
           }
           if (typeof data.distance === 'number' && data.distance > 0) {
-            setAutoDistance(data.distance);
+            const nextOrig = mapPickerMode === 'origin' ? { lat: data.lat, lng: data.lng } : originPoint;
+            const nextDest = mapPickerMode === 'dest' ? { lat: data.lat, lng: data.lng } : destPoint;
+            if (nextOrig && nextDest) {
+              setFetchedDrivingDist({
+                key: `${nextOrig.lat},${nextOrig.lng}->${nextDest.lat},${nextDest.lng}`,
+                km: data.distance,
+              });
+            }
           }
         }}
         {...(mapPickerMode === 'branch'

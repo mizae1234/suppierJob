@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
@@ -116,7 +116,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      const hasVerified = Boolean(job.verifiedAt || job.carWashItems?.some((i: any) => i.verifiedAt));
+      const hasVerified = Boolean(job.verifiedAt || job.carWashItems?.some((i) => i.verifiedAt));
       if (hasVerified && user.role !== 'MASTER') {
         return NextResponse.json(
           { error: 'ไม่สามารถยกเลิกใบงานได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว' },
@@ -247,12 +247,6 @@ export async function PATCH(
               preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
             }
 
-            if (job.destWarehouseId === undefined) {
-              const rawRows = await tx.$queryRaw<Array<{ destWarehouseId: string | null }>>`
-                SELECT [destWarehouseId] FROM [Job] WHERE [id] = ${job.id}
-              `;
-              (job as { destWarehouseId?: string | null }).destWarehouseId = rawRows[0]?.destWarehouseId ?? null;
-            }
             const destWarehouse = resolveJobDestWarehouse(job);
             // อัปเดตเฉพาะที่จอดปัจจุบัน (currentBranchId + d365WarehouseId) โดยไม่แตะ d365SiteId (สาขาเจ้าของรถ Original)
             await tx.vehicle.updateMany({

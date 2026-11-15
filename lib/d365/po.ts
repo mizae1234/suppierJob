@@ -19,7 +19,7 @@ async function findUnlinkedPoInD365(params: {
   serviceItemNumber: string;
   expectedPrices: number[];
 }): Promise<string | null> {
-  const { company, vendorAccount, accountingDatePrefix, serviceItemNumber, expectedPrices } = params;
+  const { company, vendorAccount, accountingDatePrefix, expectedPrices } = params;
   if (expectedPrices.length === 0) return null;
 
   try {

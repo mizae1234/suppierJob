@@ -59,7 +59,6 @@ function createFreshPrismaClient(): PrismaClient {
       return testInstance;
     }
     testInstance.$disconnect().catch(() => {});
-    // eslint-disable-next-line no-eval
     const req = eval('require') as NodeRequire;
     if (req?.cache) {
       for (const key of Object.keys(req.cache)) {

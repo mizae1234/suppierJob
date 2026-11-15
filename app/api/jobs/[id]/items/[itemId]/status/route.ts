@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
@@ -145,11 +145,11 @@ export async function PATCH(
     let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
     if (status === 'APPROVED') {
       const allItemsBefore = await prisma.carWashItem.findMany({ where: { jobId } });
-      const simulatedItems = allItemsBefore.map((i: any) =>
+      const simulatedItems = allItemsBefore.map((i) =>
         i.id === itemId ? { ...i, status: 'APPROVED' } : i
       );
-      const simApprovedCount = simulatedItems.filter((i: any) => i.status === 'APPROVED').length;
-      const simCancelledCount = simulatedItems.filter((i: any) => i.status === 'CANCELLED').length;
+      const simApprovedCount = simulatedItems.filter((i) => i.status === 'APPROVED').length;
+      const simCancelledCount = simulatedItems.filter((i) => i.status === 'CANCELLED').length;
       const willAllBeApproved =
         simApprovedCount > 0 &&
         simApprovedCount + simCancelledCount === simulatedItems.length &&
@@ -193,7 +193,7 @@ export async function PATCH(
     const preTransferWarehouses: Record<string, string | null | undefined> = {};
 
     // ─── Atomic Update with Transaction ──────────────
-    const result = await prisma.$transaction(async (tx: any) => {
+    const result = await prisma.$transaction(async (tx) => {
       // 1. Update the individual item status
       const updatedItem = await tx.carWashItem.update({
         where: { id: itemId },
@@ -236,9 +236,9 @@ export async function PATCH(
         where: { jobId },
       });
 
-      const completedCount = allItems.filter((i: any) => i.status === 'COMPLETED').length;
-      const approvedCount = allItems.filter((i: any) => i.status === 'APPROVED').length;
-      const cancelledCount = allItems.filter((i: any) => i.status === 'CANCELLED').length;
+      const completedCount = allItems.filter((i) => i.status === 'COMPLETED').length;
+      const approvedCount = allItems.filter((i) => i.status === 'APPROVED').length;
+      const cancelledCount = allItems.filter((i) => i.status === 'CANCELLED').length;
       const totalCount = allItems.length;
       // "Done" from the supplier's side = submitted (COMPLETED) or already approved
       const doneCount = completedCount + approvedCount;
@@ -248,8 +248,8 @@ export async function PATCH(
       // 3a. Every car approved (or declined) → auto-approve the whole job
       if (allApproved && ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED'].includes(job.status)) {
         const actualCost = allItems
-          .filter((i: any) => i.status === 'APPROVED')
-          .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
+          .filter((i) => i.status === 'APPROVED')
+          .reduce((sum: number, i) => sum + (i.unitPrice || 0), 0);
 
         const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
         const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
@@ -267,7 +267,7 @@ export async function PATCH(
           },
         });
 
-        const approvedVins = allItems.filter((i: any) => i.status === 'APPROVED').map((i: any) => i.vin);
+        const approvedVins = allItems.filter((i) => i.status === 'APPROVED').map((i) => i.vin);
         const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? resolveJobDestWarehouse(job) : null;
         if (approvedVins.length > 0) {
           await tx.vehicle.updateMany({
@@ -318,8 +318,8 @@ export async function PATCH(
         } else {
           // Mix of completed + cancelled → move to WAITING_APPROVAL for admin review
           const actualCost = allItems
-            .filter((i: any) => i.status === 'COMPLETED' || i.status === 'APPROVED')
-            .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
+            .filter((i) => i.status === 'COMPLETED' || i.status === 'APPROVED')
+            .reduce((sum: number, i) => sum + (i.unitPrice || 0), 0);
 
           await tx.job.update({
             where: { id: jobId },
@@ -345,8 +345,8 @@ export async function PATCH(
       } else if (cancelledCount > 0 || job.actualCost !== null) {
         // Keep actualCost in sync when items are rejected or updated
         const validSum = allItems
-          .filter((i: any) => i.status !== 'CANCELLED')
-          .reduce((sum: number, i: any) => sum + (i.unitPrice || 0), 0);
+          .filter((i) => i.status !== 'CANCELLED')
+          .reduce((sum: number, i) => sum + (i.unitPrice || 0), 0);
 
         await tx.job.update({
           where: { id: jobId },

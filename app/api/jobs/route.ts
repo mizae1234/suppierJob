@@ -224,7 +224,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    let { jobType, companyId, branchId, supplierId, requestedBy, requesterPosition, requesterPhone } = body;
+    const { jobType, supplierId, requestedBy, requesterPosition, requesterPhone } = body;
+    let { companyId, branchId } = body;
 
     // Auto-resolve branch if missing (e.g. EV7 unified company with no sub-branches)
     if (!branchId && companyId) {
@@ -412,7 +413,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Compute totalCost incorporating VAT when applicable
-      const supplier: any = await prisma.supplier.findUnique({
+      const supplier = await prisma.supplier.findUnique({
         where: { id: supplierId },
         select: {
           code: true,
@@ -421,7 +422,7 @@ export async function POST(request: NextRequest) {
           vatRate: true,
           showroomLabel: true,
           rateItems: { where: { isActive: true } },
-        } as any,
+        },
       });
       const washConfig = getSupplierWashConfig(supplier?.code, supplier?.name, supplier || undefined);
       const financials = calculateWashOrderFinancials(items, washConfig.vatType);
@@ -632,11 +633,6 @@ export async function POST(request: NextRequest) {
         // Update vehicle status to IN_TRANSIT (จองรถ + ตรวจงานค้างซ้ำภายใต้ล็อก กันสั่งรถคันเดียวกันพร้อมกัน)
         await reserveVehiclesInTx(tx, vinsList, 'IN_TRANSIT', allowsOutOfStock);
 
-        // รองรับกรณี dev server ค้าง PrismaClient ตัวเก่าใน memory ก่อนรัน prisma generate
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const runtimeJobFields = (prisma as any)._runtimeDataModel?.models?.Job?.fields as Array<{ name: string }> | undefined;
-        const supportsDestWarehouseField =
-          !Array.isArray(runtimeJobFields) || runtimeJobFields.some((f) => f.name === 'destWarehouseId');
         const resolvedDestWarehouse = isBranchToBranchDest ? destWarehouseId : null;
 
         const createdJob = await tx.job.create({
@@ -650,7 +646,7 @@ export async function POST(request: NextRequest) {
             vin: vinsList[0],
             pickupBranchId,
             destBranchId: destBranchId || null,
-            ...(supportsDestWarehouseField ? { destWarehouseId: resolvedDestWarehouse } : {}),
+            destWarehouseId: resolvedDestWarehouse,
             customDestAddress: customDestAddress || null,
             customDestLat: customDestLat ? parseFloat(customDestLat) : null,
             customDestLng: customDestLng ? parseFloat(customDestLng) : null,
@@ -682,11 +678,6 @@ export async function POST(request: NextRequest) {
           },
           include: buildJobInclude(false),
         });
-
-        if (!supportsDestWarehouseField && resolvedDestWarehouse) {
-          await tx.$executeRaw`UPDATE [Job] SET [destWarehouseId] = ${resolvedDestWarehouse} WHERE [id] = ${createdJob.id}`;
-          (createdJob as { destWarehouseId?: string | null }).destWarehouseId = resolvedDestWarehouse;
-        }
 
         const labels = getSlideRouteLabels({
           pickupBranch: createdJob.pickupBranch,

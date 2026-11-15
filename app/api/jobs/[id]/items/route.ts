@@ -223,7 +223,7 @@ export async function POST(
     }
 
     // เรทราคาตามสัญญาของ Supplier เจ้านั้นๆ (ล็อกไม่ให้แก้ไขตามเรทของแต่ละเจ้า)
-    const washConfig = getSupplierWashConfig(job.supplier?.code, job.supplier?.name, job.supplier as any);
+    const washConfig = getSupplierWashConfig(job.supplier?.code, job.supplier?.name, job.supplier || undefined);
     const existingActiveItems = job.carWashItems.filter(i => i.status !== 'CANCELLED');
     const existingPositiveUnitPrice =
       existingActiveItems.find(i => i.unitPrice > 0)?.unitPrice ??

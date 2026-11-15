@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback } from 'react';
-import { Camera, ImagePlus, Trash2, Send, X, AlertTriangle, Truck, Info } from 'lucide-react';
+import { Camera, ImagePlus, Trash2, Send, X, AlertTriangle, Truck } from 'lucide-react';
 import { Job } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { compressImage, MAX_RAW_FILE_SIZE } from './image-utils';
