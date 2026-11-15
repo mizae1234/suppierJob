@@ -217,6 +217,8 @@ export interface Job {
   destBranchAddress?: string;
   destBranchLat?: number;
   destBranchLng?: number;
+  // รหัสคลัง D365 ปลายทาง (สไลด์ระหว่างสาขา)
+  destWarehouseId?: string | null;
   customDestAddress?: string;
   customDestLat?: number;
   customDestLng?: number;

@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
-import { sendJobToD365TransferJournal, getD365WarehouseForBranch } from '@/lib/d365/transfer';
+import { sendJobToD365TransferJournal, resolveJobDestWarehouse } from '@/lib/d365/transfer';
 import { isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
@@ -170,7 +170,7 @@ export async function PATCH(
           });
           if (ev) preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
         }
-        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? getD365WarehouseForBranch(job.destBranch?.code) : null;
+        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? resolveJobDestWarehouse(job) : null;
         await tx.vehicle.update({
           where: { vin: item.vin },
           data: {
@@ -218,7 +218,7 @@ export async function PATCH(
         });
 
         const approvedVins = allItems.filter((i: any) => i.status === 'APPROVED').map((i: any) => i.vin);
-        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? getD365WarehouseForBranch(job.destBranch?.code) : null;
+        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? resolveJobDestWarehouse(job) : null;
         if (approvedVins.length > 0) {
           await tx.vehicle.updateMany({
             where: { vin: { in: approvedVins } },

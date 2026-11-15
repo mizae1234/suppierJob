@@ -62,6 +62,8 @@ interface CreateVehicleSlideParams {
   // วิธีคิดค่าบริการ: AUTO (ตามสัญญา) | MANUAL (กรอกเอง — ต้องมีหมายเหตุ)
   pricingMode?: 'AUTO' | 'MANUAL';
   manualPriceNote?: string;
+  // รหัสคลัง D365 ปลายทาง (บังคับเมื่อสไลด์ระหว่างสาขา)
+  destWarehouseId?: string;
   // Custom destination (map pin) — optional
   customDestAddress?: string;
   customDestLat?: number;
@@ -454,6 +456,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           distance: params.distance,
           pricingMode: params.pricingMode,
           manualPriceNote: params.manualPriceNote,
+          destWarehouseId: params.destWarehouseId,
         }),
       });
       const data = await res.json();

@@ -69,6 +69,7 @@ export function serializeJob(job: any) {
     destBranchAddress: job.destBranch?.address || undefined,
     destBranchLat: job.destBranch?.latitude ?? undefined,
     destBranchLng: job.destBranch?.longitude ?? undefined,
+    destWarehouseId: job.destWarehouseId || null,
     customDestAddress: job.customDestAddress || undefined,
     customDestLat: job.customDestLat ?? undefined,
     customDestLng: job.customDestLng ?? undefined,

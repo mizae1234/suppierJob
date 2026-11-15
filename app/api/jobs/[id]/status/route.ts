@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
-import { sendJobToD365TransferJournal, getD365WarehouseForBranch } from '@/lib/d365/transfer';
+import { sendJobToD365TransferJournal, resolveJobDestWarehouse } from '@/lib/d365/transfer';
 import {
   isFailedAttemptJob,
   SLIDE_COMPLETION_DELIVERED,
@@ -215,7 +215,7 @@ export async function PATCH(
               preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
             }
 
-            const destWarehouse = getD365WarehouseForBranch(job.destBranch?.code);
+            const destWarehouse = resolveJobDestWarehouse(job);
             // อัปเดตเฉพาะที่จอดปัจจุบัน (currentBranchId + d365WarehouseId) โดยไม่แตะ d365SiteId (สาขาเจ้าของรถ Original)
             await tx.vehicle.updateMany({
               where: { vin: { in: slideVins } },

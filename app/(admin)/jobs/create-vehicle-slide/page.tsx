@@ -55,6 +55,7 @@ import {
   MANUAL_PRICE_NOTE_MAX_LENGTH,
   getManualPriceDiff,
 } from '@/lib/slide-pricing';
+import { getD365WarehouseForBranch, getKnownWarehousesForBranch, isValidWarehouseId } from '@/lib/d365/warehouses';
 
 // Dynamic import to avoid SSR issues with Leaflet
 const MapPickerModal = dynamic(() => import('@/components/jobs/MapPickerModal'), { ssr: false });
@@ -280,6 +281,30 @@ export default function CreateVehicleSlidePage() {
   );
   const isLockedBySupplier = !selectedSupplier || !hasAnyVendorCode;
   const destBranch = branches.find(b => b.id === destBranchId);
+
+  // ── รหัสคลัง D365 ปลายทาง (สไลด์ระหว่างสาขา) — ตั้งต้นเป็นคลังหลักของสาขาปลายทาง แก้ไขได้ ──
+  const [destWarehouseInput, setDestWarehouseInput] = useState<{ branchId: string; value: string } | null>(null);
+  const defaultDestWarehouse = getD365WarehouseForBranch(destBranch?.code) || '';
+  const destWarehouseId =
+    destWarehouseInput && destWarehouseInput.branchId === destBranchId
+      ? destWarehouseInput.value
+      : defaultDestWarehouse;
+  const destWarehouseOptions = useMemo(() => {
+    const list = getKnownWarehousesForBranch(destBranch?.code);
+    for (const v of vehicles) {
+      const wh = v.d365WarehouseId?.trim();
+      if (wh && v.currentBranchId === destBranchId && !list.includes(wh)) list.push(wh);
+    }
+    return list;
+  }, [destBranch?.code, destBranchId, vehicles]);
+  const originWarehouseSummary = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const v of selectedVehicles) {
+      const wh = v.d365WarehouseId?.trim() || 'ไม่ระบุ';
+      counts[wh] = (counts[wh] || 0) + 1;
+    }
+    return Object.entries(counts);
+  }, [selectedVehicles]);
 
   // Sync origin branch when branches/company/user branch load or change
   useEffect(() => {
@@ -572,6 +597,14 @@ export default function CreateVehicleSlidePage() {
         showToast('สาขาปลายทางต้องไม่ซ้ำกับสาขาต้นทาง', 'error');
         return;
       }
+      if (!destWarehouseId.trim()) {
+        showToast('กรุณาระบุ Warehouse ID ปลายทาง (รหัสคลัง D365)', 'warning');
+        return;
+      }
+      if (!isValidWarehouseId(destWarehouseId)) {
+        showToast('รูปแบบ Warehouse ID ปลายทางไม่ถูกต้อง (ตัวอักษร/ตัวเลข ไม่เกิน 20 ตัว)', 'warning');
+        return;
+      }
     } else {
       if (!customDest) {
         showToast('กรุณาเลือกจุดปลายทางบนแผนที่', 'warning');
@@ -622,6 +655,7 @@ export default function CreateVehicleSlidePage() {
         branchId: orderingBranchObj?.id || selectedOriginBranchId,
         originBranchId: selectedOriginBranchId,
         destBranchId: destMode === 'branch' ? destBranchId : '',
+        destWarehouseId: destMode === 'branch' ? destWarehouseId.trim().toUpperCase() : undefined,
         supplierId: selectedSupplierId,
         vin: selectedVins[0],
         vins: selectedVins,
@@ -879,6 +913,16 @@ export default function CreateVehicleSlidePage() {
                             {v.model}
                             {v.color && <span className="text-gray-400 font-normal"> · {v.color}</span>}
                           </p>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-semibold shrink-0 border ${
+                              v.d365WarehouseId
+                                ? 'bg-gray-50 text-gray-600 border-gray-200'
+                                : 'bg-red-50 text-red-600 border-red-200'
+                            }`}
+                            title="รหัสคลัง D365 ที่รถจอดอยู่ปัจจุบัน (Warehouse ID)"
+                          >
+                            WH {v.d365WarehouseId || 'ไม่ระบุ'}
+                          </span>
                         </div>
 
                         {/* Status tag */}
@@ -1204,13 +1248,76 @@ export default function CreateVehicleSlidePage() {
 
                 {/* Branch Mode */}
                 {destMode === 'branch' && (
-                  <BranchSelect
-                    branches={branches}
-                    value={destBranchId}
-                    onChange={(id) => { setDestBranchId(id); }}
-                    disabledIds={selectedOriginBranchId ? { [selectedOriginBranchId]: 'ต้นทาง' } : {}}
-                    placeholder="เลือกสาขาปลายทาง"
-                  />
+                  <div className="flex flex-col gap-3">
+                    <BranchSelect
+                      branches={branches}
+                      value={destBranchId}
+                      onChange={(id) => { setDestBranchId(id); }}
+                      disabledIds={selectedOriginBranchId ? { [selectedOriginBranchId]: 'ต้นทาง' } : {}}
+                      placeholder="เลือกสาขาปลายทาง"
+                    />
+
+                    {/* Destination D365 Warehouse ID (required for branch-to-branch slide) */}
+                    <div className="p-3 rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <label htmlFor="dest-warehouse-id" className="text-xs font-semibold text-gray-700">
+                          Warehouse ID ปลายทาง (คลัง D365): <span className="text-red-500">*</span>
+                        </label>
+                        {defaultDestWarehouse && (
+                          <span className="text-[10px] text-gray-500">
+                            คลังหลักของสาขา: <b className="font-mono text-gray-700">{defaultDestWarehouse}</b>
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        id="dest-warehouse-id"
+                        type="text"
+                        list="dest-warehouse-options"
+                        value={destWarehouseId}
+                        onChange={(e) => setDestWarehouseInput({ branchId: destBranchId, value: e.target.value.toUpperCase().slice(0, 20) })}
+                        placeholder="เช่น 62008"
+                        required
+                        className={`w-full h-10 px-3 rounded-xl border text-xs font-mono font-bold text-gray-900 bg-white outline-none focus:ring-2 focus:ring-[#0f5238] transition-all ${
+                          destWarehouseId && !isValidWarehouseId(destWarehouseId) ? 'border-red-300' : 'border-gray-200'
+                        }`}
+                      />
+                      <datalist id="dest-warehouse-options">
+                        {destWarehouseOptions.map(wh => <option key={wh} value={wh} />)}
+                      </datalist>
+                      {destWarehouseOptions.length > 1 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-gray-500">คลังที่มีในสาขานี้:</span>
+                          {destWarehouseOptions.map(wh => (
+                            <button
+                              key={wh}
+                              type="button"
+                              onClick={() => setDestWarehouseInput({ branchId: destBranchId, value: wh })}
+                              className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold transition-colors cursor-pointer ${
+                                destWarehouseId === wh
+                                  ? 'bg-[#0f5238] text-white border-[#0f5238]'
+                                  : 'bg-white text-gray-700 border-gray-200 hover:border-[#0f5238]'
+                              }`}
+                            >
+                              {wh}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {originWarehouseSummary.length > 0 && (
+                        <p className="text-[10px] text-gray-500 leading-relaxed">
+                          โอนคลังใน D365 เมื่อสาขาอนุมัติ:{' '}
+                          {originWarehouseSummary.map(([wh, count], idx) => (
+                            <span key={wh}>
+                              {idx > 0 && ', '}
+                              <b className="font-mono text-gray-700">{wh}</b> ({count} คัน)
+                            </span>
+                          ))}
+                          {' → '}
+                          <b className="font-mono text-[#0f5238]">{destWarehouseId || '-'}</b>
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {/* Custom Map Mode */}
@@ -1586,7 +1693,7 @@ export default function CreateVehicleSlidePage() {
         isSubmitting={isSubmitting}
         selectedVins={selectedVins}
         originLabel={originLabel || ''}
-        destLabel={destMode === 'branch' ? (destBranch?.name || '') : (customDest?.address || '')}
+        destLabel={destMode === 'branch' ? `${destBranch?.name || ''}${destWarehouseId ? ` (คลัง ${destWarehouseId})` : ''}` : (customDest?.address || '')}
         distance={distance}
         supplierName={selectedSupplier?.name || ''}
         pickupDateTime={pickupDateTime}

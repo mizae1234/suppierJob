@@ -9,6 +9,7 @@ import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-w
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { buildJobInclude, serializeJob } from '@/lib/job-serializer';
 import { calculateSlideJobCost } from '@/lib/vehicle-slide-rates';
+import { normalizeWarehouseId, isValidWarehouseId } from '@/lib/d365/warehouses';
 import {
   normalizePricingMode,
   SLIDE_PRICING_MANUAL,
@@ -483,7 +484,20 @@ export async function POST(request: NextRequest) {
         distance,
         pricingMode: rawPricingMode,
         manualPriceNote: rawManualPriceNote,
+        destWarehouseId: rawDestWarehouseId,
       } = body;
+
+      // สไลด์ระหว่างสาขา (ปลายทางเป็นสาขาในระบบ) → ต้องระบุรหัสคลัง D365 ปลายทาง เพื่อยิง Transfer Journal ตอนอนุมัติ
+      const isBranchToBranchDest = Boolean(destBranchId) && !customDestAddress;
+      const destWarehouseId = normalizeWarehouseId(rawDestWarehouseId);
+      if (isBranchToBranchDest) {
+        if (!destWarehouseId) {
+          return NextResponse.json({ error: 'กรุณาระบุ Warehouse ID ปลายทาง (รหัสคลัง D365) สำหรับการสไลด์ระหว่างสาขา' }, { status: 400 });
+        }
+        if (!isValidWarehouseId(destWarehouseId)) {
+          return NextResponse.json({ error: 'รูปแบบ Warehouse ID ปลายทางไม่ถูกต้อง (ตัวอักษร/ตัวเลข ไม่เกิน 20 ตัว)' }, { status: 400 });
+        }
+      }
 
       const pricingMode = normalizePricingMode(rawPricingMode);
       const isManualPricing = pricingMode === SLIDE_PRICING_MANUAL;
@@ -583,6 +597,7 @@ export async function POST(request: NextRequest) {
             vin: vinsList[0],
             originBranchId,
             destBranchId: destBranchId || null,
+            destWarehouseId: isBranchToBranchDest ? destWarehouseId : null,
             customDestAddress: customDestAddress || null,
             customDestLat: customDestLat ? parseFloat(customDestLat) : null,
             customDestLng: customDestLng ? parseFloat(customDestLng) : null,
@@ -630,7 +645,7 @@ export async function POST(request: NextRequest) {
             actor: snapshotName,
             actorRole: user.role,
             description: `สร้างคำสั่งรถสไลด์ ขนส่งจาก ${labels.originName} ➔ ไปยัง ${labels.destName} (${vinsList.length} คัน)`,
-            metadata: JSON.stringify({ originName: labels.originName, destName: labels.destName, distance, vins: vinsList, pricingMode }),
+            metadata: JSON.stringify({ originName: labels.originName, destName: labels.destName, distance, vins: vinsList, pricingMode, destWarehouseId: isBranchToBranchDest ? destWarehouseId : null }),
           },
         });
 
@@ -692,6 +707,7 @@ export async function POST(request: NextRequest) {
           pricingMode,
           costPerCar,
           contractCostPerCar,
+          destWarehouseId: isBranchToBranchDest ? destWarehouseId : undefined,
           manualPriceNote: isManualPricing ? manualPriceNote : undefined,
         },
         request,

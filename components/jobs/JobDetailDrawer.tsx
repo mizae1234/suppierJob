@@ -476,21 +476,21 @@ export function JobDetailDrawer({
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs whitespace-nowrap shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                          รับเข้า (สาขาปลายทาง)
+                          รับเข้า (สาขาปลายทาง){activeJob.destWarehouseId ? ` · คลัง ${activeJob.destWarehouseId}` : ''}
                         </span>
                       );
                     }
                     if (dir === 'OUTBOUND') {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-xs whitespace-nowrap shrink-0">
-                          ส่งออก (สาขาต้นทาง)
+                          ส่งออก (สาขาต้นทาง){activeJob.destWarehouseId ? ` · คลัง ${activeJob.destWarehouseId}` : ''}
                         </span>
                       );
                     }
                     if (dir === 'INTERNAL' || activeJob.destBranchId) {
                       return (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs whitespace-nowrap shrink-0" title={`${activeJob.originBranchName || activeJob.branchName} → ${activeJob.destBranchName}`}>
-                          ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}
+                          ย้ายสาขา: {activeJob.originBranchName || activeJob.branchName} → {activeJob.destBranchName}{activeJob.destWarehouseId ? ` (คลัง ${activeJob.destWarehouseId})` : ''}
                         </span>
                       );
                     }

@@ -363,21 +363,21 @@ function ApprovalsContent() {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-[10px] shadow-2xs">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                                  รับเข้า (สาขาปลายทาง)
+                                  รับเข้า (สาขาปลายทาง){job.destWarehouseId ? ` · คลัง ${job.destWarehouseId}` : ''}
                                 </span>
                               );
                             }
                             if (dir === 'OUTBOUND') {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-900 border border-sky-300 font-bold text-[10px] shadow-2xs">
-                                  ส่งออก (สาขาต้นทาง)
+                                  ส่งออก (สาขาต้นทาง){job.destWarehouseId ? ` · คลัง ${job.destWarehouseId}` : ''}
                                 </span>
                               );
                             }
                             if (dir === 'INTERNAL' || job.destBranchId) {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
-                                  ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}
+                                  ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}{job.destWarehouseId ? ` (คลัง ${job.destWarehouseId})` : ''}
                                 </span>
                               );
                             }

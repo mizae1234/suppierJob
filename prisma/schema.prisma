@@ -187,6 +187,7 @@ model Job {
   originBranch     Branch?       @relation("OriginBranchJobs", fields: [originBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   destBranchId     String?
   destBranch       Branch?       @relation("DestBranchJobs", fields: [destBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  destWarehouseId  String?       // รหัสคลัง D365 ปลายทาง (InventLocationId) ที่ผู้สั่งงานระบุ — ใช้ยิง Transfer Journal เมื่ออนุมัติ
   customDestAddress String?      // ที่อยู่ปลายทางกรณีเลือกจุดบนแผนที่
   customDestLat     Float?       // ละติจูดปลายทาง
   customDestLng     Float?       // ลองจิจูดปลายทาง
