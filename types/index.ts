@@ -145,6 +145,7 @@ export interface CarWashItem {
   vehicleColor?: string;
   licensePlate?: string;
   vehicleSiteId?: string;
+  vehicleWarehouseId?: string;
   vehicleBranchId?: string;
   vehicleBranchCode?: string;
   vehicleBranchName?: string;

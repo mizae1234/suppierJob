@@ -1748,14 +1748,14 @@ export default function CreateVehicleSlidePage() {
               {/* Contact Person */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  ชื่อผู้ติดต่อปลายทาง: *
+                  ชื่อผู้ติดต่อปลายทาง / ชื่อลูกค้า: *
                 </label>
                 <input
                   type="text"
                   value={contactPerson}
                   onChange={(e) => setContactPerson(e.target.value)}
                   required
-                  placeholder="เช่น คุณสมชาย (ผู้จัดการสาขา)"
+                  placeholder="เช่น คุณสมชาย (ลูกค้า / ผู้จัดการสาขา)"
                   className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
                 />
               </div>

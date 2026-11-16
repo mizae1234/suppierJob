@@ -179,6 +179,7 @@ export interface D365PurchaseOrderPayload {
   Inspector?: string;
   Approval?: string;
   InclTax?: string;
+  Remark?: string;
   Lines: D365PurchaseOrderLine[];
 }
 
@@ -517,6 +518,10 @@ export async function sendJobToD365PurchaseOrder(
           },
         ];
 
+  // Header Remark: งานรถสไลด์ (VEHICLE_SLIDE) ส่งชื่อลูกค้า / ผู้ติดต่อปลายทาง (contactPerson)
+  const headerRemark =
+    job.jobType === 'VEHICLE_SLIDE' ? (job.contactPerson || '').trim().slice(0, 250) : '';
+
   const payload: D365PurchaseOrderPayload = {
     Bank: '',
     Company: d365Company,
@@ -537,6 +542,7 @@ export async function sendJobToD365PurchaseOrder(
     Inspector: '',
     Approval: job.approvedBy || actorName || '',
     InclTax: inclTax,
+    Remark: headerRemark,
     Lines: poLines,
   };
   const payloadJson = JSON.stringify(payload);

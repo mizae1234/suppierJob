@@ -354,6 +354,8 @@ export async function sendJobToD365TransferJournal(
   }
 
   const allSucceeded = details.length > 0 && details.every((d) => d.success);
+  const fromWarehouses = Array.from(new Set(details.map((d) => d.fromWarehouse).filter(Boolean)));
+  const fromWarehouseLabel = fromWarehouses.length > 0 ? `คลัง ${fromWarehouses.join(', ')} ➔ ` : '➔ ';
   const summaryMessage = details
     .map((d) => `[${d.company} ${d.fromWarehouse}➔${d.toWarehouse}] ${d.message}`)
     .join(' | ');
@@ -367,9 +369,9 @@ export async function sendJobToD365TransferJournal(
         actor: options?.actorName || 'ระบบอัตโนมัติ (D365)',
         actorRole: options?.actorRole || 'SYSTEM',
         description: allSucceeded
-          ? `โอนย้ายคลังที่จอดรถใน D365 สำเร็จ (${transferredCount} คัน ➔ คลัง ${toWarehouse})`
+          ? `โอนย้ายคลังที่จอดรถใน D365 สำเร็จ (${transferredCount} คัน: ${fromWarehouseLabel}คลัง ${toWarehouse})`
           : `โอนย้ายคลังที่จอดรถใน D365 ไม่สำเร็จ: ${summaryMessage}`,
-        metadata: JSON.stringify({ toWarehouse, details, skippedVins }),
+        metadata: JSON.stringify({ fromWarehouses, toWarehouse, details, skippedVins }),
       },
     });
   } catch (actErr) {

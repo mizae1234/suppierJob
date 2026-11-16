@@ -9,7 +9,7 @@ import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-w
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { buildJobInclude, serializeJob } from '@/lib/job-serializer';
 import { calculateSlideJobCost } from '@/lib/vehicle-slide-rates';
-import { normalizeWarehouseId, isValidWarehouseId } from '@/lib/d365/warehouses';
+import { normalizeWarehouseId, isValidWarehouseId, getD365WarehouseForBranch } from '@/lib/d365/warehouses';
 import {
   normalizePricingMode,
   SLIDE_PRICING_MANUAL,
@@ -255,7 +255,7 @@ export async function POST(request: NextRequest) {
       const slideVehicles = requestedVins.length > 0
         ? await prisma.vehicle.findMany({
             where: { vin: { in: requestedVins } },
-            select: { vin: true, d365SiteId: true, currentBranchId: true, companyId: true },
+            select: { vin: true, d365SiteId: true, d365WarehouseId: true, currentBranchId: true, companyId: true },
           })
         : [];
 
@@ -686,6 +686,11 @@ export async function POST(request: NextRequest) {
           customDestAddress: createdJob.customDestAddress,
         });
 
+        const originWarehouseId =
+          createdJob.vehicle?.d365WarehouseId ||
+          getD365WarehouseForBranch(createdJob.pickupBranch?.code || createdJob.branch?.code) ||
+          null;
+
         // Timeline activity for job creation
         await tx.jobActivity.create({
           data: {
@@ -694,7 +699,15 @@ export async function POST(request: NextRequest) {
             actor: snapshotName,
             actorRole: user.role,
             description: `สร้างคำสั่งรถสไลด์ ขนส่งจาก ${labels.originName} ➔ ไปยัง ${labels.destName} (${vinsList.length} คัน)`,
-            metadata: JSON.stringify({ originName: labels.originName, destName: labels.destName, distance, vins: vinsList, pricingMode, destWarehouseId: isBranchToBranchDest ? destWarehouseId : null }),
+            metadata: JSON.stringify({
+              originName: labels.originName,
+              destName: labels.destName,
+              distance,
+              vins: vinsList,
+              pricingMode,
+              originWarehouseId,
+              destWarehouseId: isBranchToBranchDest ? destWarehouseId : null,
+            }),
           },
         });
 

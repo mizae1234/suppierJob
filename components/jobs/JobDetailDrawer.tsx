@@ -15,6 +15,7 @@ import { CancelJobConfirmModal } from './CancelJobConfirmModal';
 import { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
 import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
 import { ManualPricingNotice } from './ManualPricingNotice';
+import { getD365WarehouseForBranch, getD365WarehouseName } from '@/lib/d365/warehouses';
 import {
   AlertCircle,
   AlertTriangle,
@@ -1257,6 +1258,54 @@ export function JobDetailDrawer({
                   const isInProgress = activeJob.status === 'IN_PROGRESS';
                   const isPending = activeJob.status === 'PENDING_SUPPLIER';
 
+                  // ค้นหารหัสคลังต้นทาง (Origin Warehouse) และคลังปลายทาง (Destination Warehouse)
+                  const resolvedDestWarehouseId =
+                    (activeJob.destBranchId || activeJob.destBranchCode) && !activeJob.customDestAddress
+                      ? (activeJob.destWarehouseId || getD365WarehouseForBranch(activeJob.destBranchCode) || null)
+                      : null;
+                  const resolvedDestWarehouseName = getD365WarehouseName(resolvedDestWarehouseId);
+
+                  const resolvedOriginWarehouseId = (() => {
+                    // 1) ดึงจากประวัติการโอนคลัง D365 ใน Timeline (กรณีอนุมัติแล้ว)
+                    for (const act of activeJob.activities || []) {
+                      if ((act.action === 'D365_TRANSFER_SUCCESS' || act.action === 'D365_TRANSFER_FAILED') && act.metadata) {
+                        try {
+                          const parsed = JSON.parse(act.metadata) as {
+                            fromWarehouses?: string[];
+                            details?: Array<{ fromWarehouse?: string }>;
+                          };
+                          const fromWh = parsed.fromWarehouses?.[0] || parsed.details?.[0]?.fromWarehouse;
+                          if (fromWh?.trim()) return fromWh.trim();
+                        } catch {
+                          // ignore malformed metadata
+                        }
+                      }
+                      if (act.action === 'JOB_CREATED' && act.metadata) {
+                        try {
+                          const parsed = JSON.parse(act.metadata) as { originWarehouseId?: string };
+                          if (parsed.originWarehouseId?.trim()) return parsed.originWarehouseId.trim();
+                        } catch {
+                          // ignore
+                        }
+                      }
+                    }
+                    // 2) กรณีใบงานยังไม่อนุมัติ ใช้คลังปัจจุบันของรถในใบงาน
+                    if (!isApproved) {
+                      const currentVehWh =
+                        slideVehicle?.d365WarehouseId ||
+                        activeJob.vehicle?.d365WarehouseId ||
+                        activeJob.carWashItems?.[0]?.vehicleWarehouseId;
+                      if (currentVehWh?.trim()) return currentVehWh.trim();
+                    }
+                    // 3) Fallback ใช้คลังหลักของสาขาจุดรับรถต้นทาง
+                    return (
+                      getD365WarehouseForBranch(
+                        activeJob.pickupBranchCode || activeJob.originBranchCode || activeJob.branchCode
+                      ) || null
+                    );
+                  })();
+                  const resolvedOriginWarehouseName = getD365WarehouseName(resolvedOriginWarehouseId);
+
                   return (
                     <div className="space-y-4">
                       {/* ── เที่ยวเปล่า (สไลด์ไม่สำเร็จ) ── */}
@@ -1491,15 +1540,21 @@ export function JobDetailDrawer({
 
                         {/* Route Visualizer */}
                         <div className="p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs" style={{ backgroundColor: theme.bgSoft, borderColor: theme.borderSoft }}>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <MapPin className="w-4 h-4 shrink-0" style={{ color: theme.iconColor }} />
-                            <div>
+                            <div className="min-w-0">
                               <span className="text-[10px] text-gray-500">ต้นทาง (Origin):</span>
-                              <p className="font-bold text-gray-900">{activeJob.originBranchName || '-'}</p>
+                              <p className="font-bold text-gray-900">{activeJob.originBranchName || activeJob.customOriginAddress || '-'}</p>
+                              {resolvedOriginWarehouseId && (
+                                <p className="text-[11px] font-semibold text-emerald-800 mt-0.5">
+                                  คลัง {resolvedOriginWarehouseId}
+                                  {resolvedOriginWarehouseName ? ` · ${resolvedOriginWarehouseName}` : ''}
+                                </p>
+                              )}
                             </div>
                           </div>
                           
-                          <div className="flex flex-col items-center gap-0.5 px-2">
+                          <div className="flex flex-col items-center gap-0.5 px-2 shrink-0">
                             {activeJob.distance ? (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-700 shadow-2xs">
                                 {activeJob.distance} กม.
@@ -1511,16 +1566,56 @@ export function JobDetailDrawer({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 text-right">
-                            <div>
+                          <div className="flex items-center gap-2 text-right min-w-0">
+                            <div className="min-w-0">
                               <span className="text-[10px] text-gray-500">ปลายทาง (Destination):</span>
                               <p className="font-bold text-gray-900">{activeJob.destBranchName || activeJob.customDestAddress || '-'}</p>
+                              {resolvedDestWarehouseId && (
+                                <p className="text-[11px] font-semibold text-emerald-800 mt-0.5">
+                                  คลัง {resolvedDestWarehouseId}
+                                  {resolvedDestWarehouseName ? ` · ${resolvedDestWarehouseName}` : ''}
+                                </p>
+                              )}
                             </div>
                             <MapPin className="w-4 h-4 text-red-500 shrink-0" />
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">Warehouse ต้นทาง (คลัง D365):</span>
+                            {resolvedOriginWarehouseId ? (
+                              <>
+                                <p className="font-mono font-bold text-gray-900 mt-0.5">{resolvedOriginWarehouseId}</p>
+                                {resolvedOriginWarehouseName && (
+                                  <p className="text-[11px] text-gray-500 mt-0.5 truncate" title={resolvedOriginWarehouseName}>
+                                    {resolvedOriginWarehouseName}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="font-bold text-gray-400 mt-0.5">-</p>
+                            )}
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                            <span className="text-gray-500">Warehouse ปลายทาง (คลัง D365):</span>
+                            {resolvedDestWarehouseId ? (
+                              <>
+                                <p className="font-mono font-bold text-gray-900 mt-0.5">{resolvedDestWarehouseId}</p>
+                                {resolvedDestWarehouseName && (
+                                  <p className="text-[11px] text-gray-500 mt-0.5 truncate" title={resolvedDestWarehouseName}>
+                                    {resolvedDestWarehouseName}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="font-bold text-gray-400 mt-0.5">
+                                {activeJob.customDestAddress ? 'จุดปักหมุดภายนอก (ไม่โอนคลัง)' : '-'}
+                              </p>
+                            )}
+                          </div>
+
                           <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
                             <span className="text-gray-500">ผู้รับมอบปลายทาง:</span>
                             <p className="font-bold text-gray-900 mt-0.5">{activeJob.contactPerson || '-'}</p>

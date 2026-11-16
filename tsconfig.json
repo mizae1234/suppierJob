@@ -19,8 +19,7 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"],
-      ".prisma/client/default": ["./node_modules/.prisma/client/client-types.d.ts"]
+      "@/*": ["./*"]
     }
   },
   "include": [
