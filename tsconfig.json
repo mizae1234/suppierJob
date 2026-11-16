@@ -24,6 +24,7 @@
   },
   "include": [
     "next-env.d.ts",
+    "node_modules/.prisma/client/current.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
