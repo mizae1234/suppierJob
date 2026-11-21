@@ -1,77 +1,179 @@
 import { prisma } from '@/lib/prisma';
-import { d365FetchAll } from './client';
+import { d365PostService } from './client';
 
 /**
- * Lookup รหัสคู่ค้า (Vendor) ใน D365 ผ่าน OData entity VendorsV3
+ * Lookup รหัสคู่ค้า (Vendor) ใน D365 ผ่าน Custom Service (POST)
+ *   /api/services/MIS_InterfaceServiceGroup/MIS_InterfaceService/getVendors
+ *   Request : { company: "GI", vendorAccount: "" }  (vendorAccount ว่าง = ทุก Vendor ของบริษัทนั้น)
+ *   Response: { success, message, count, data: [{ company, vendorAccount, vendorName, vendorPartyNumber, isBlocked, isActive, ... }] }
  *
  * - แต่ละบริษัท (Legal Entity = รหัสสาขาในระบบเรา เช่น GI, GI02) มีรหัส Vendor ของตัวเอง
- * - Vendor รายเดียวกันทุกบริษัทจะมี VendorPartyNumber (Global Address Book) เดียวกัน
- *   จึงใช้ PartyNumber เป็นตัวจับคู่ข้ามบริษัท
- * - dataAreaId ที่ D365 ส่งกลับมามีทั้งตัวเล็ก/ใหญ่ปนกัน → normalize เป็นตัวใหญ่เสมอ
+ * - Vendor รายเดียวกันทุกบริษัทจะมี vendorPartyNumber (Global Address Book) เดียวกัน → ใช้จับคู่ข้ามบริษัท
+ * - เส้นนี้ดึงได้ทีละบริษัท → การหาข้ามบริษัทจะวนดึงทุกบริษัท (สาขา) ที่มีในระบบ
  */
 
+export const GET_VENDORS_SERVICE_PATH =
+  'api/services/MIS_InterfaceServiceGroup/MIS_InterfaceService/getVendors';
+
 export interface D365VendorRecord {
-  company: string; // dataAreaId (ตัวใหญ่) เช่น GI02
-  vendorCode: string; // VendorAccountNumber เช่น V000357
-  vendorName: string; // VendorOrganizationName
-  partyNumber: string; // VendorPartyNumber
+  company: string; // เช่น GI02 (ตัวใหญ่)
+  vendorCode: string; // vendorAccount เช่น V000357
+  vendorName: string; // vendorName
+  partyNumber: string; // vendorPartyNumber
+  searchName?: string;
+  vendorGroup?: string;
+  currency?: string;
+  paymentTerms?: string;
+  paymentMethod?: string;
+  taxRegistrationNumber?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  isBlocked: boolean;
+  isActive: boolean;
+  modifiedDateTime?: string;
 }
 
 interface RawVendor {
-  VendorAccountNumber: string;
-  VendorOrganizationName?: string;
-  VendorPartyNumber?: string;
-  dataAreaId: string;
+  company?: string;
+  vendorAccount?: string;
+  vendorName?: string;
+  searchName?: string;
+  vendorGroup?: string;
+  vendorPartyNumber?: string;
+  currency?: string;
+  paymentTerms?: string;
+  paymentMethod?: string;
+  taxRegistrationNumber?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  isBlocked?: boolean;
+  isActive?: boolean;
+  modifiedDateTime?: string;
 }
 
-const VENDOR_SELECT = 'VendorAccountNumber,VendorOrganizationName,VendorPartyNumber,dataAreaId';
+interface GetVendorsResponse {
+  success?: boolean;
+  message?: string;
+  count?: number;
+  data?: RawVendor[];
+}
 
 export const normalizeCompany = (code: string) => code.trim().toUpperCase();
 export const normalizeVendorCode = (code: string) => code.trim().toUpperCase();
 
-/** escape ' สำหรับ OData string literal */
-const odataStr = (v: string) => `'${v.replace(/'/g, "''")}'`;
+const trimOrUndef = (v?: string | null) => (v && v.trim() ? v.trim() : undefined);
 
-function mapVendor(v: RawVendor): D365VendorRecord {
+function mapVendor(v: RawVendor, fallbackCompany: string): D365VendorRecord {
   return {
-    company: normalizeCompany(v.dataAreaId),
-    vendorCode: normalizeVendorCode(v.VendorAccountNumber),
-    vendorName: (v.VendorOrganizationName || '').trim(),
-    partyNumber: (v.VendorPartyNumber || '').trim(),
+    company: normalizeCompany(v.company || fallbackCompany),
+    vendorCode: normalizeVendorCode(v.vendorAccount || ''),
+    vendorName: (v.vendorName || '').trim(),
+    partyNumber: (v.vendorPartyNumber || '').trim(),
+    searchName: trimOrUndef(v.searchName),
+    vendorGroup: trimOrUndef(v.vendorGroup),
+    currency: trimOrUndef(v.currency),
+    paymentTerms: trimOrUndef(v.paymentTerms),
+    paymentMethod: trimOrUndef(v.paymentMethod),
+    taxRegistrationNumber: trimOrUndef(v.taxRegistrationNumber),
+    address: trimOrUndef(v.address),
+    phone: trimOrUndef(v.phone),
+    email: trimOrUndef(v.email),
+    isBlocked: v.isBlocked === true,
+    isActive: v.isActive !== false,
+    modifiedDateTime: trimOrUndef(v.modifiedDateTime),
   };
+}
+
+/** Vendor ที่ใช้เปิด PO ได้ (ไม่ถูก Block และยัง Active) */
+export const isVendorUsable = (v: D365VendorRecord) => !v.isBlocked && v.isActive;
+
+// ── Cache รายชื่อ Vendor ต่อบริษัท (กันยิงซ้ำระหว่าง sync หลาย Supplier ติดกัน) ──
+const COMPANY_CACHE_TTL_MS = 5 * 60_000;
+const companyCache = new Map<string, { expires: number; vendors: D365VendorRecord[] }>();
+
+/**
+ * เรียกเส้น getVendors ของ D365
+ * @param company รหัสบริษัท เช่น GI, GI02
+ * @param vendorAccount รหัส Vendor (ว่าง = ทั้งหมดของบริษัท)
+ */
+export async function getVendorsFromD365(company: string, vendorAccount = ''): Promise<D365VendorRecord[]> {
+  const comp = normalizeCompany(company);
+  const account = vendorAccount ? normalizeVendorCode(vendorAccount) : '';
+  const res = await d365PostService<GetVendorsResponse>(GET_VENDORS_SERVICE_PATH, {
+    company: comp,
+    vendorAccount: account,
+  });
+  if (res && res.success === false && !(res.data && res.data.length)) {
+    // ไม่พบ vendor ก็ถือเป็นผลลัพธ์ว่าง ไม่ใช่ error
+    return [];
+  }
+  return (res?.data || [])
+    .map((v) => mapVendor(v, comp))
+    .filter((v) => v.vendorCode && v.company === comp);
+}
+
+/** ดึง Vendor ทั้งหมดของบริษัท (มี cache 5 นาที) */
+export async function getCompanyVendors(company: string, opts?: { fresh?: boolean }): Promise<D365VendorRecord[]> {
+  const comp = normalizeCompany(company);
+  const cached = companyCache.get(comp);
+  if (!opts?.fresh && cached && cached.expires > Date.now()) return cached.vendors;
+  const vendors = await getVendorsFromD365(comp);
+  companyCache.set(comp, { expires: Date.now() + COMPANY_CACHE_TTL_MS, vendors });
+  return vendors;
+}
+
+/** ดึง Vendor ของหลายบริษัทพร้อมกัน (จำกัดจำนวนคำขอพร้อมกัน) — บริษัทที่ดึงไม่สำเร็จจะถูกข้าม */
+async function getVendorsOfCompanies(companies: string[], opts?: { fresh?: boolean }): Promise<D365VendorRecord[]> {
+  const unique = [...new Set(companies.map(normalizeCompany).filter(Boolean))];
+  const results: D365VendorRecord[] = [];
+  const CONCURRENCY = 4;
+  for (let i = 0; i < unique.length; i += CONCURRENCY) {
+    const batch = unique.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map((c) => getCompanyVendors(c, opts)));
+    settled.forEach((r, idx) => {
+      if (r.status === 'fulfilled') results.push(...r.value);
+      else console.warn(`[D365 Vendor] ดึง Vendor ของบริษัท ${batch[idx]} ไม่สำเร็จ:`, r.reason);
+    });
+  }
+  return results;
+}
+
+async function getAllBranchCompanies(): Promise<string[]> {
+  const branches = await prisma.branch.findMany({ select: { code: true } });
+  return branches.map((b) => b.code);
 }
 
 /** ค้นหารหัส Vendor ในบริษัทที่ระบุ — ไม่เจอคืน null */
 export async function findVendorInCompany(company: string, vendorCode: string): Promise<D365VendorRecord | null> {
-  const rows = await d365FetchAll<RawVendor>('VendorsV3', {
-    $filter: `dataAreaId eq ${odataStr(company.trim().toLowerCase())} and VendorAccountNumber eq ${odataStr(normalizeVendorCode(vendorCode))}`,
-    $select: VENDOR_SELECT,
-    'cross-company': 'true',
-  });
-  const match = rows.map(mapVendor).find((v) => v.company === normalizeCompany(company));
-  return match ?? null;
+  const code = normalizeVendorCode(vendorCode);
+  const rows = await getVendorsFromD365(company, code);
+  return rows.find((v) => v.vendorCode === code) ?? null;
 }
 
-/** ดึง Vendor ของ Party เดียวกันจากทุกบริษัท */
-export async function findVendorsByParty(partyNumber: string): Promise<D365VendorRecord[]> {
-  const rows = await d365FetchAll<RawVendor>('VendorsV3', {
-    $filter: `VendorPartyNumber eq ${odataStr(partyNumber.trim())}`,
-    $select: VENDOR_SELECT,
-    'cross-company': 'true',
-  });
-  return rows.map(mapVendor);
+/** ดึง Vendor ของ Party เดียวกันจากทุกบริษัท (สาขา) ที่มีในระบบ */
+export async function findVendorsByParty(
+  partyNumber: string,
+  opts?: { companies?: string[]; fresh?: boolean }
+): Promise<D365VendorRecord[]> {
+  const party = partyNumber.trim();
+  if (!party) return [];
+  const companies = opts?.companies ?? (await getAllBranchCompanies());
+  const all = await getVendorsOfCompanies(companies, opts);
+  return all.filter((v) => v.partyNumber === party);
 }
 
-/** ดึง Vendor ที่มีชื่อองค์กร (VendorOrganizationName) ตรงกันเป๊ะจากทุกบริษัท (สำรองกรณีบางสาขาผูกคนละ PartyNumber) */
-export async function findVendorsByOrgName(orgName: string): Promise<D365VendorRecord[]> {
+/** ดึง Vendor ที่มีชื่อ (vendorName) ตรงกันเป๊ะจากทุกบริษัท (สำรองกรณีบางสาขาผูกคนละ PartyNumber) */
+export async function findVendorsByOrgName(
+  orgName: string,
+  opts?: { companies?: string[]; fresh?: boolean }
+): Promise<D365VendorRecord[]> {
   const trimmed = orgName.trim();
   if (!trimmed) return [];
-  const rows = await d365FetchAll<RawVendor>('VendorsV3', {
-    $filter: `VendorOrganizationName eq ${odataStr(trimmed)}`,
-    $select: VENDOR_SELECT,
-    'cross-company': 'true',
-  });
-  return rows.map(mapVendor);
+  const companies = opts?.companies ?? (await getAllBranchCompanies());
+  const all = await getVendorsOfCompanies(companies, opts);
+  return all.filter((v) => v.vendorName === trimmed);
 }
 
 export interface VendorSyncResult {
@@ -130,8 +232,11 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
     await prisma.supplier.update({ where: { id: supplierId }, data: { d365PartyNumber: partyNumber } });
   }
 
-  // 2) ดึง Vendor ทุกบริษัทตาม PartyNumber
-  const vendors = await findVendorsByParty(partyNumber);
+  // 2) ดึง Vendor ทุกบริษัท (สาขาในระบบ) แล้วกรองตาม PartyNumber — ดึงสดทุกครั้งที่กดซิงค์
+  const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
+  const companies = branches.map((b) => b.code);
+  const allVendors = await getVendorsOfCompanies(companies, { fresh: true });
+  const vendors = allVendors.filter((v) => v.partyNumber === partyNumber && isVendorUsable(v));
   const byCompany = new Map<string, D365VendorRecord[]>();
   for (const v of vendors) {
     const list = byCompany.get(v.company) ?? [];
@@ -139,11 +244,10 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
     byCompany.set(v.company, list);
   }
 
-  // 3) upsert ตามสาขาในระบบ (หากสาขาไหนไม่เจอด้วย PartyNumber แต่มีชื่อ VendorOrganizationName เดียวกันใน D365 ให้ดึงมาเติม)
-  const branches = await prisma.branch.findMany({ orderBy: { code: 'asc' } });
+  // 3) upsert ตามสาขาในระบบ (หากสาขาไหนไม่เจอด้วย PartyNumber แต่มีชื่อ vendorName เดียวกันใน D365 ให้ดึงมาเติม)
   const primaryOrgName = vendors.find((v) => v.vendorName)?.vendorName || supplier.vendorCodes.find((vc) => vc.vendorName)?.vendorName || '';
   if (primaryOrgName && branches.some((b) => !byCompany.has(normalizeCompany(b.code)))) {
-    const byName = await findVendorsByOrgName(primaryOrgName);
+    const byName = allVendors.filter((v) => v.vendorName === primaryOrgName && isVendorUsable(v));
     for (const v of byName) {
       if (!byCompany.has(v.company)) {
         byCompany.set(v.company, [v]);

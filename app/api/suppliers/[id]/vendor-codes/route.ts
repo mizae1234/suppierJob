@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
-import { findVendorInCompany, normalizeVendorCode } from '@/lib/d365/vendors';
+import { findVendorInCompany, normalizeVendorCode, isVendorUsable } from '@/lib/d365/vendors';
 import type { SessionUser } from '@/lib/session';
 
 /**
@@ -76,6 +76,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (!vendor) {
       return NextResponse.json(
         { error: `ไม่พบรหัส Vendor "${vendorCode}" ในบริษัท ${branch.code} ของ D365` },
+        { status: 400 },
+      );
+    }
+    if (!isVendorUsable(vendor)) {
+      return NextResponse.json(
+        { error: `รหัส Vendor "${vendorCode}" ในบริษัท ${branch.code} ถูก${vendor.isBlocked ? ' Block ' : 'ปิดใช้งาน'}ใน D365 — ไม่สามารถใช้เปิด PO ได้` },
         { status: 400 },
       );
     }

@@ -157,6 +157,74 @@ async function d365GetJson<T>(url: string): Promise<T> {
 }
 
 /**
+ * เรียก Custom Service ของ D365 แบบ POST (เช่น /api/services/MIS_InterfaceServiceGroup/MIS_InterfaceService/getVendors)
+ * - ลองใหม่เมื่อ Token หมดอายุ (401) / ถูก throttle (429) / server error (5xx)
+ */
+export async function d365PostService<T>(
+  servicePath: string,
+  body: unknown,
+  timeoutMs: number = REQUEST_TIMEOUT_MS
+): Promise<T> {
+  const { baseUrl } = getD365Config();
+  const url = `${baseUrl}/${servicePath.replace(/^\/+/, '')}`;
+  let tokenRefreshed = false;
+
+  for (let attempt = 0; ; attempt++) {
+    const token = await getD365Token();
+    const res = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+      timeoutMs
+    );
+
+    if (res.ok) {
+      const text = await res.text();
+      let parsed: unknown = text;
+      try {
+        parsed = JSON.parse(text);
+        // บาง service ของ D365 คืน JSON ซ้อนเป็น string อีกชั้น
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      } catch {
+        throw new D365Error(`D365 ตอบกลับไม่ใช่ JSON: ${text.slice(0, 200)}`, res.status);
+      }
+      return parsed as T;
+    }
+
+    if (res.status === 401 && !tokenRefreshed) {
+      clearD365TokenCache();
+      tokenRefreshed = true;
+      continue;
+    }
+
+    if ((res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES) {
+      const retryAfter = Number(res.headers.get('retry-after'));
+      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 2000 * (attempt + 1));
+      continue;
+    }
+
+    const text = await res.text().catch(() => '');
+    let message = text;
+    try {
+      const parsed = JSON.parse(text);
+      message = parsed?.Message || parsed?.message || parsed?.error?.message || text;
+    } catch { /* keep raw text */ }
+
+    if (res.status === 403) {
+      throw new D365Error(`D365 ปฏิเสธสิทธิ์ (403): ${message}`, 403);
+    }
+    throw new D365Error(`D365 ตอบกลับ HTTP ${res.status}: ${String(message).slice(0, 300)}`, res.status);
+  }
+}
+
+/**
  * ดึงข้อมูลทุกหน้าจาก OData entity
  * @param entity ชื่อ entity เช่น 'BPC_InventOnHand'
  * @param query  query string params เช่น { $filter, $select, 'cross-company': 'true' }
