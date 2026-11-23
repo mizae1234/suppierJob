@@ -13,11 +13,9 @@ import { CompanyFilter } from '../_lib/report-calculations';
 import {
   Car,
   FileText,
-  FileSpreadsheet,
   Search,
   Filter,
   Printer,
-  Download,
   X,
   ChevronDown,
   ChevronRight,
@@ -25,15 +23,16 @@ import {
   Building2,
   Sparkles,
   Truck,
-  Eye,
   CheckCircle2,
   XCircle,
   Clock,
   AlertTriangle,
   Copy,
   CheckCheck,
-  Hash,
   Calendar,
+  Layers,
+  List,
+  PencilLine,
 } from 'lucide-react';
 
 
@@ -61,6 +60,33 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
 const getServiceLabel = (serviceType: string): string => {
   if (SERVICE_TYPE_LABELS[serviceType]) return SERVICE_TYPE_LABELS[serviceType];
   return getWashServiceDisplay(serviceType)?.name || serviceType;
+};
+
+/** ย่อชื่อสาขาโดยตัดคำซ้ำ GOLD INTEGRATE / CO., LTD. ออก เพื่อให้อ่านเส้นทางจบในจอเดียว */
+const shortenBranchSegment = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) return '-';
+  const stripped = trimmed
+    .replace(/^GOLD\s+INTEGRATE\s*/i, '')
+    .replace(/,?\s*CO\.?,?\s*LTD\.?$/i, '')
+    .replace(/^\s*-\s*/, '')
+    .trim();
+  if (!stripped) {
+    return /^GOLD\s+INTEGRATE/i.test(trimmed) ? 'สำนักงานใหญ่ (GI)' : trimmed;
+  }
+  return stripped;
+};
+
+const formatCompactLocation = (raw: string): string => {
+  if (!raw) return '-';
+  if (raw.includes('➔')) {
+    const distMatch = raw.match(/\s*\([^)]*กม\.\)\s*$/);
+    const distSuffix = distMatch ? ` ${distMatch[0].trim()}` : '';
+    const routeOnly = distMatch ? raw.slice(0, distMatch.index) : raw;
+    const [origin, dest] = routeOnly.split('➔');
+    return `${shortenBranchSegment(origin || '')} → ${shortenBranchSegment(dest || '')}${distSuffix}`;
+  }
+  return shortenBranchSegment(raw);
 };
 
 interface VehicleReportTabProps {
@@ -408,29 +434,37 @@ export default function VehicleReportTab({
     return matched.length > 0 ? matched : allRecords.filter(r => r.vin === selectedVin);
   }, [selectedVin, filteredRecords, allRecords]);
 
-  // ─── Collapsed vehicle groups state (default: all expanded in grouped table) ───
-  const [collapsedVins, setCollapsedVins] = useState<Set<string>>(new Set());
+  // ─── View mode (FLAT = รายการทั้งหมด [default] | GROUPED = จัดกลุ่มตามรถ) ───
+  const [viewMode, setViewMode] = useState<'GROUPED' | 'FLAT'>('FLAT');
+
+  // ─── Expand/Collapse state per vehicle ───
+  // ค่าเริ่มต้น: ถ้ามี ≤ 5 คัน หรือกำลังพิมพ์ค้นหา → กางอัตโนมัติ, ถ้ามากกว่านั้น → ย่อไว้เพื่อให้สแกนยอดรายคันได้เร็ว
+  const autoExpandByDefault = searchQuery.trim().length > 0 || vehicleGroups.length <= 5;
+  const [toggledVins, setToggledVins] = useState<Set<string>>(new Set());
+  const [expandAllOverride, setExpandAllOverride] = useState<boolean | null>(null);
+
+  const isVinExpanded = useCallback(
+    (vin: string) => {
+      const base = expandAllOverride !== null ? expandAllOverride : autoExpandByDefault;
+      return toggledVins.has(vin) ? !base : base;
+    },
+    [expandAllOverride, autoExpandByDefault, toggledVins]
+  );
 
   const toggleVinGroup = useCallback((vin: string) => {
-    setCollapsedVins(prev => {
+    setToggledVins(prev => {
       const next = new Set(prev);
-      if (next.has(vin)) {
-        next.delete(vin);
-      } else {
-        next.add(vin);
-      }
+      if (next.has(vin)) next.delete(vin);
+      else next.add(vin);
       return next;
     });
   }, []);
 
-  const allCollapsed = vehicleGroups.length > 0 && vehicleGroups.every(([vin]) => collapsedVins.has(vin));
+  const allExpanded = vehicleGroups.length > 0 && vehicleGroups.every(([vin]) => isVinExpanded(vin));
 
   const handleToggleAllGroups = () => {
-    if (allCollapsed) {
-      setCollapsedVins(new Set());
-    } else {
-      setCollapsedVins(new Set(vehicleGroups.map(([vin]) => vin)));
-    }
+    setToggledVins(new Set());
+    setExpandAllOverride(!allExpanded);
   };
 
   return (
@@ -643,7 +677,7 @@ export default function VehicleReportTab({
         )}
       </div>
 
-      {/* ═══ Per-Vehicle Grouped Table ═══ */}
+      {/* ═══ Per-Vehicle Grouped / Flat Report ═══ */}
       {vehicleGroups.length === 0 ? (
         <div className="py-16 text-center text-gray-400 bg-white rounded-2xl border border-gray-100">
           <Car className="w-10 h-10 mx-auto mb-3 text-gray-300" />
@@ -651,261 +685,460 @@ export default function VehicleReportTab({
           <p className="text-xs mt-1">ลองปรับเงื่อนไขการค้นหา</p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-          {/* Table Top Bar */}
-          <div className="px-4 md:px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap bg-gray-50/40">
+        <div className="flex flex-col gap-3">
+          {/* Toolbar: Count + View Mode Switcher + Expand/Collapse */}
+          <div className="px-4 py-2.5 rounded-2xl bg-white border border-gray-100 shadow-xs flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <span className="font-bold text-gray-900">ตารางประวัติรายคัน</span>
+              <span className="font-bold text-gray-900">รายการสรุปยอด</span>
               <span className="text-gray-300">•</span>
               <span>
-                จัดกลุ่ม <strong className="text-[#0f5238]">{totalVehicles}</strong> คัน ({filteredRecords.length} รายการ)
+                <strong className="text-[#0f5238]">{totalVehicles}</strong> คัน ({filteredRecords.length} รายการ)
               </span>
             </div>
-            <button
-              type="button"
-              onClick={handleToggleAllGroups}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 transition-colors cursor-pointer"
-            >
-              {allCollapsed ? (
-                <>
-                  <ChevronDown className="w-3.5 h-3.5 text-[#0f5238]" />
-                  <span>ขยายทุกคัน</span>
-                </>
-              ) : (
-                <>
-                  <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
-                  <span>ย่อทุกคัน</span>
-                </>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* View mode toggle */}
+              <div className="flex items-center p-0.5 rounded-xl bg-gray-100 border border-gray-200/70">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('FLAT')}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    viewMode === 'FLAT'
+                      ? 'bg-white text-[#0f5238] shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>รายการทั้งหมด</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('GROUPED')}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    viewMode === 'GROUPED'
+                      ? 'bg-white text-[#0f5238] shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-800'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>จัดกลุ่มตามรถ</span>
+                </button>
+              </div>
+
+              {viewMode === 'GROUPED' && (
+                <button
+                  type="button"
+                  onClick={handleToggleAllGroups}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 transition-colors cursor-pointer"
+                >
+                  {allExpanded ? (
+                    <>
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+                      <span>ย่อทั้งหมด</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5 text-[#0f5238]" />
+                      <span>ขยายทั้งหมด</span>
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse min-w-[960px]">
-              <thead>
-                <tr className="bg-gray-50/90 text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
-                  <th className="py-3 px-3 md:px-4 w-12 text-center">#</th>
-                  <th className="py-3 px-3 md:px-4">ใบสั่งงาน</th>
-                  <th className="py-3 px-3 md:px-4">เลข PO</th>
-                  <th className="py-3 px-3 md:px-4">บริการ</th>
-                  <th className="py-3 px-3 md:px-4">วันที่</th>
-                  <th className="py-3 px-3 md:px-4">สาขา / เส้นทาง</th>
-                  <th className="py-3 px-3 md:px-4">Supplier</th>
-                  <th className="py-3 px-3 md:px-4 text-center">สถานะ</th>
-                  <th className="py-3 px-3 md:px-4">Invoice</th>
-                  <th className="py-3 px-3 md:px-4 text-right">ราคา (บาท)</th>
-                </tr>
-              </thead>
-
+          {viewMode === 'GROUPED' ? (
+            /* ═══ GROUPED VIEW: Card Accordion per Vehicle (Zero Horizontal Scroll) ═══ */
+            <div className="flex flex-col gap-2.5">
               {vehicleGroups.map(([vin, records], groupIdx) => {
                 const first = records[0];
                 const groupCost = records
                   .filter(r => r.itemStatus !== 'CANCELLED')
                   .reduce((s, r) => s + r.unitPrice, 0);
-                const invoiceNums = [...new Set(records.map(r => r.invoiceNumber).filter(Boolean))];
-                const hasCarWash = records.some(r => r.jobType === 'CAR_WASH');
-                const hasSlide = records.some(r => r.jobType === 'VEHICLE_SLIDE');
-                const isCollapsed = collapsedVins.has(vin);
+                const poCount = records.filter(r => Boolean(r.d365PoNumber)).length;
+                const hasManualPrice = records.some(r => r.pricingMode === 'MANUAL');
+                const hasFailedAttempt = records.some(r => r.serviceType === 'SLIDE_FAILED_ATTEMPT');
+                const expanded = isVinExpanded(vin);
 
                 return (
-                  <tbody key={vin} className="divide-y divide-gray-100 border-b-2 border-gray-100 last:border-b-0">
-                    {/* ─── Group Header Row for this Vehicle ─── */}
-                    <tr
+                  <div
+                    key={vin}
+                    className={`rounded-2xl bg-white border transition-all overflow-hidden shadow-2xs ${
+                      expanded ? 'border-emerald-200/90' : 'border-gray-200/80 hover:border-emerald-200'
+                    }`}
+                  >
+                    {/* ─── Vehicle Card Header (Always 100% visible, no overflow) ─── */}
+                    <div
                       onClick={() => toggleVinGroup(vin)}
-                      className="bg-[#f4f9f5]/90 hover:bg-[#eaf4ed] transition-colors cursor-pointer select-none"
+                      className={`px-3.5 sm:px-4 py-3 flex items-center justify-between gap-3 cursor-pointer select-none transition-colors ${
+                        expanded ? 'bg-[#f4f9f5] border-b border-emerald-100' : 'bg-white hover:bg-[#f8fbf9]'
+                      }`}
                     >
-                      <td colSpan={10} className="py-2.5 px-3 md:px-4">
-                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                          {/* Left: Vehicle Identity & Meta */}
-                          <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-                            <div className="w-6 h-6 rounded-md bg-white border border-emerald-200 text-[#0f5238] flex items-center justify-center shrink-0 shadow-2xs">
-                              {isCollapsed ? (
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              ) : (
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              )}
-                            </div>
+                      {/* Left: Expand + Index + VIN + Model */}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-6 h-6 rounded-lg bg-white border border-emerald-200 text-[#0f5238] flex items-center justify-center shrink-0">
+                          {expanded ? (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          )}
+                        </div>
 
-                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0f5238] to-[#1a7a56] text-white flex items-center justify-center shrink-0 text-[10px] font-bold shadow-2xs">
-                              {groupIdx + 1}
-                            </div>
+                        <div className="w-6 h-6 rounded-lg bg-[#0f5238] text-white flex items-center justify-center shrink-0 text-[10px] font-bold">
+                          {groupIdx + 1}
+                        </div>
 
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono font-bold text-xs md:text-sm text-gray-900">
-                                {vin}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCopy(vin);
-                                }}
-                                title="คัดลอก VIN"
-                                className="p-1 rounded hover:bg-emerald-100/70 text-gray-400 hover:text-[#0f5238] transition-colors cursor-pointer"
-                              >
-                                {copiedText === vin ? (
-                                  <CheckCheck className="w-3 h-3 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
-                              </button>
-                            </div>
-
-                            {first.licensePlate && first.licensePlate !== '-' && (
-                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white border border-gray-200 text-gray-700">
-                                {first.licensePlate}
-                              </span>
-                            )}
-
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-[#0f5238]">
-                              {first.companyCode}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-xs sm:text-sm text-gray-900 tracking-tight">
+                              {vin}
                             </span>
-
-                            <span className="text-[11px] text-gray-600 font-medium">
-                              {first.vehicleModel}
-                              {first.vehicleColor && first.vehicleColor !== '-' ? ` • ${first.vehicleColor}` : ''}
-                            </span>
-
-                            <span className="text-gray-300">|</span>
-
-                            <span className="px-2 py-0.5 rounded-full bg-white border border-emerald-200/80 text-[10px] font-bold text-[#0f5238]">
-                              {records.length} รายการ
-                            </span>
-
-                            {hasCarWash && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded-md">
-                                <Sparkles className="w-3 h-3" /> ล้างรถ
-                              </span>
-                            )}
-                            {hasSlide && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100/60 px-1.5 py-0.5 rounded-md">
-                                <Truck className="w-3 h-3" /> สไลด์
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Right: Subtotal & Print Button */}
-                          <div className="flex items-center gap-3 shrink-0 ml-auto">
-                            {invoiceNums.length > 0 && (
-                              <span className="hidden lg:inline-block text-[10px] text-gray-500 font-mono truncate max-w-[180px]" title={invoiceNums.join(', ')}>
-                                {invoiceNums.join(', ')}
-                              </span>
-                            )}
-
-                            <div className="text-right">
-                              <span className="text-[10px] text-gray-500 mr-1.5">รวมคันนี้:</span>
-                              <span className="font-mono font-bold text-sm text-[#0f5238]">
-                                ฿{groupCost.toLocaleString()}
-                              </span>
-                            </div>
-
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedVin(vin);
+                                handleCopy(vin);
                               }}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#0f5238] hover:bg-[#0a3d28] text-white text-[10px] font-bold shadow-2xs transition-colors cursor-pointer"
+                              title="คัดลอก VIN"
+                              className="p-0.5 rounded hover:bg-emerald-100 text-gray-400 hover:text-[#0f5238] transition-colors cursor-pointer"
                             >
-                              <Printer className="w-3 h-3" />
-                              <span>ดู / พิมพ์</span>
+                              {copiedText === vin ? (
+                                <CheckCheck className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
                             </button>
+                            <span className="px-1.5 py-0.2 rounded-md text-[10px] font-bold bg-emerald-100 text-[#0f5238]">
+                              {first.companyCode}
+                            </span>
+                            {first.licensePlate && first.licensePlate !== '-' && (
+                              <span className="px-1.5 py-0.2 rounded-md text-[10px] font-semibold bg-gray-100 text-gray-700">
+                                {first.licensePlate}
+                              </span>
+                            )}
+                            <span className="px-2 py-0.2 rounded-full bg-white border border-gray-200 text-[10px] font-semibold text-gray-700">
+                              {records.length} รายการ
+                            </span>
+                            {hasFailedAttempt && (
+                              <span className="px-1.5 py-0.2 rounded-md bg-orange-100 text-orange-800 text-[10px] font-bold">
+                                เที่ยวเปล่า
+                              </span>
+                            )}
+                            {hasManualPrice && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                <PencilLine className="w-2.5 h-2.5" />
+                                กรอกเอง
+                              </span>
+                            )}
                           </div>
+                          <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                            {first.vehicleModel}
+                            {first.vehicleColor && first.vehicleColor !== '-' ? ` · ${first.vehicleColor}` : ''}
+                            {poCount > 0 ? ` · PO ${poCount}/${records.length}` : ''}
+                          </p>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
 
-                    {/* ─── Grouped Transaction Rows for this Vehicle ─── */}
-                    {!isCollapsed &&
-                      records.map((r, itemIdx) => {
-                        const st = STATUS_STYLES[r.itemStatus] || STATUS_STYLES.PENDING;
-                        const isCancelled = r.itemStatus === 'CANCELLED';
-                        return (
-                          <tr
-                            key={r.id}
-                            className={`transition-colors ${
-                              isCancelled ? 'bg-red-50/30' : 'bg-white hover:bg-gray-50/70'
-                            }`}
-                          >
-                            <td className="py-2.5 px-3 md:px-4 text-center text-[11px] font-mono text-gray-400">
-                              {itemIdx + 1}
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
-                              <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
-                                {r.jobNumber}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
-                              {r.d365PoNumber ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/70 font-mono text-[11px] font-bold">
-                                  {r.d365PoNumber}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5">
-                                {r.jobType === 'VEHICLE_SLIDE' ? (
-                                  <Truck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                ) : (
-                                  <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                )}
-                                <span className="text-gray-700 font-medium">
-                                  {getServiceLabel(r.serviceType)}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 text-gray-600 whitespace-nowrap">
-                              {formatThaiDate(r.serviceDate)}
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 text-gray-600 max-w-[240px] truncate" title={r.branchName}>
-                              {r.branchName}
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 text-gray-600 max-w-[180px] truncate" title={r.supplierName}>
-                              {r.supplierName}
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 text-center whitespace-nowrap">
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-                                style={{ color: st.color, backgroundColor: st.bg }}
-                              >
-                                {st.label}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 whitespace-nowrap">
-                              {r.invoiceNumber ? (
-                                <span className="font-mono text-[11px] text-emerald-700 font-semibold">
-                                  {r.invoiceNumber}
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-gray-400">-</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 md:px-4 text-right whitespace-nowrap">
-                              <span className={`font-mono font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-900'}`}>
-                                ฿{r.unitPrice.toLocaleString()}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
+                      {/* Right: Subtotal + Print (Always pinned inside viewport) */}
+                      <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                        <div className="text-right">
+                          <span className="block text-[9px] text-gray-400 font-medium leading-none">รวมคันนี้</span>
+                          <span className="font-mono font-extrabold text-sm sm:text-base text-[#0f5238] leading-tight">
+                            ฿{groupCost.toLocaleString()}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedVin(vin);
+                          }}
+                          title="ดูรายละเอียดและพิมพ์ประวัติรถคันนี้"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-[11px] font-bold shadow-2xs transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">พิมพ์</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ─── Vehicle Items: Clean 6-Column Table (Fits Desktop Without Scroll) ─── */}
+                    {expanded && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50/70 text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
+                              <th className="py-2 px-3.5">ใบงาน / วันที่</th>
+                              <th className="py-2 px-3">บริการ / เส้นทาง</th>
+                              <th className="py-2 px-3">Supplier</th>
+                              <th className="py-2 px-3">PO / Invoice</th>
+                              <th className="py-2 px-3 text-center">สถานะ</th>
+                              <th className="py-2 px-3.5 text-right">ราคา</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {records.map((r) => {
+                              const st = STATUS_STYLES[r.itemStatus] || STATUS_STYLES.PENDING;
+                              const isCancelled = r.itemStatus === 'CANCELLED';
+                              const isFailed = r.serviceType === 'SLIDE_FAILED_ATTEMPT';
+                              const isManual = r.pricingMode === 'MANUAL';
+                              const compactLoc = formatCompactLocation(r.branchName);
+
+                              return (
+                                <tr
+                                  key={r.id}
+                                  className={`transition-colors ${
+                                    isCancelled ? 'bg-red-50/30' : 'bg-white hover:bg-gray-50/60'
+                                  }`}
+                                >
+                                  {/* 1. Job Number + Date */}
+                                  <td className="py-2.5 px-3.5 whitespace-nowrap align-top">
+                                    <p className={`font-mono font-bold text-xs ${isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                                      {r.jobNumber}
+                                    </p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">
+                                      {formatThaiDate(r.serviceDate)}
+                                    </p>
+                                  </td>
+
+                                  {/* 2. Service + Compact Branch/Route */}
+                                  <td className="py-2.5 px-3 align-top max-w-[260px]">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {r.jobType === 'VEHICLE_SLIDE' ? (
+                                        <Truck className={`w-3.5 h-3.5 shrink-0 ${isFailed ? 'text-orange-500' : 'text-blue-500'}`} />
+                                      ) : (
+                                        <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      )}
+                                      <span className={`font-semibold text-xs ${isFailed ? 'text-orange-800' : 'text-gray-800'}`}>
+                                        {getServiceLabel(r.serviceType)}
+                                      </span>
+                                      {isManual && (
+                                        <span
+                                          className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold"
+                                          title={r.manualPriceNote || 'ค่าบริการกรอกเอง'}
+                                        >
+                                          <PencilLine className="w-2.5 h-2.5" />
+                                          กรอกเอง
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-gray-500 truncate mt-0.5" title={r.branchName}>
+                                      {compactLoc}
+                                    </p>
+                                  </td>
+
+                                  {/* 3. Supplier */}
+                                  <td className="py-2.5 px-3 align-top max-w-[170px]">
+                                    <p className="text-xs text-gray-700 truncate" title={r.supplierName}>
+                                      {r.supplierName}
+                                    </p>
+                                  </td>
+
+                                  {/* 4. PO + Invoice */}
+                                  <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                                    {r.d365PoNumber ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/70 font-mono text-[11px] font-bold">
+                                        {r.d365PoNumber}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-400">ยังไม่มี PO</span>
+                                    )}
+                                    {r.invoiceNumber && (
+                                      <p className="font-mono text-[10px] text-emerald-700 font-semibold mt-0.5">
+                                        {r.invoiceNumber}
+                                      </p>
+                                    )}
+                                  </td>
+
+                                  {/* 5. Status */}
+                                  <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
+                                    <span
+                                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                      style={{ color: st.color, backgroundColor: st.bg }}
+                                    >
+                                      {st.label}
+                                    </span>
+                                  </td>
+
+                                  {/* 6. Price */}
+                                  <td className="py-2.5 px-3.5 text-right whitespace-nowrap align-top">
+                                    <span
+                                      className={`font-mono font-bold text-xs sm:text-sm ${
+                                        isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'
+                                      }`}
+                                      title={
+                                        isManual && r.contractCost
+                                          ? `ราคาตามสัญญา ฿${r.contractCost.toLocaleString()} • หมายเหตุ: ${r.manualPriceNote || '-'}`
+                                          : undefined
+                                      }
+                                    >
+                                      ฿{r.unitPrice.toLocaleString()}
+                                    </span>
+                                    {isManual && r.contractCost && r.contractCost !== r.unitPrice && (
+                                      <p className="text-[10px] text-amber-700 font-mono mt-0.5">
+                                        สัญญา ฿{r.contractCost.toLocaleString()}
+                                      </p>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
+            </div>
+          ) : (
+            /* ═══ FLAT VIEW: Chronological All-Items Table (Accounting / PO Check) ═══ */
+            <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/90 text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                      <th className="py-3 px-3.5">รถ (VIN / รุ่น)</th>
+                      <th className="py-3 px-3">ใบงาน / วันที่</th>
+                      <th className="py-3 px-3">บริการ / เส้นทาง</th>
+                      <th className="py-3 px-3">Supplier</th>
+                      <th className="py-3 px-3">PO / Invoice</th>
+                      <th className="py-3 px-3 text-center">สถานะ</th>
+                      <th className="py-3 px-3.5 text-right">ราคา</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredRecords.map((r) => {
+                      const st = STATUS_STYLES[r.itemStatus] || STATUS_STYLES.PENDING;
+                      const isCancelled = r.itemStatus === 'CANCELLED';
+                      const isFailed = r.serviceType === 'SLIDE_FAILED_ATTEMPT';
+                      const isManual = r.pricingMode === 'MANUAL';
+                      const compactLoc = formatCompactLocation(r.branchName);
 
-              {/* ─── Grand Total Footer ─── */}
-              <tfoot>
-                <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold text-xs">
-                  <td colSpan={9} className="py-3 px-4 text-right text-gray-700">
-                    รวมค่าบริการสุทธิทั้งหมด ({totalVehicles} คัน • {filteredRecords.filter(r => r.itemStatus !== 'CANCELLED').length} รายการ):
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-sm text-[#0f5238]">
-                    ฿{totalCost.toLocaleString()}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                      return (
+                        <tr
+                          key={r.id}
+                          className={`transition-colors ${
+                            isCancelled ? 'bg-red-50/30' : 'bg-white hover:bg-gray-50/70'
+                          }`}
+                        >
+                          {/* 1. Vehicle */}
+                          <td className="py-2.5 px-3.5 align-top max-w-[190px]">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedVin(r.vin)}
+                              className="font-mono font-bold text-xs text-[#0f5238] hover:underline text-left cursor-pointer"
+                              title="คลิกดูประวัติรถคันนี้"
+                            >
+                              {r.vin}
+                            </button>
+                            <p className="text-[10px] text-gray-500 truncate mt-0.5" title={`${r.vehicleModel} ${r.licensePlate !== '-' ? r.licensePlate : ''}`}>
+                              {r.vehicleModel}
+                              {r.licensePlate && r.licensePlate !== '-' ? ` · ${r.licensePlate}` : ''}
+                            </p>
+                          </td>
+
+                          {/* 2. Job + Date */}
+                          <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                            <p className={`font-mono font-bold text-xs ${isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                              {r.jobNumber}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {formatThaiDate(r.serviceDate)}
+                            </p>
+                          </td>
+
+                          {/* 3. Service + Route */}
+                          <td className="py-2.5 px-3 align-top max-w-[230px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {r.jobType === 'VEHICLE_SLIDE' ? (
+                                <Truck className={`w-3.5 h-3.5 shrink-0 ${isFailed ? 'text-orange-500' : 'text-blue-500'}`} />
+                              ) : (
+                                <Sparkles className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              )}
+                              <span className={`font-semibold text-xs ${isFailed ? 'text-orange-800' : 'text-gray-800'}`}>
+                                {getServiceLabel(r.serviceType)}
+                              </span>
+                              {isManual && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold"
+                                  title={r.manualPriceNote || 'ค่าบริการกรอกเอง'}
+                                >
+                                  <PencilLine className="w-2.5 h-2.5" />
+                                  กรอกเอง
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-500 truncate mt-0.5" title={r.branchName}>
+                              {compactLoc}
+                            </p>
+                          </td>
+
+                          {/* 4. Supplier */}
+                          <td className="py-2.5 px-3 align-top max-w-[160px]">
+                            <p className="text-xs text-gray-700 truncate" title={r.supplierName}>
+                              {r.supplierName}
+                            </p>
+                          </td>
+
+                          {/* 5. PO / Invoice */}
+                          <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                            {r.d365PoNumber ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/70 font-mono text-[11px] font-bold">
+                                {r.d365PoNumber}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-gray-400">ยังไม่มี PO</span>
+                            )}
+                            {r.invoiceNumber && (
+                              <p className="font-mono text-[10px] text-emerald-700 font-semibold mt-0.5">
+                                {r.invoiceNumber}
+                              </p>
+                            )}
+                          </td>
+
+                          {/* 6. Status */}
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
+                              style={{ color: st.color, backgroundColor: st.bg }}
+                            >
+                              {st.label}
+                            </span>
+                          </td>
+
+                          {/* 7. Price */}
+                          <td className="py-2.5 px-3.5 text-right whitespace-nowrap align-top">
+                            <span
+                              className={`font-mono font-bold text-xs sm:text-sm ${
+                                isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'
+                              }`}
+                            >
+                              ฿{r.unitPrice.toLocaleString()}
+                            </span>
+                            {isManual && r.contractCost && r.contractCost !== r.unitPrice && (
+                              <p className="text-[10px] text-amber-700 font-mono mt-0.5">
+                                สัญญา ฿{r.contractCost.toLocaleString()}
+                              </p>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ Grand Total Bar (Always Visible at Bottom) ═══ */}
+          <div className="px-4 sm:px-5 py-3.5 rounded-2xl bg-[#f4f9f5] border border-emerald-200/80 flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-xs font-bold text-gray-700">
+              รวมค่าบริการสุทธิทั้งหมด ({totalVehicles} คัน • {filteredRecords.filter(r => r.itemStatus !== 'CANCELLED').length} รายการ)
+            </span>
+            <span className="font-mono font-black text-base sm:text-lg text-[#0f5238]">
+              ฿{totalCost.toLocaleString()}
+            </span>
           </div>
         </div>
       )}
