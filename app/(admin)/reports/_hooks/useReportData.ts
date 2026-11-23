@@ -24,7 +24,7 @@ import {
   filterWashReportJobs,
   scopeJobsByBranch,
 } from '../_lib/report-calculations';
-import { buildReportCsv, downloadCsvFile } from '../_lib/report-csv';
+import { buildReportSheet, downloadReportExcel } from '../_lib/report-excel';
 
 export interface ReportContextInfo {
   currentRole: UserRole;
@@ -164,15 +164,15 @@ export function useReportData() {
     [washAnalytics.washTotalExpense, slideAnalytics.slideTotalExpense]
   );
 
-  // 4. SMART CSV EXPORT (Context-Aware based on active tab)
-  const handleExportCSV = useCallback(() => {
-    const { filename, csvContent } = buildReportCsv({
+  // 4. SMART EXCEL EXPORT (Context-Aware based on active tab)
+  const handleExportExcel = useCallback(() => {
+    const sheet = buildReportSheet({
       activeTab,
       filteredJobs,
       filteredWashReportJobs,
       slideJobs: slideAnalytics.slideJobs,
     });
-    downloadCsvFile(filename, csvContent);
+    downloadReportExcel(sheet).catch(err => console.error('Export Excel failed:', err));
   }, [activeTab, filteredJobs, filteredWashReportJobs, slideAnalytics.slideJobs]);
 
   const context: ReportContextInfo = {
@@ -226,6 +226,6 @@ export function useReportData() {
     overview,
     wash,
     slide,
-    handleExportCSV,
+    handleExportExcel,
   };
 }

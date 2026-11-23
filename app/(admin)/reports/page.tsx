@@ -19,7 +19,7 @@ export default function ReportsPage() {
     overview,
     wash,
     slide,
-    handleExportCSV,
+    handleExportExcel,
   } = useReportData();
 
   return (
@@ -29,7 +29,7 @@ export default function ReportsPage() {
         context={context}
         companyFilter={companyFilter}
         onChangeCompanyFilter={setCompanyFilter}
-        onExportCSV={handleExportCSV}
+        onExportExcel={handleExportExcel}
       />
 
       {/* ─── Truncated Data Warning Banner ─── */}
@@ -42,7 +42,7 @@ export default function ReportsPage() {
           <div className="leading-relaxed">
             <p className="font-bold">ข้อมูลงานมีจำนวนเกินขีดจำกัดที่ระบบโหลดต่อครั้ง</p>
             <p className="text-amber-800/90 mt-0.5">
-              ตัวเลขสรุป ค่าใช้จ่าย และรายการส่งออก CSV ในหน้านี้อาจไม่ครบถ้วนทั้งหมด เนื่องจากรายการงานถูกตัดตามเพดานสูงสุดของ API
+              ตัวเลขสรุป ค่าใช้จ่าย และไฟล์ Excel ที่ส่งออกจากหน้านี้อาจไม่ครบถ้วนทั้งหมด เนื่องจากรายการงานถูกตัดตามเพดานสูงสุดของ API
             </p>
           </div>
         </div>

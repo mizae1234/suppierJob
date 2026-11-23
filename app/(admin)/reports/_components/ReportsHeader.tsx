@@ -9,14 +9,14 @@ interface ReportsHeaderProps {
   context: ReportContextInfo;
   companyFilter: CompanyFilter;
   onChangeCompanyFilter: (filter: CompanyFilter) => void;
-  onExportCSV: () => void;
+  onExportExcel: () => void;
 }
 
 export default function ReportsHeader({
   context,
   companyFilter,
   onChangeCompanyFilter,
-  onExportCSV,
+  onExportExcel,
 }: ReportsHeaderProps) {
   const { currentRole, activeBranch } = context;
 
@@ -70,11 +70,11 @@ export default function ReportsHeader({
 
         {/* Export Button */}
         <button
-          onClick={onExportCSV}
+          onClick={onExportExcel}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#0f5238] hover:bg-[#0a3d28] text-white text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer"
         >
           <FileDown className="w-3.5 h-3.5" />
-          <span>ส่งออก CSV</span>
+          <span>ส่งออก Excel</span>
         </button>
       </div>
     </div>
