@@ -26,7 +26,13 @@ export async function GET(request: NextRequest) {
       if (scope !== 'all') {
         if (user.companyId) where.companyId = user.companyId;
         if (user.branchId) where.currentBranchId = user.branchId;
+        // ป้องกันกรณี BRANCH ไม่มีทั้ง companyId และ branchId
+        if (!user.companyId && !user.branchId) {
+          where.companyId = '__none__';
+        }
       }
+      // หมายเหตุ: เมื่อ scope=all ยังอนุญาตให้ BRANCH เห็นรถข้ามบริษัทในเครือเพื่อให้สั่งสไลด์ข้ามบริษัท (เช่น GI ↔ EV7) ได้
+      // แต่จะตัดฟิลด์ภายในและรายละเอียดงานค้างของรถต่างบริษัทออกก่อนส่งกลับ (ดูด้านล่าง)
     } else if (user.role === 'ADMIN') {
       if (user.companyId) {
         where.companyId = user.companyId;
@@ -106,11 +112,51 @@ export async function GET(request: NextRequest) {
     // Format for frontend compatibility
     const formatted = vehicles.map(v => {
       const activeJobRef = activeJobs.get(v.vin);
+      const isCrossCompanyBranchView =
+        user.role === 'BRANCH' && (!user.companyId || v.companyId !== user.companyId);
+
       const canUserCancelActiveJob = Boolean(
-        activeJobRef?.canCancel && user.role !== 'SUPPLIER'
+        activeJobRef?.canCancel &&
+        user.role !== 'SUPPLIER' &&
+        !isCrossCompanyBranchView &&
+        (user.role !== 'BRANCH' ||
+          !user.branchId ||
+          v.currentBranchId === user.branchId ||
+          activeJobRef.requestedById === user.id)
       );
       const ownerSiteCode = v.d365SiteId?.trim().toUpperCase();
       const ownerBranch = ownerSiteCode ? branchByCode.get(ownerSiteCode) : undefined;
+
+      // รถต่างบริษัทที่ BRANCH เรียกดูผ่าน scope=all (เพื่อสั่งสไลด์ข้ามบริษัท):
+      // คืนเฉพาะฟิลด์ที่หน้าสร้างงานสไลด์ต้องใช้ และตัดข้อมูลภายใน/รายละเอียดงานค้างของบริษัทอื่นออก
+      if (isCrossCompanyBranchView) {
+        return {
+          vin: v.vin,
+          model: v.model,
+          color: v.color,
+          companyId: v.companyId,
+          companyCode: v.company.code,
+          currentBranchId: v.currentBranchId,
+          currentBranchCode: v.currentBranch.code,
+          currentBranchName: v.currentBranch.name,
+          ownerBranchId: ownerBranch?.id || v.currentBranchId,
+          ownerBranchCode: ownerBranch?.code || v.d365SiteId || v.currentBranch.code,
+          ownerBranchName: ownerBranch?.name || v.currentBranch.name,
+          vehicleType: v.vehicleType,
+          licensePlate: v.licensePlate,
+          status: v.status || 'AVAILABLE',
+          d365SiteId: v.d365SiteId,
+          d365WarehouseId: v.d365WarehouseId,
+          activeJob: activeJobRef
+            ? {
+                jobId: '',
+                jobNumber: 'มีงานค้างในสาขาอื่น',
+                jobType: activeJobRef.jobType,
+                canCancel: false,
+              }
+            : null,
+        };
+      }
 
       return {
         vin: v.vin,

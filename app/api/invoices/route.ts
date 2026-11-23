@@ -3,6 +3,15 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { SLIDE_COMPLETION_FAILED_ATTEMPT, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { createInvoiceSchema, parseBody } from '@/lib/validation';
+
+/** ข้อผิดพลาดทางธุรกิจในการสร้างใบวางบิลที่ส่งข้อความกลับให้ผู้ใช้ได้ตรงๆ */
+class InvoiceValidationError extends Error {
+  constructor(message: string, public status = 400) {
+    super(message);
+    this.name = 'InvoiceValidationError';
+  }
+}
 
 // GET: ดึงรายการ Invoices (ป้องกันข้อมูลรั่วไหลตาม Role)
 export async function GET(request: NextRequest) {
@@ -87,14 +96,9 @@ export async function POST(request: NextRequest) {
   const { user } = auth;
 
   try {
-    const { supplierId, companyId, jobIds, dueDate, notes } = await request.json();
-
-    if (!supplierId || !companyId || !jobIds || !Array.isArray(jobIds) || jobIds.length === 0) {
-      return NextResponse.json(
-        { error: 'กรุณาระบุ supplierId, companyId และเลือกงานอย่างน้อย 1 รายการ' },
-        { status: 400 }
-      );
-    }
+    const parsed = await parseBody(request, createInvoiceSchema);
+    if (parsed.response) return parsed.response;
+    const { supplierId, companyId, jobIds, dueDate, notes } = parsed.data;
 
     // Role-based validation
     if (user.role === 'SUPPLIER' && user.supplierId !== supplierId) {
@@ -136,27 +140,27 @@ export async function POST(request: NextRequest) {
       });
 
       if (targetJobs.length !== jobIds.length) {
-        throw new Error('พบบางงานไม่ถูกต้องหรือไม่มีอยู่ในระบบ');
+        throw new InvoiceValidationError('พบบางงานไม่ถูกต้องหรือไม่มีอยู่ในระบบ');
       }
 
       const unapproved = targetJobs.filter(j => j.status !== 'APPROVED');
       if (unapproved.length > 0) {
-        throw new Error('ทุกงานที่นำมาวางบิลต้องได้รับการ Approve แล้วเท่านั้น');
+        throw new InvoiceValidationError('ทุกงานที่นำมาวางบิลต้องได้รับการ Approve แล้วเท่านั้น');
       }
 
       const wrongCompany = targetJobs.filter(j => j.companyId !== companyId);
       if (wrongCompany.length > 0) {
-        throw new Error('ไม่สามารถรวมงานข้ามบริษัทได้');
+        throw new InvoiceValidationError('ไม่สามารถรวมงานข้ามบริษัทได้');
       }
 
       const wrongSupplier = targetJobs.filter(j => j.supplierId !== supplierId);
       if (wrongSupplier.length > 0) {
-        throw new Error('ไม่สามารถรวมงานข้าม Supplier ได้');
+        throw new InvoiceValidationError('ไม่สามารถรวมงานข้าม Supplier ได้');
       }
 
       const alreadyInvoiced = targetJobs.filter(j => j.invoiceId || j.status === 'INVOICED');
       if (alreadyInvoiced.length > 0) {
-        throw new Error('มีบางรายการงานที่ถูกวางบิลไปแล้ว กรุณารีเฟรชหน้ารายการ');
+        throw new InvoiceValidationError('มีบางรายการงานที่ถูกวางบิลไปแล้ว กรุณารีเฟรชหน้ารายการ');
       }
 
       // Calculate amounts (exclude cancelled items)
@@ -187,7 +191,7 @@ export async function POST(request: NextRequest) {
       });
 
       if (updateResult.count !== jobIds.length) {
-        throw new Error('เกิดข้อผิดพลาดในการล็อกสถานะงาน (บางงานอาจถูกวางบิลไปก่อนหน้า)');
+        throw new InvoiceValidationError('เกิดข้อผิดพลาดในการล็อกสถานะงาน (บางงานอาจถูกวางบิลไปก่อนหน้า)');
       }
 
       // 3. Create invoice and connect jobs (sets invoiceId to inv.id)
@@ -237,11 +241,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, invoice: formatted }, { status: 201 });
   } catch (error: unknown) {
+    if (error instanceof InvoiceValidationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('POST /api/invoices error:', error);
-    const message = error instanceof Error ? error.message : 'ไม่สามารถสร้าง Invoice ได้';
     return NextResponse.json(
-      { error: message },
-      { status: 400 }
+      { error: 'ไม่สามารถสร้าง Invoice ได้ กรุณาลองใหม่อีกครั้ง' },
+      { status: 500 }
     );
   }
 }

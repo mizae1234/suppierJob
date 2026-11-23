@@ -5,6 +5,7 @@ import { uploadBase64Evidence } from '@/lib/s3';
 import { rateLimit } from '@/lib/rate-limit';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
+import { parseBody, verifyVehicleSchema } from '@/lib/validation';
 
 const MAX_ATTEMPTS = 20;
 const ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
@@ -33,11 +34,10 @@ export async function POST(
 
   try {
     const { id: jobId } = await params;
-    const body = await request.json();
-    const itemId = typeof body.itemId === 'string' && body.itemId ? body.itemId : null;
-    const photoUrl = typeof body.photoUrl === 'string' ? body.photoUrl : '';
-
-    if (!photoUrl.startsWith('data:image/')) return badRequest('กรุณาถ่ายรูปยืนยันตัวรถเพื่อเป็นหลักฐาน');
+    const parsed = await parseBody(request, verifyVehicleSchema);
+    if (parsed.response) return parsed.response;
+    const itemId = parsed.data.itemId || null;
+    const photoUrl = parsed.data.photoUrl;
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
@@ -116,10 +116,15 @@ export async function POST(
           where: { id: item.id },
           data: { verifiedAt: now, verifiedBy: actorName, verifyMethod: 'PHOTO' },
         });
+        // ขยับ updatedAt ของใบงานเพื่อให้ incremental polling (?updatedSince) เห็นการยืนยันรายคัน
+        await tx.job.update({
+          where: { id: jobId },
+          data: { updatedAt: now },
+        });
       } else {
         await tx.job.update({
           where: { id: jobId },
-          data: { verifiedAt: now, verifiedBy: actorName },
+          data: { verifiedAt: now, verifiedBy: actorName, updatedAt: now },
         });
       }
 

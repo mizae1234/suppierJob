@@ -146,7 +146,7 @@ export function CarWashItemReviewCard({
               <span>{formatThaiDate(item.actualWashDate)}</span>
             </p>
           ) : (
-            <p className="flex items-center gap-1 text-[9px] text-gray-400 truncate leading-tight" title={`${job.originBranchName || job.branchName} → ${job.destBranchName || job.customDestAddress || 'ปลายทาง'}`}>
+            <p className="flex items-center gap-1 text-[9px] text-gray-400 truncate leading-tight" title={`${job.pickupBranchName || job.branchName} → ${job.destBranchName || job.customDestAddress || 'ปลายทาง'}`}>
               <MapPin className="w-2.5 h-2.5 shrink-0" />
               <span className="truncate">{job.destBranchName || 'ปลายทาง'}</span>
             </p>

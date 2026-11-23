@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
@@ -87,23 +87,28 @@ function ApprovalsContent() {
       const isSlide = job.jobType === 'VEHICLE_SLIDE';
       const myBranchId = activeBranch?.id || currentBranchId;
       const isDest = Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
-      const isOrigin = Boolean(isSlide && ((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
+      const isOrigin = Boolean(isSlide && ((job.pickupBranchId && job.pickupBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
 
       let approvedByLabel = '';
       if (isFailedAttemptJob(job)) {
-        approvedByLabel = `อนุมัติค่าเที่ยวเปล่าโดย ${activeBranch?.name || job.originBranchName || job.branchName || 'สาขา'}`;
+        approvedByLabel = `อนุมัติค่าเที่ยวเปล่าโดย ${activeBranch?.name || job.pickupBranchName || job.branchName || 'สาขา'}`;
       } else if (isDest) {
         approvedByLabel = `ตรวจรับรถโดย ${job.destBranchName || activeBranch?.name || 'สาขาปลายทาง'}`;
       } else if (isOrigin && job.destBranchId) {
-        approvedByLabel = `อนุมัติแทนปลายทางโดย ${job.originBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
+        approvedByLabel = `อนุมัติแทนปลายทางโดย ${job.pickupBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
       } else if (activeBranch?.name) {
         approvedByLabel = `สาขา ${activeBranch.name}`;
       }
 
-      showToast(`กำลังอนุมัติใบงาน ${job.jobNumber} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
       const res = await updateJobStatus(job.id, 'APPROVED', { approvedBy: approvedByLabel || undefined });
       if (res && !res.success) {
         showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
+      } else if (res?.pending) {
+        showToast(
+          `กำลังเปิด PO ใน D365 สำหรับใบงาน ${job.jobNumber}... ระบบจะเปลี่ยนสถานะเป็นอนุมัติอัตโนมัติเมื่อเปิด PO สำเร็จ`,
+          'info',
+          5500
+        );
       } else if (res?.d365Po?.success && res.d365Po.purchId) {
         showToast(
           `อนุมัติใบงาน ${job.jobNumber} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${res.d365Po.purchId})`,
@@ -137,15 +142,16 @@ function ApprovalsContent() {
     setApprovingItemId(itemId);
     try {
       const targetJob = jobs.find(j => j.id === jobId);
-      const activeItems = (targetJob?.carWashItems || []).filter(i => i.status !== 'CANCELLED');
-      const unapprovedCount = activeItems.filter(i => i.status !== 'APPROVED').length;
-      if (unapprovedCount <= 1 && targetJob?.jobNumber) {
-        showToast(`กำลังอนุมัติใบงาน ${targetJob.jobNumber} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
-      }
 
       const progress = await updateCarWashItemStatus(jobId, itemId, 'APPROVED');
       if (!progress || progress.error) {
         showToast(progress?.error || 'อนุมัติไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error', 6500);
+      } else if (progress.pending) {
+        showToast(
+          `กำลังเปิด PO ใน D365 สำหรับใบงาน ${targetJob?.jobNumber || ''}... ระบบจะอนุมัติใบงานอัตโนมัติเมื่อเปิด PO สำเร็จ`,
+          'info',
+          5500
+        );
       } else if (progress.allApproved) {
         if (progress.d365Po?.success && progress.d365Po.purchId) {
           showToast(
@@ -170,13 +176,86 @@ function ApprovalsContent() {
     }
   };
 
-  const currentList = activeTab === 'WAITING' 
-    ? waitingJobs 
-    : activeTab === 'PARTIAL'
-    ? partiallyCompletedJobs
-    : activeTab === 'APPROVED' 
-    ? recentApprovedJobs 
-    : rejectedJobs;
+  const currentList = useMemo(() => (
+    activeTab === 'WAITING'
+      ? waitingJobs
+      : activeTab === 'PARTIAL'
+      ? partiallyCompletedJobs
+      : activeTab === 'APPROVED'
+      ? recentApprovedJobs
+      : rejectedJobs
+  ), [activeTab, waitingJobs, partiallyCompletedJobs, recentApprovedJobs, rejectedJobs]);
+
+  // โหมด list จาก AppContext ส่งรูปมาแค่ thumbnail (1 รูป) + evidenceCount
+  // หน้าตรวจรับต้องแสดงรูปหลักฐานครบทุกคัน → ดึงเฉพาะใบงานในแท็บปัจจุบันที่ยังมีรูปไม่ครบแบบ batch
+  const [fullJobsById, setFullJobsById] = useState<Record<string, Job>>({});
+  const missingEvidenceKey = useMemo(() => {
+    const ids: string[] = [];
+    for (const j of currentList) {
+      const expected = j.evidenceCount ?? j.evidences?.length ?? 0;
+      const loaded = j.evidences?.length ?? 0;
+      const cached = fullJobsById[j.id];
+      const cachedUpToDate =
+        cached &&
+        cached.updatedAt === j.updatedAt &&
+        (cached.evidences?.length ?? 0) >= expected;
+      if (expected > loaded && !cachedUpToDate) {
+        ids.push(`${j.id}:${j.updatedAt}`);
+      }
+    }
+    return ids.join(',');
+  }, [currentList, fullJobsById]);
+
+  useEffect(() => {
+    if (!missingEvidenceKey) return;
+    const ids = missingEvidenceKey.split(',').map(entry => entry.split(':')[0]).filter(Boolean);
+    if (ids.length === 0) return;
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        // แบ่งชุดละ 50 ใบงานเพื่อไม่ให้ query string ยาวเกินไป
+        const BATCH_SIZE = 50;
+        const fetchedMap: Record<string, Job> = {};
+        for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+          const chunk = ids.slice(i, i + BATCH_SIZE);
+          const res = await fetch(`/api/jobs?ids=${encodeURIComponent(chunk.join(','))}`, {
+            signal: controller.signal,
+            cache: 'no-store',
+          });
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (controller.signal.aborted) return;
+          if (Array.isArray(data.jobs)) {
+            for (const fullJob of data.jobs as Job[]) {
+              fetchedMap[fullJob.id] = fullJob;
+            }
+          }
+        }
+        if (!controller.signal.aborted && Object.keys(fetchedMap).length > 0) {
+          setFullJobsById(prev => ({ ...prev, ...fetchedMap }));
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error('Failed to hydrate approval job evidences:', err);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [missingEvidenceKey]);
+
+  const hydratedList = useMemo(
+    () => currentList.map(j => {
+      const full = fullJobsById[j.id];
+      if (!full) return j;
+      return {
+        ...j,
+        evidences: full.evidences,
+        evidenceCount: full.evidenceCount ?? full.evidences.length,
+      };
+    }),
+    [currentList, fullJobsById]
+  );
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6 pb-20 sm:pb-12">
@@ -289,7 +368,7 @@ function ApprovalsContent() {
         </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-6">
-          {currentList.map(job => {
+          {hydratedList.map(job => {
             const isHighlighted = job.id === highlightedJobId;
             const isCarWash = job.jobType === 'CAR_WASH';
             const completedItemCount = job.carWashItems?.filter(i => i.status === 'COMPLETED' || i.status === 'APPROVED').length || 0;
@@ -377,7 +456,7 @@ function ApprovalsContent() {
                             if (dir === 'INTERNAL' || job.destBranchId) {
                               return (
                                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
-                                  ย้ายสาขา: {job.originBranchName || job.branchName} → {job.destBranchName}{job.destWarehouseId ? ` (คลัง ${job.destWarehouseId})` : ''}
+                                  ย้ายสาขา: {job.pickupBranchName || job.branchName} → {job.destBranchName}{job.destWarehouseId ? ` (คลัง ${job.destWarehouseId})` : ''}
                                 </span>
                               );
                             }
@@ -448,7 +527,7 @@ function ApprovalsContent() {
                         const isSlide = job.jobType === 'VEHICLE_SLIDE';
                         const myBranchId = activeBranch?.id || currentBranchId;
                         const isDest = Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
-                        const isOrigin = Boolean(isSlide && ((job.originBranchId && job.originBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
+                        const isOrigin = Boolean(isSlide && ((job.pickupBranchId && job.pickupBranchId === myBranchId) || (job.branchId && job.branchId === myBranchId)));
 
                         return (
                           <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 lg:shrink-0 lg:ml-auto">
@@ -594,7 +673,7 @@ function ApprovalsContent() {
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-gray-400 text-[10px] font-semibold">เส้นทางสไลด์:</span>
-                        <p className="font-semibold text-gray-800">{job.originBranchName} &rarr; {job.destBranchName}</p>
+                        <p className="font-semibold text-gray-800">{job.pickupBranchName} &rarr; {job.destBranchName}</p>
                       </div>
                       <div className="flex flex-col gap-0.5">
                         <span className="text-gray-400 text-[10px] font-semibold">เวลาส่งมอบ:</span>

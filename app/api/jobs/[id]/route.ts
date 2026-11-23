@@ -15,9 +15,18 @@ export async function GET(
 
   try {
     const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const viewParam = searchParams.get('view');
+    const includeParam = searchParams.get('include');
+    const viewMode: 'list' | 'detail' = viewParam === 'list' ? 'list' : 'detail';
+    // ค่าเริ่มต้นรวม activities เสมอเพื่อความเข้ากันได้เดิม ยกเว้นขอ view=list โดยไม่ระบุ include=activities
+    const includeActivities = includeParam
+      ? includeParam.split(',').map(s => s.trim()).includes('activities')
+      : viewMode !== 'list';
+
     const job = await prisma.job.findUnique({
       where: { id },
-      include: buildJobInclude(true),
+      include: buildJobInclude(includeActivities, { view: viewMode }),
     });
 
     // ไม่มีสิทธิ์ดู → ตอบ 404 เหมือนไม่พบ (ไม่เปิดเผยว่ามีงานนี้อยู่)

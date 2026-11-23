@@ -3,8 +3,13 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { logAuditFromUser } from '@/lib/audit-log';
-import { getActiveJobsByVin, type ActiveJobRef } from '@/lib/active-jobs';
-import { getVehicleLabel } from '@/lib/job-utils';
+import { getActiveJobsByVin } from '@/lib/active-jobs';
+import { AppError, toErrorResponse } from '@/lib/errors';
+import {
+  buildBusyConflictBody,
+  buildOutOfStockBody,
+  reserveVehiclesInTx,
+} from '@/lib/services/vehicles/reserve';
 import { calculateWashOrderFinancials, getSupplierWashConfig } from '@/lib/car-wash-rates';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { buildJobInclude, serializeJob } from '@/lib/job-serializer';
@@ -16,84 +21,11 @@ import {
   MANUAL_PRICE_NOTE_MIN_LENGTH,
   MANUAL_PRICE_NOTE_MAX_LENGTH,
 } from '@/lib/slide-pricing';
+import { createJobSchema, parseBody } from '@/lib/validation';
 
 /** เพดานจำนวนงานเมื่อไม่ส่ง page (กันหน่วยความจำ/response ใหญ่เกิน) */
 const MAX_UNPAGED_JOBS = 5000;
 const CREATE_JOB_TX_TIMEOUT_MS = 20_000;
-
-/** ข้อผิดพลาดที่ตอบกลับ client ได้ตรง ๆ (เช่น รถถูกจองไปแล้ว) — throw ใน transaction เพื่อ rollback */
-class JobCreateConflict extends Error {
-  constructor(public body: Record<string, unknown>, public status = 409) {
-    super(String(body.error));
-    this.name = 'JobCreateConflict';
-  }
-}
-
-async function buildBusyConflictBody(
-  busy: Map<string, ActiveJobRef>,
-  client: Pick<Prisma.TransactionClient, 'vehicle'>
-) {
-  const plates = await client.vehicle.findMany({
-    where: { vin: { in: [...busy.keys()] } },
-    select: { vin: true, licensePlate: true },
-  });
-  const plateOf = new Map(plates.map(p => [p.vin, p.licensePlate]));
-  const lines = [...busy.entries()].map(([v, j]) =>
-    `${getVehicleLabel(v, plateOf.get(v))} (ใบงาน ${j.jobNumber})`
-  );
-  return {
-    error: `รถต่อไปนี้มีงานที่ยังไม่เสร็จสิ้น สั่งงานซ้ำไม่ได้: ${lines.join(', ')}`,
-    busyVins: [...busy.keys()],
-  };
-}
-
-function buildOutOfStockBody(outOfStock: { vin: string; licensePlate: string | null }[]) {
-  return {
-    error: `รถต่อไปนี้ไม่อยู่ในสต็อกแล้ว (ตามข้อมูล D365) สั่งงานไม่ได้: ${outOfStock.map(v => getVehicleLabel(v.vin, v.licensePlate)).join(', ')}`,
-    outOfStockVins: outOfStock.map(v => v.vin),
-  };
-}
-
-/**
- * จองรถภายใน transaction (กัน race เมื่อสั่งงานรถคันเดียวกันพร้อมกัน):
- * 1) เปลี่ยนสถานะรถแบบมีเงื่อนไข (ไม่ใช่ OUT_OF_STOCK เว้นแต่อนุญาต) → แถว Vehicle ถูกล็อกจน commit
- * 2) ตรวจงานค้างซ้ำหลังได้ล็อก — คำขอที่มาทีหลังจะรอจนคำขอแรก commit แล้วเห็นใบงานใหม่ → 409
- */
-async function reserveVehiclesInTx(
-  tx: Prisma.TransactionClient,
-  vins: string[],
-  newStatus: 'IN_WASH' | 'IN_TRANSIT',
-  allowsOutOfStock: boolean
-) {
-  const uniqueVins = [...new Set(vins.filter(Boolean))];
-  if (uniqueVins.length === 0) return;
-
-  const res = await tx.vehicle.updateMany({
-    where: {
-      vin: { in: uniqueVins },
-      ...(allowsOutOfStock ? {} : { status: { not: 'OUT_OF_STOCK' } }),
-    },
-    data: { status: newStatus },
-  });
-
-  if (res.count !== uniqueVins.length) {
-    const rows = await tx.vehicle.findMany({
-      where: { vin: { in: uniqueVins } },
-      select: { vin: true, licensePlate: true, status: true },
-    });
-    const outOfStock = allowsOutOfStock ? [] : rows.filter(r => r.status === 'OUT_OF_STOCK');
-    if (outOfStock.length > 0) throw new JobCreateConflict(buildOutOfStockBody(outOfStock));
-    const found = new Set(rows.map(r => r.vin.toUpperCase()));
-    const missing = uniqueVins.filter(v => !found.has(v.toUpperCase()));
-    throw new JobCreateConflict(
-      { error: `ไม่พบข้อมูลรถในระบบ: ${missing.join(', ') || uniqueVins.join(', ')}` },
-      400
-    );
-  }
-
-  const busy = await getActiveJobsByVin(uniqueVins, tx);
-  if (busy.size > 0) throw new JobCreateConflict(await buildBusyConflictBody(busy, tx));
-}
 
 // GET: ดึงรายการ Jobs (ตรวจสิทธิ์ตาม Role และรองรับ Pagination / Search)
 export async function GET(request: NextRequest) {
@@ -111,6 +43,9 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get('q');
     const pageParam = searchParams.get('page');
     const limitParam = searchParams.get('limit');
+    const viewParam = searchParams.get('view');
+    const updatedSinceParam = searchParams.get('updatedSince');
+    const idsParam = searchParams.get('ids');
 
     const where: Prisma.JobWhereInput = {};
 
@@ -128,6 +63,9 @@ export async function GET(request: NextRequest) {
           { destBranchId: user.branchId },
           { requestedById: user.id },
         ];
+      } else {
+        // กรณีผู้ใช้ BRANCH ไม่ได้ผูกสาขา → จำกัดให้เห็นเฉพาะงานของบริษัทตนเอง (หากไม่มี companyId ให้ไม่คืนข้อมูล)
+        where.companyId = user.companyId || '__none__';
       }
     } else if (user.role === 'ADMIN') {
       // Admin is constrained to their assigned company if present
@@ -167,6 +105,38 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Incremental polling: ดึงเฉพาะงานที่แก้ไขหลังเวลา updatedSince
+    if (updatedSinceParam && updatedSinceParam.trim()) {
+      const sinceDate = new Date(updatedSinceParam.trim());
+      if (Number.isNaN(sinceDate.getTime())) {
+        return NextResponse.json(
+          { error: 'รูปแบบพารามิเตอร์ updatedSince ไม่ถูกต้อง' },
+          { status: 400 }
+        );
+      }
+      where.updatedAt = { gt: sinceDate };
+    }
+
+    // Batch fetch by job IDs (ยังคงตรวจสิทธิ์ tenant จาก where ด้านบนครบถ้วน)
+    if (idsParam && idsParam.trim()) {
+      const ids = idsParam
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .slice(0, 100);
+      if (ids.length === 0) {
+        return NextResponse.json({
+          jobs: [],
+          total: 0,
+          page: 1,
+          totalPages: 0,
+          truncated: false,
+          serverTime: new Date().toISOString(),
+        });
+      }
+      where.id = { in: ids };
+    }
+
     // Pagination
     // ไม่ส่ง page → คืนงานทั้งหมดในขอบเขตสิทธิ์ (Dashboard/รายงานคำนวณฝั่ง client ต้องได้ครบ) โดยมีเพดานกันพัง
     const parsedPage = pageParam ? parseInt(pageParam, 10) : NaN;
@@ -182,10 +152,14 @@ export async function GET(request: NextRequest) {
       .split(',')
       .map(s => s.trim())
       .includes('activities');
+    const viewMode: 'list' | 'detail' = viewParam === 'list' ? 'list' : 'detail';
+
+    // บันทึกเวลาฝั่งเซิร์ฟเวอร์ก่อน query เพื่อไม่ให้พลาดงานที่อัปเดตระหว่าง query
+    const serverTime = new Date().toISOString();
 
     const jobs = await prisma.job.findMany({
       where,
-      include: buildJobInclude(includeActivities),
+      include: buildJobInclude(includeActivities, { view: viewMode }),
       orderBy: { createdAt: 'desc' },
       skip,
       take: limit,
@@ -206,6 +180,7 @@ export async function GET(request: NextRequest) {
       totalPages: Math.ceil(total / limit),
       // true = มีงานมากกว่าที่ส่งกลับ (ชนเพดาน หรือมีหน้าถัดไป)
       truncated: (skip ?? 0) + formatted.length < total,
+      serverTime,
     });
   } catch (error) {
     console.error('GET /api/jobs error:', error);
@@ -223,9 +198,12 @@ export async function POST(request: NextRequest) {
   const { user } = auth;
 
   try {
-    const body = await request.json();
+    const parsed = await parseBody(request, createJobSchema);
+    if (parsed.response) return parsed.response;
+    const body = parsed.data;
     const { jobType, supplierId, requestedBy, requesterPosition, requesterPhone } = body;
-    let { companyId, branchId } = body;
+    let companyId = body.companyId || '';
+    let branchId = body.branchId || '';
 
     // Auto-resolve branch if missing (e.g. EV7 unified company with no sub-branches)
     if (!branchId && companyId) {
@@ -246,12 +224,12 @@ export async function POST(request: NextRequest) {
     const snapshotPosition = dbUser?.position || requesterPosition || '';
     const snapshotPhone = dbUser?.phone || requesterPhone || '';
 
-    const requestedVins: string[] = jobType === 'CAR_WASH'
-      ? (Array.isArray(body.items) ? body.items.map((it: { vin: string }) => it.vin) : [])
-      : (Array.isArray(body.vins) && body.vins.length > 0 ? body.vins : (body.vin ? [body.vin] : []));
+    const requestedVins: string[] = body.jobType === 'CAR_WASH'
+      ? body.items.map((it) => it.vin)
+      : (body.vins && body.vins.length > 0 ? body.vins : (body.vin ? [body.vin] : []));
 
     // สำหรับงานรถสไลด์ (VEHICLE_SLIDE): สาขาที่รับผิดชอบค่าใช้จ่ายและใช้ยิงเปิด PO ใน D365 คือ "สาขาที่เป็นเจ้าของรถต้นสังกัด" (d365SiteId) เสมอ
-    if (jobType === 'VEHICLE_SLIDE') {
+    if (body.jobType === 'VEHICLE_SLIDE') {
       const slideVehicles = requestedVins.length > 0
         ? await prisma.vehicle.findMany({
             where: { vin: { in: requestedVins } },
@@ -287,6 +265,7 @@ export async function POST(request: NextRequest) {
         const fallbackBranchId =
           firstVehicle?.currentBranchId ||
           body.pickupBranchId ||
+          // legacy alias — คงไว้รองรับ 1 release ก่อนตัดออก
           body.originBranchId ||
           branchId ||
           dbUser?.branchId ||
@@ -314,7 +293,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Role-specific company validation (งานรถสไลด์อนุญาตให้สั่งข้ามสาขา/บริษัทในเครือได้ โดย PO จะเปิดในนามสาขาเจ้าของรถ)
-    if (user.role === 'ADMIN' && jobType !== 'VEHICLE_SLIDE' && user.companyId && user.companyId !== companyId) {
+    if (user.role === 'ADMIN' && body.jobType !== 'VEHICLE_SLIDE' && user.companyId && user.companyId !== companyId) {
       return NextResponse.json(
         { error: 'คุณไม่มีสิทธิ์สร้างงานให้บริษัทอื่น' },
         { status: 403 }
@@ -322,7 +301,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (user.role === 'BRANCH') {
-      if (jobType === 'VEHICLE_SLIDE') {
+      if (body.jobType === 'VEHICLE_SLIDE') {
+        // originBranchId เป็น legacy alias — คงไว้รองรับ 1 release ก่อนตัดออก
         const origId = body.pickupBranchId || body.originBranchId || body.branchId;
         const dstId = body.destBranchId;
         // Branch user can request a slide if their branch is either origin (sending car), destination (pulling car to their branch), or owner branch
@@ -393,7 +373,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ─── Guard: รถที่ไม่อยู่ในสต็อก D365 แล้ว สั่งสไลด์ / ล้างรถใหม่ไม่ได้ (ล้างรถ Service ยังได้) ───
-    const allowsOutOfStock = jobType === 'CAR_WASH' && body.carCategory === 'SERVICE';
+    const allowsOutOfStock = body.jobType === 'CAR_WASH' && body.carCategory === 'SERVICE';
     if (!allowsOutOfStock && requestedVins.length > 0) {
       const outOfStock = await prisma.vehicle.findMany({
         where: { vin: { in: requestedVins }, status: 'OUT_OF_STOCK' },
@@ -404,13 +384,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (jobType === 'CAR_WASH') {
+    if (body.jobType === 'CAR_WASH') {
       // ─── Car Wash ─────────────────────
       const { items, estimatedCost, transferReason, carCategory } = body;
-
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        return NextResponse.json({ error: 'กรุณาเลือกรถอย่างน้อย 1 คัน' }, { status: 400 });
-      }
 
       // Compute totalCost incorporating VAT when applicable
       const supplier = await prisma.supplier.findUnique({
@@ -425,23 +401,26 @@ export async function POST(request: NextRequest) {
         },
       });
       const washConfig = getSupplierWashConfig(supplier?.code, supplier?.name, supplier || undefined);
-      const financials = calculateWashOrderFinancials(items, washConfig.vatType);
+      const financials = calculateWashOrderFinancials(
+        items.map((it) => ({ unitPrice: it.unitPrice ?? 150 })),
+        washConfig.vatType
+      );
       const totalCost = typeof estimatedCost === 'number' && estimatedCost > 0 ? estimatedCost : financials.grandTotal;
 
-      const vins: string[] = items.map((it: { vin: string }) => it.vin);
+      const vins: string[] = items.map((it) => it.vin);
 
       // ทุกขั้นตอนที่เขียน DB อยู่ใน transaction เดียว — ถ้าล้มกลางทาง รถจะไม่ค้างสถานะ IN_WASH
       const job = await prisma.$transaction(async (tx) => {
         // Ensure all vehicles exist in Vehicle table (e.g. customer service vehicles not previously in branch stock)
-        const itemsWithVin = items.filter((it: { vin?: string }) => it.vin);
+        const itemsWithVin = items.filter((it) => it.vin);
         if (itemsWithVin.length > 0) {
           const existingRows = await tx.vehicle.findMany({
-            where: { vin: { in: itemsWithVin.map((it: { vin: string }) => it.vin) } },
+            where: { vin: { in: itemsWithVin.map((it) => it.vin) } },
             select: { vin: true },
           });
           // SQL Server เทียบ VIN แบบไม่สนตัวพิมพ์ → เทียบแบบ upper-case ให้ตรงกับ DB
           const known = new Set(existingRows.map(r => r.vin.toUpperCase()));
-          const toCreate: { vin: string; model?: string; color?: string; licensePlate?: string }[] = [];
+          const toCreate: Array<{ vin: string; model?: string | null; color?: string | null; licensePlate?: string | null }> = [];
           for (const it of itemsWithVin) {
             const key = String(it.vin).toUpperCase();
             if (known.has(key)) continue;
@@ -482,12 +461,12 @@ export async function POST(request: NextRequest) {
             requesterPhone: snapshotPhone,
             estimatedCost: totalCost,
             carWashItems: {
-              create: items.map((it: { vin: string; actualWashDate: string; washType?: string; unitPrice?: number; remarks?: string }) => ({
+              create: items.map((it) => ({
                 vin: it.vin,
                 actualWashDate: new Date(it.actualWashDate),
                 washType: it.washType || 'STANDARD',
-                unitPrice: it.unitPrice || 150,
-                remarks: it.remarks,
+                unitPrice: it.unitPrice ?? 150,
+                remarks: it.remarks ?? undefined,
               })),
             },
           },
@@ -507,25 +486,26 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ success: true, job: serializeJob(job) }, { status: 201 });
 
-    } else if (jobType === 'VEHICLE_SLIDE') {
+    } else if (body.jobType === 'VEHICLE_SLIDE') {
       // ─── Vehicle Slide ────────────────
-      const { 
-        vin, 
+      const {
+        vin,
         vins,
         pickupBranchId: rawPickupBranchId,
-        originBranchId: rawOriginBranchId, 
-        destBranchId, 
-        customDestAddress, 
-        customDestLat, 
-        customDestLng, 
+        // legacy alias — คงไว้รองรับ 1 release ก่อนตัดออก
+        originBranchId: rawOriginBranchId,
+        destBranchId,
+        customDestAddress,
+        customDestLat,
+        customDestLng,
         customOriginAddress,
         customOriginLat,
         customOriginLng,
-        pickupDateTime, 
-        deliveryDateTime, 
-        contactPerson, 
-        contactPhone, 
-        transferReason, 
+        pickupDateTime,
+        deliveryDateTime,
+        contactPerson,
+        contactPhone,
+        transferReason,
         estimatedCost,
         distance,
         pricingMode: rawPricingMode,
@@ -549,7 +529,7 @@ export async function POST(request: NextRequest) {
       const pricingMode = normalizePricingMode(rawPricingMode);
       const isManualPricing = pricingMode === SLIDE_PRICING_MANUAL;
       const manualPriceNote = typeof rawManualPriceNote === 'string' ? rawManualPriceNote.trim() : '';
-      const distanceKm = distance != null && distance !== '' ? parseFloat(distance) : NaN;
+      const distanceKm = typeof distance === 'number' ? distance : NaN;
 
       const finalTransferReason = transferReason
         ? (distance && !transferReason.includes('ระยะทาง') ? `${transferReason} (ระยะทาง ${distance} กม.)` : transferReason)
@@ -563,7 +543,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'กรุณากรอกข้อมูลรถสไลด์ให้ครบ (ต้องระบุเลขตัวถัง และสาขาปลายทาง หรือจุดปักหมุด)' }, { status: 400 });
       }
 
-      const clientCostPerCar = estimatedCost ? parseFloat(estimatedCost) : 0;
+      const clientCostPerCar = typeof estimatedCost === 'number' ? estimatedCost : 0;
 
       if (isManualPricing) {
         if (!Number.isFinite(distanceKm) || distanceKm <= 0) {
@@ -624,8 +604,8 @@ export async function POST(request: NextRequest) {
       // Optional custom pickup pin (overrides origin branch location for navigation)
       const customOriginPin = {
         customOriginAddress: customOriginAddress || null,
-        customOriginLat: customOriginLat ? parseFloat(customOriginLat) : null,
-        customOriginLng: customOriginLng ? parseFloat(customOriginLng) : null,
+        customOriginLat: customOriginLat ?? null,
+        customOriginLng: customOriginLng ?? null,
       };
 
       // ทุกขั้นตอนที่เขียน DB อยู่ใน transaction เดียว — ถ้าล้มกลางทาง รถจะไม่ค้างสถานะ IN_TRANSIT
@@ -648,13 +628,13 @@ export async function POST(request: NextRequest) {
             destBranchId: destBranchId || null,
             destWarehouseId: resolvedDestWarehouse,
             customDestAddress: customDestAddress || null,
-            customDestLat: customDestLat ? parseFloat(customDestLat) : null,
-            customDestLng: customDestLng ? parseFloat(customDestLng) : null,
+            customDestLat: customDestLat ?? null,
+            customDestLng: customDestLng ?? null,
             ...customOriginPin,
             pickupDateTime: pickupDateTime ? new Date(pickupDateTime) : null,
             deliveryDateTime: deliveryDateTime ? new Date(deliveryDateTime) : null,
-            contactPerson,
-            contactPhone,
+            contactPerson: contactPerson ?? null,
+            contactPhone: contactPhone ?? null,
             transferReason: finalTransferReason,
             requestedById: user.id,
             requestedBy: snapshotName,
@@ -743,7 +723,7 @@ export async function POST(request: NextRequest) {
         destAddress: job.customDestAddress || job.destBranch?.address,
         destLat: job.customDestLat ?? job.destBranch?.latitude,
         destLng: job.customDestLng ?? job.destBranch?.longitude,
-        distance: distance ? parseFloat(distance) : null,
+        distance: Number.isFinite(distanceKm) ? distanceKm : null,
         supplierId,
         supplierName: job.supplier?.name,
         actorId: user.id,
@@ -784,8 +764,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'jobType ไม่ถูกต้อง' }, { status: 400 });
   } catch (error) {
-    if (error instanceof JobCreateConflict) {
-      return NextResponse.json(error.body, { status: error.status });
+    if (error instanceof AppError) {
+      return toErrorResponse(error);
     }
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&

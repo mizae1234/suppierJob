@@ -1,14 +1,30 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { assertCanMutateJob } from '@/lib/job-access';
 import { logAuditFromUser } from '@/lib/audit-log';
-import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
-import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
-import { sendJobToD365TransferJournal, resolveJobDestWarehouse } from '@/lib/d365/transfer';
 import { isFailedAttemptJob } from '@/lib/slide-failed-attempt';
+import { ConflictError, toErrorResponse } from '@/lib/errors';
+import { validateItemStatusTransition } from '@/lib/services/jobs/state-machine';
+import {
+  claimJobForApprovalPo,
+  finalizeJobApproval,
+  isPoPendingActive,
+  resolveApprovedByLabel,
+  runAsyncApprovalWithPo,
+  STATUS_CONFLICT_MESSAGE,
+} from '@/lib/services/jobs/approve-job';
+import {
+  snapshotFromWarehousesInTx,
+  moveVehiclesOnApprovalInTx,
+  releaseVehiclesInTx,
+  recordJobSlideMovementLog,
+} from '@/lib/services/jobs/vehicle-movement';
+import { parseBody, updateCarWashItemStatusSchema } from '@/lib/validation';
 
-// PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์
+// PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์ + State Machine + Optimistic Locking
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
+// เมื่อรายการสุดท้ายถูก APPROVED → เปิด D365 PO แบบ Async ผ่าน after() แล้วค่อยปิดใบงานเป็น APPROVED เมื่อ PO สำเร็จ
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; itemId: string }> }
@@ -19,22 +35,17 @@ export async function PATCH(
 
   try {
     const { id: jobId, itemId } = await params;
-    const { status, remarks } = await request.json();
-
-    if (!status || !['PENDING', 'COMPLETED', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(status)) {
-      return NextResponse.json(
-        { error: 'กรุณาระบุสถานะที่ถูกต้อง (PENDING, COMPLETED, APPROVED, REJECTED, CANCELLED)' },
-        { status: 400 }
-      );
-    }
+    const parsed = await parseBody(request, updateCarWashItemStatusSchema);
+    if (parsed.response) return parsed.response;
+    const { status, remarks } = parsed.data;
 
     // Load the parent job with all items
     const job = await prisma.job.findUnique({
       where: { id: jobId },
       include: {
         carWashItems: true,
-        pickupBranch: { select: { code: true, name: true, address: true } },
-        destBranch: { select: { code: true, name: true, address: true } },
+        pickupBranch: { select: { code: true, name: true, address: true, companyId: true } },
+        destBranch: { select: { code: true, name: true, address: true, companyId: true } },
         supplier: { select: { name: true } },
       },
     });
@@ -51,11 +62,35 @@ export async function PATCH(
     }
 
     // Verify the item belongs to this job
-    const item = job.carWashItems.find(i => i.id === itemId);
+    const item = job.carWashItems.find((i) => i.id === itemId);
     if (!item) {
       return NextResponse.json(
         { error: 'ไม่พบรายการรถคันนี้ในใบงาน' },
         { status: 404 }
+      );
+    }
+
+    // ─── Authorization Check ─────────────────────────
+    const authError = assertCanMutateJob(user, job);
+    if (authError) return authError;
+
+    // ─── State Machine Validation (Unknown status -> 400, Role -> 403, Closed job / Invalid from->to -> 409) ───
+    const transition = validateItemStatusTransition({
+      role: user.role,
+      jobStatus: job.status,
+      from: item.status,
+      to: status,
+    });
+    if (!transition.ok) {
+      return NextResponse.json({ error: transition.error }, { status: transition.status });
+    }
+    const nextStatus = transition.to;
+
+    // ป้องกันการแก้ไขรายการรถระหว่างที่ระบบกำลังส่งเปิด PO ใน D365 อยู่
+    if (isPoPendingActive(job)) {
+      return NextResponse.json(
+        { error: 'ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่' },
+        { status: 409 }
       );
     }
 
@@ -67,83 +102,24 @@ export async function PATCH(
       );
     }
 
-    // ─── Authorization Check ─────────────────────────
-    if (user.role === 'SUPPLIER') {
-      if (job.supplierId !== user.supplierId) {
-        return NextResponse.json(
-          { error: 'คุณไม่มีสิทธิ์แก้ไขงานของ Supplier อื่น' },
-          { status: 403 }
-        );
-      }
-      // Supplier can mark items as COMPLETED or CANCELLED (per-item reject)
-      if (status !== 'COMPLETED' && status !== 'CANCELLED') {
-        return NextResponse.json(
-          { error: 'Supplier สามารถส่งงาน (COMPLETED) หรือปฏิเสธรายคัน (CANCELLED) เท่านั้น' },
-          { status: 403 }
-        );
-      }
-      if (item.status === 'APPROVED') {
-        return NextResponse.json(
-          { error: 'รถคันนี้ผ่านการตรวจรับแล้ว ไม่สามารถแก้ไขได้' },
-          { status: 400 }
-        );
-      }
-      // ต้องยืนยันตัวรถ (VIN/ทะเบียน + รูป) ก่อนส่งงาน
-      if (status === 'COMPLETED' && !item.verifiedAt && !job.verifiedAt) {
-        return NextResponse.json(
-          { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
-          { status: 400 }
-        );
-      }
-    } else if (user.role === 'BRANCH') {
-      // Branch (ทั้งสาขาผู้สั่ง, สาขาจุดรับรถ, และสาขาปลายทาง) สามารถอนุมัติ/ตีกลับ/ยกเลิกรายการรถในใบงานที่เกี่ยวข้องกับสาขาตัวเองได้
-      const isRelatedBranch = 
-        job.requestedById === user.id ||
-        job.branchId === user.branchId || 
-        job.pickupBranchId === user.branchId || 
-        job.destBranchId === user.branchId;
-
-      if (user.branchId && !isRelatedBranch) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์จัดการงานของสาขาอื่น' }, { status: 403 });
-      }
-    }
-    // ADMIN and MASTER can do anything
-
-    // Prevent double approve
-    if (status === 'APPROVED' && item.status === 'APPROVED') {
+    // ─── Business Guards ─────────────────────────────
+    if (user.role === 'SUPPLIER' && nextStatus === 'COMPLETED' && !item.verifiedAt && !job.verifiedAt) {
       return NextResponse.json(
-        { error: 'รถคันนี้ได้รับการอนุมัติเรียบร้อยแล้ว' },
+        { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
         { status: 400 }
       );
     }
 
-    // Cancellation guard: Can only cancel if Supplier hasn't photo-verified the car yet
-    if (status === 'CANCELLED') {
-      if (item.status === 'CANCELLED') {
-        return NextResponse.json(
-          { error: 'รายการนี้ถูกยกเลิกไปแล้ว' },
-          { status: 400 }
-        );
-      }
-      if (item.status === 'APPROVED') {
-        return NextResponse.json(
-          { error: 'รถคันนี้ผ่านการตรวจรับแล้ว ไม่สามารถแก้ไขได้' },
-          { status: 400 }
-        );
-      }
-      if (item.verifiedAt && user.role !== 'MASTER') {
-        return NextResponse.json(
-          { error: 'ไม่สามารถยกเลิกรายการนี้ได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว' },
-          { status: 400 }
-        );
-      }
+    if (nextStatus === 'CANCELLED' && item.verifiedAt && user.role !== 'MASTER') {
+      return NextResponse.json(
+        { error: 'ไม่สามารถยกเลิกรายการนี้ได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว' },
+        { status: 400 }
+      );
     }
 
-    // ─── สร้างใบสั่งซื้อ (D365 PO) ก่อนเปลี่ยนสถานะใบงานเป็น APPROVED ────────
-    // หากการอนุมัติรถคันนี้จะทำให้ใบงานครบทุกคัน (allApproved) ต้องยิงเปิด PO ใน D365 ให้สำเร็จก่อน
-    // ถ้าเปิด PO ไม่สำเร็จ จะไม่เปลี่ยนสถานะรถและใบงาน (ให้คงอยู่ในคอลัมน์รอตรวจรับบน Kanban)
-    let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
-    if (status === 'APPROVED') {
+    // ─── ตรวจว่าการอนุมัติรถคันนี้จะทำให้ใบงานครบทุกคัน (allApproved) หรือไม่ ────────
+    // หากครบทุกคัน: เปิด PO แบบ Async ผ่าน after() และยังไม่เปลี่ยนสถานะรายการรถคันสุดท้าย/ใบงานเป็น APPROVED จนกว่า PO สำเร็จ
+    if (nextStatus === 'APPROVED') {
       const allItemsBefore = await prisma.carWashItem.findMany({ where: { jobId } });
       const simulatedItems = allItemsBefore.map((i) =>
         i.id === itemId ? { ...i, status: 'APPROVED' } : i
@@ -156,147 +132,137 @@ export async function PATCH(
         ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED'].includes(job.status);
 
       if (willAllBeApproved) {
-        const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
-        const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
-        const autoApprovedBy = userBranchLabel ? `${userBranchLabel} (${userName})` : userName;
+        const autoApprovedBy = resolveApprovedByLabel(user);
 
-        try {
-          d365Po = await sendJobToD365PurchaseOrder(jobId, {
-            trigger: 'AUTO_APPROVE',
-            actorId: user.id,
-            actorName: autoApprovedBy,
-            actorRole: user.role,
-          });
-          console.log(`[ItemStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
-        } catch (poErr) {
-          console.error(`[ItemStatus] D365 PO integration failed for job ${job.jobNumber}:`, poErr);
-          d365Po = {
-            success: false,
-            message: poErr instanceof Error ? poErr.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ D365',
-          };
-        }
-
-        if (!d365Po?.success) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: `ไม่สามารถอนุมัติใบงานได้ เนื่องจากเปิด PO ใน D365 ไม่สำเร็จ: ${d365Po?.message || 'ไม่ทราบสาเหตุ'}`,
-              d365Po,
+        // กรณีใบงานมีเลข PO อยู่แล้ว → ปิดอนุมัติได้ทันที
+        if (job.d365PoNumber) {
+          const finalized = await finalizeJobApproval({
+            jobId,
+            expectedJobStatus: job.status,
+            user,
+            approvedBy: autoApprovedBy,
+            triggerItem: {
+              itemId,
+              expectedItemStatus: item.status,
+              remarks: remarks ?? null,
             },
-            { status: 400 }
-          );
+            request,
+          });
+          const d365Po = {
+            success: true,
+            purchId: job.d365PoNumber,
+            message: `ใบงานนี้มีเลข PO แล้ว (${job.d365PoNumber})`,
+          };
+          return NextResponse.json({
+            success: true,
+            item: finalized.triggerItem ?? item,
+            progress: { ...finalized.progress, d365Po, d365Transfer: finalized.d365Transfer },
+            d365Po,
+            d365Transfer: finalized.d365Transfer,
+          });
         }
+
+        // จองสถานะ d365PoStatus = 'PENDING' แบบ atomic แล้วตอบ 202 ทันที
+        // รายการรถคันสุดท้ายยังคงเป็น COMPLETED จนกว่า PO จะสำเร็จใน after() เพื่อให้ข้อมูลสอดคล้องเสมอ
+        await claimJobForApprovalPo({ jobId, expectedStatus: job.status });
+
+        const previousPoStatus = job.d365PoStatus ?? null;
+        const expectedJobStatus = job.status;
+        const expectedItemStatus = item.status;
+
+        after(() =>
+          runAsyncApprovalWithPo({
+            jobId,
+            jobNumber: job.jobNumber,
+            expectedJobStatus,
+            previousPoStatus,
+            user,
+            approvedBy: autoApprovedBy,
+            triggerItem: {
+              itemId,
+              expectedItemStatus,
+              remarks: remarks ?? null,
+            },
+          })
+        );
+
+        const completedCount = allItemsBefore.filter((i) => i.status === 'COMPLETED').length;
+        const approvedCount = allItemsBefore.filter((i) => i.status === 'APPROVED').length;
+        const cancelledCount = allItemsBefore.filter((i) => i.status === 'CANCELLED').length;
+        const totalCount = allItemsBefore.length;
+        const doneCount = completedCount + approvedCount;
+
+        return NextResponse.json(
+          {
+            success: true,
+            pending: true,
+            message: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+            item,
+            progress: {
+              completed: doneCount,
+              approved: approvedCount,
+              cancelled: cancelledCount,
+              total: totalCount,
+              allResolved: doneCount + cancelledCount === totalCount,
+              allApproved: false,
+              pending: true,
+            },
+          },
+          { status: 202 }
+        );
       }
     }
 
-    // เก็บคลังต้นทางของรถแต่ละคันก่อนอัปเดตสถานะ เพื่อส่งให้ D365 Transfer Journal
-    const preTransferWarehouses: Record<string, string | null | undefined> = {};
-
-    // ─── Atomic Update with Transaction ──────────────
+    // ─── Non-Final Item Update with Optimistic Locking ──────────────
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Update the individual item status
-      const updatedItem = await tx.carWashItem.update({
-        where: { id: itemId },
+      // 1. หากเป็นการอนุมัติรถสไลด์รายคัน (ยังไม่ครบทั้งใบ) → snapshot Vehicle.d365WarehouseId ลง CarWashItem.fromWarehouseId ก่อนแก้คลังรถ
+      if (nextStatus === 'APPROVED' && job.jobType === 'VEHICLE_SLIDE') {
+        await snapshotFromWarehousesInTx(tx, { items: [item] });
+      }
+
+      // 2. Optimistic lock รายการรถคันนี้
+      const lockedItem = await tx.carWashItem.updateMany({
+        where: { id: itemId, status: item.status },
         data: {
-          status,
+          status: nextStatus,
           remarks: remarks || item.remarks,
         },
       });
-
-      // When item is cancelled, immediately restore vehicle status to AVAILABLE
-      if (status === 'CANCELLED') {
-        await tx.vehicle.update({
-          where: { vin: item.vin },
-          data: { status: 'AVAILABLE' },
-        });
+      if (lockedItem.count === 0) {
+        throw new ConflictError(STATUS_CONFLICT_MESSAGE);
       }
 
-      // When individual item is approved, restore vehicle status and update branch if vehicle slide
-      if (status === 'APPROVED') {
-        if (job.jobType === 'VEHICLE_SLIDE') {
-          const ev = await tx.vehicle.findUnique({
-            where: { vin: item.vin },
-            select: { vin: true, d365WarehouseId: true },
-          });
-          if (ev) preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
-        }
-        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? resolveJobDestWarehouse(job) : null;
-        await tx.vehicle.update({
-          where: { vin: item.vin },
-          data: {
-            status: 'AVAILABLE',
-            ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
-            ...(job.jobType === 'VEHICLE_SLIDE' && destWarehouse ? { d365WarehouseId: destWarehouse } : {}),
-          },
-        });
+      const updatedItem = await tx.carWashItem.findUniqueOrThrow({ where: { id: itemId } });
+
+      // 3. อัปเดตสถานะรถ (เมื่อยกเลิกหรืออนุมัติรายคัน)
+      if (nextStatus === 'CANCELLED') {
+        await releaseVehiclesInTx(tx, [item.vin]);
+      } else if (nextStatus === 'APPROVED') {
+        await moveVehiclesOnApprovalInTx(tx, job, [item.vin], false);
       }
 
-      // 2. Re-fetch all items to check overall job progress
-      const allItems = await tx.carWashItem.findMany({
-        where: { jobId },
-      });
+      // 4. Re-fetch รายการรถทั้งหมดเพื่อตรวจความคืบหน้ารวมของใบงาน
+      const allItems = await tx.carWashItem.findMany({ where: { jobId } });
 
       const completedCount = allItems.filter((i) => i.status === 'COMPLETED').length;
       const approvedCount = allItems.filter((i) => i.status === 'APPROVED').length;
       const cancelledCount = allItems.filter((i) => i.status === 'CANCELLED').length;
       const totalCount = allItems.length;
-      // "Done" from the supplier's side = submitted (COMPLETED) or already approved
       const doneCount = completedCount + approvedCount;
-      const allResolved = (doneCount + cancelledCount) === totalCount;
-      const allApproved = approvedCount > 0 && (approvedCount + cancelledCount) === totalCount;
+      const allResolved = doneCount + cancelledCount === totalCount;
+      const allApproved = approvedCount > 0 && approvedCount + cancelledCount === totalCount;
 
-      // 3a. Every car approved (or declined) → auto-approve the whole job
+      // กัน race condition กรณีมีผู้ตรวจรับอนุมัติคันอื่นพร้อมกันจนครบทุกคันระหว่าง transaction นี้
+      // ห้ามเปลี่ยนใบงานเป็น APPROVED โดยไม่ผ่าน D365 PO → rollback ให้ผู้ใช้ลองใหม่ (รอบถัดไปจะเข้า async PO flow)
       if (allApproved && ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED'].includes(job.status)) {
-        const actualCost = allItems
-          .filter((i) => i.status === 'APPROVED')
-          .reduce((sum: number, i) => sum + (i.unitPrice || 0), 0);
-
-        const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
-        const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
-        const autoApprovedBy = userBranchLabel ? `${userBranchLabel} (${userName})` : userName;
-
-        await tx.job.update({
-          where: { id: jobId },
-          data: {
-            status: 'APPROVED',
-            actualCost,
-            approvedAt: new Date(),
-            approvedBy: autoApprovedBy,
-            completedAt: job.completedAt || new Date(),
-            updatedAt: new Date(),
-          },
-        });
-
-        const approvedVins = allItems.filter((i) => i.status === 'APPROVED').map((i) => i.vin);
-        const destWarehouse = job.jobType === 'VEHICLE_SLIDE' ? resolveJobDestWarehouse(job) : null;
-        if (approvedVins.length > 0) {
-          await tx.vehicle.updateMany({
-            where: { vin: { in: approvedVins } },
-            data: {
-              status: 'AVAILABLE',
-              ...(job.jobType === 'VEHICLE_SLIDE' && job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
-              ...(job.jobType === 'VEHICLE_SLIDE' && destWarehouse ? { d365WarehouseId: destWarehouse } : {}),
-            },
-          });
-        }
-
-        await tx.jobActivity.create({
-          data: {
-            jobId,
-            action: 'JOB_APPROVED',
-            actor: 'ระบบอัตโนมัติ',
-            actorRole: 'SYSTEM',
-            description: `อนุมัติครบทุกคัน (${approvedCount} คัน${cancelledCount ? `, ปฏิเสธ ${cancelledCount} คัน` : ''}) — ค่าบริการสุทธิ ฿${actualCost.toLocaleString()} — ปิดใบงานอัตโนมัติ`,
-            metadata: JSON.stringify({ approved: approvedCount, cancelled: cancelledCount, total: totalCount, actualCost }),
-          },
-        });
+        throw new ConflictError(STATUS_CONFLICT_MESSAGE);
       }
-      // 3b. Auto-transition parent Job status when all items have a final status
-      else if (allResolved && job.status === 'IN_PROGRESS') {
+
+      // 5. Auto-transition parent Job status เมื่อทุกรายการมีสถานะครบแล้ว (พร้อม optimistic lock)
+      if (allResolved && ['IN_PROGRESS', 'PENDING_SUPPLIER', 'REJECTED'].includes(job.status)) {
         if (cancelledCount === totalCount) {
-          // All items cancelled → cancel the entire job
-          await tx.job.update({
-            where: { id: jobId },
+          const lockedJob = await tx.job.updateMany({
+            where: { id: jobId, status: job.status },
             data: {
               status: 'CANCELLED',
               actualCost: 0,
@@ -304,6 +270,9 @@ export async function PATCH(
               updatedAt: new Date(),
             },
           });
+          if (lockedJob.count === 0) {
+            throw new ConflictError(STATUS_CONFLICT_MESSAGE);
+          }
 
           await tx.jobActivity.create({
             data: {
@@ -316,13 +285,12 @@ export async function PATCH(
             },
           });
         } else {
-          // Mix of completed + cancelled → move to WAITING_APPROVAL for admin review
           const actualCost = allItems
             .filter((i) => i.status === 'COMPLETED' || i.status === 'APPROVED')
             .reduce((sum: number, i) => sum + (i.unitPrice || 0), 0);
 
-          await tx.job.update({
-            where: { id: jobId },
+          const lockedJob = await tx.job.updateMany({
+            where: { id: jobId, status: job.status },
             data: {
               status: 'WAITING_APPROVAL',
               actualCost,
@@ -330,6 +298,9 @@ export async function PATCH(
               updatedAt: new Date(),
             },
           });
+          if (lockedJob.count === 0) {
+            throw new ConflictError(STATUS_CONFLICT_MESSAGE);
+          }
 
           await tx.jobActivity.create({
             data: {
@@ -343,21 +314,29 @@ export async function PATCH(
           });
         }
       } else if (cancelledCount > 0 || job.actualCost !== null) {
-        // Keep actualCost in sync when items are rejected or updated
         const validSum = allItems
           .filter((i) => i.status !== 'CANCELLED')
           .reduce((sum: number, i) => sum + (i.unitPrice || 0), 0);
 
-        await tx.job.update({
-          where: { id: jobId },
+        const lockedJob = await tx.job.updateMany({
+          where: { id: jobId, status: job.status },
           data: {
             actualCost: validSum,
             updatedAt: new Date(),
           },
         });
+        if (lockedJob.count === 0) {
+          throw new ConflictError(STATUS_CONFLICT_MESSAGE);
+        }
+      } else {
+        // กรณีอัปเดตเฉพาะสถานะรายคันโดยไม่เปลี่ยนสถานะ/ยอดรวมใบงาน → ขยับ updatedAt เพื่อให้ incremental polling รับรู้
+        await tx.job.update({
+          where: { id: jobId },
+          data: { updatedAt: new Date() },
+        });
       }
 
-      // 4. Log activity for the item status change
+      // 6. Log activity for the item status change
       const actionMap: Record<string, string> = {
         COMPLETED: 'ITEM_COMPLETED',
         APPROVED: 'ITEM_APPROVED',
@@ -370,24 +349,25 @@ export async function PATCH(
         COMPLETED: `Supplier ส่งงานรถคัน ${item.vin} เรียบร้อย (${doneCount}/${totalCount})`,
         APPROVED: `สาขาอนุมัติรถคัน ${item.vin} (อนุมัติแล้ว ${approvedCount}/${totalCount - cancelledCount})`,
         REJECTED: `สาขาตีกลับรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
-        CANCELLED: user.role === 'SUPPLIER'
-          ? `Supplier ปฏิเสธรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''} (ปฏิเสธ ${cancelledCount}/${totalCount})`
-          : `ยกเลิกคำสั่งงานรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
+        CANCELLED:
+          user.role === 'SUPPLIER'
+            ? `Supplier ปฏิเสธรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''} (ปฏิเสธ ${cancelledCount}/${totalCount})`
+            : `ยกเลิกคำสั่งงานรถคัน ${item.vin}${remarks ? ` — เหตุผล: ${remarks}` : ''}`,
         PENDING: `รีเซ็ตสถานะรถคัน ${item.vin} กลับเป็นรอดำเนินการ`,
       };
 
       await tx.jobActivity.create({
         data: {
           jobId,
-          action: actionMap[status] || status,
+          action: actionMap[nextStatus] || nextStatus,
           actor: user.displayName || user.username,
           actorRole: user.role,
           itemId,
           vin: item.vin,
-          description: descMap[status] || `อัปเดตสถานะรถคัน ${item.vin} เป็น ${status}`,
-          metadata: JSON.stringify({ 
-            fromStatus: item.status, 
-            toStatus: status,
+          description: descMap[nextStatus] || `อัปเดตสถานะรถคัน ${item.vin} เป็น ${nextStatus}`,
+          metadata: JSON.stringify({
+            fromStatus: item.status,
+            toStatus: nextStatus,
             remarks: remarks || null,
           }),
         },
@@ -395,7 +375,14 @@ export async function PATCH(
 
       return {
         item: updatedItem,
-        progress: { completed: doneCount, approved: approvedCount, cancelled: cancelledCount, total: totalCount, allResolved, allApproved },
+        progress: {
+          completed: doneCount,
+          approved: approvedCount,
+          cancelled: cancelledCount,
+          total: totalCount,
+          allResolved,
+          allApproved,
+        },
       };
     });
 
@@ -411,74 +398,52 @@ export async function PATCH(
       action: 'UPDATE_ITEM_STATUS',
       entityType: 'CarWashItem',
       entityId: itemId,
-      description: `${statusLabel[status] || status}รถคัน ${item.vin} ในใบงาน ${job.jobNumber}${remarks ? ` — ${remarks}` : ''}`,
-      metadata: { jobId, jobNumber: job.jobNumber, vin: item.vin, fromStatus: item.status, toStatus: status, remarks },
+      description: `${statusLabel[nextStatus] || nextStatus}รถคัน ${item.vin} ในใบงาน ${job.jobNumber}${remarks ? ` — ${remarks}` : ''}`,
+      metadata: {
+        jobId,
+        jobNumber: job.jobNumber,
+        vin: item.vin,
+        fromStatus: item.status,
+        toStatus: nextStatus,
+        remarks,
+      },
       request,
     });
 
     // Record VehicleSlideLog if VEHICLE_SLIDE
     if (job.jobType === 'VEHICLE_SLIDE') {
-      const { originName, destName } = getSlideRouteLabels(job);
       let slideAction: 'DELIVERED' | 'APPROVED' | 'CANCELLED' | null = null;
-      if (status === 'COMPLETED') slideAction = 'DELIVERED';
-      else if (status === 'APPROVED') slideAction = 'APPROVED';
-      else if (status === 'CANCELLED') slideAction = 'CANCELLED';
+      if (nextStatus === 'COMPLETED') slideAction = 'DELIVERED';
+      else if (nextStatus === 'APPROVED') slideAction = 'APPROVED';
+      else if (nextStatus === 'CANCELLED') slideAction = 'CANCELLED';
 
       if (slideAction) {
-        recordVehicleSlideLog({
-          jobId,
-          jobNumber: job.jobNumber,
+        recordJobSlideMovementLog(job, {
           vins: [item.vin],
           action: slideAction,
-          pickupBranchId: job.pickupBranchId,
-          originName,
-          originAddress: job.customOriginAddress || job.pickupBranch?.address,
-          originLat: job.customOriginLat,
-          originLng: job.customOriginLng,
-          destBranchId: job.destBranchId,
-          destName,
-          destAddress: job.customDestAddress || job.destBranch?.address,
-          destLat: job.customDestLat,
-          destLng: job.customDestLng,
-          distance: null,
-          supplierId: job.supplierId,
-          supplierName: job.supplier?.name,
           actorId: user.id,
           actorName: user.displayName || user.username,
           actorRole: user.role,
-          remarks: remarks || (slideAction === 'DELIVERED' ? 'Supplier นำส่งรถถึงปลายทาง' : slideAction === 'APPROVED' ? 'สาขาตรวจรับรถเรียบร้อย' : 'ยกเลิกรายการสไลด์รถ'),
+          remarks:
+            remarks ||
+            (slideAction === 'DELIVERED'
+              ? 'Supplier นำส่งรถถึงปลายทาง'
+              : slideAction === 'APPROVED'
+                ? 'สาขาตรวจรับรถเรียบร้อย'
+                : 'ยกเลิกรายการสไลด์รถ'),
         });
-      }
-    }
-
-    // ─── Trigger D365 Inventory Transfer Journal (หลังเปิด PO และอนุมัติครบทุกคันสำเร็จ) ──────────────
-    let d365Transfer: { success: boolean; transferredCount: number; message: string } | undefined;
-    if (result.progress.allApproved && job.jobType === 'VEHICLE_SLIDE') {
-      try {
-        d365Transfer = await sendJobToD365TransferJournal(jobId, {
-          actorId: user.id,
-          actorName: user.displayName || user.username,
-          actorRole: user.role,
-          preTransferWarehouses,
-        });
-        console.log(`[ItemStatus] D365 Transfer result for ${job.jobNumber}:`, d365Transfer);
-      } catch (transferErr) {
-        console.error(`[ItemStatus] D365 Transfer Journal failed for job ${job.jobNumber}:`, transferErr);
       }
     }
 
     return NextResponse.json({
       success: true,
       item: result.item,
-      progress: { ...result.progress, d365Po, d365Transfer },
-      d365Po,
-      d365Transfer,
+      progress: result.progress,
     });
   } catch (error) {
-    console.error('PATCH /api/jobs/[id]/items/[itemId]/status error:', error);
-    return NextResponse.json(
-      { error: 'ไม่สามารถอัปเดตสถานะรายการได้' },
-      { status: 500 }
-    );
+    if (!(error instanceof ConflictError)) {
+      console.error('PATCH /api/jobs/[id]/items/[itemId]/status error:', error);
+    }
+    return toErrorResponse(error, 'ไม่สามารถอัปเดตสถานะรายการได้');
   }
 }

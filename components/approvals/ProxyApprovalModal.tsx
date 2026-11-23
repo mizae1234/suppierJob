@@ -44,7 +44,7 @@ export function ProxyApprovalModal({ job, onClose, onConfirm }: ProxyApprovalMod
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500 font-sans">สาขาต้นทาง:</span>
-              <span className="font-bold font-sans">{job.originBranchName || job.branchName}</span>
+              <span className="font-bold font-sans">{job.pickupBranchName || job.branchName}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500 font-sans">สาขาปลายทาง:</span>

@@ -69,8 +69,8 @@ export default function VehicleReportsPage() {
   const allRecords: VehicleRecord[] = useMemo(() => {
     const records: VehicleRecord[] = [];
 
-    const getRouteLabel = (j: any) => {
-      const origin = j.customOriginAddress || j.originBranchName || j.branchName || 'ต้นทาง';
+    const getRouteLabel = (j: (typeof jobs)[number]) => {
+      const origin = j.customOriginAddress || j.pickupBranchName || j.branchName || 'ต้นทาง';
       const dest = j.customDestAddress || j.destBranchName || 'ปลายทาง';
       return `${origin} ➔ ${dest}${j.distance ? ` (${j.distance} กม.)` : ''}`;
     };

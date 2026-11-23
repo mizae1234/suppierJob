@@ -12,7 +12,6 @@ import {
   Invoice, 
   JobStatus, 
   JobEvidence,
-  CarWashItem,
   CarWashItemStatus,
   CarWashItemProgress,
 } from '@/types';
@@ -44,7 +43,7 @@ interface CreateCarWashParams {
 interface CreateVehicleSlideParams {
   companyCode: CompanyCode;
   branchId?: string;
-  originBranchId: string;
+  pickupBranchId: string;
   destBranchId: string;
   supplierId: string;
   vin?: string;
@@ -103,6 +102,8 @@ interface AppContextType {
 
   // Helpers / Computed
   isLoaded: boolean;
+  /** true เมื่อ API /api/jobs ตัดจำนวนงานตามเพดานสูงสุด (ตัวเลขในรายงานอาจไม่ครบทั้งหมด) */
+  jobsTruncated: boolean;
   activeBranch?: Branch;
   activeSupplier?: Supplier;
   filteredJobs: Job[];
@@ -112,7 +113,7 @@ interface AppContextType {
   // Actions
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
-  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }>;
+  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; pending?: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }>;
   updateCarWashItemStatus: (jobId: string, itemId: string, status: CarWashItemStatus, remarks?: string) => Promise<CarWashItemProgress | null>;
   addVehiclesToJob: (
     jobId: string,
@@ -131,27 +132,108 @@ interface AppContextType {
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
   refreshJobs: () => Promise<void>;
+  refreshJob: (id: string) => Promise<Job | null>;
+  refreshJobsAndVehicles: () => Promise<void>;
   resetToDefaultData: () => void;
+}
+
+const POLL_INTERVAL_MS = 30_000;        // ดึงเฉพาะงานที่เปลี่ยนทุก 30 วินาที
+const FULL_RELOAD_INTERVAL_MS = 300_000; // โหลดเต็มทุก ~5 นาที เพื่อตัดงานที่ถูกลบหรือหลุดขอบเขตสิทธิ์
+const FOCUS_DEBOUNCE_MS = 5_000;         // กันยิงซ้ำเมื่อ focus + visibilitychange ทำงานพร้อมกัน
+
+function isSameJobSnapshot(a: Job, b: Job): boolean {
+  return (
+    a.id === b.id &&
+    a.updatedAt === b.updatedAt &&
+    a.status === b.status &&
+    a.d365PoStatus === b.d365PoStatus &&
+    a.d365PoNumber === b.d365PoNumber &&
+    a.d365PoMessage === b.d365PoMessage &&
+    a.d365TransferStatus === b.d365TransferStatus &&
+    a.d365TransferMessage === b.d365TransferMessage &&
+    (a.evidenceCount ?? a.evidences?.length ?? 0) === (b.evidenceCount ?? b.evidences?.length ?? 0) &&
+    (a.carWashItems?.length ?? 0) === (b.carWashItems?.length ?? 0)
+  );
+}
+
+function areJobListsEqual(prev: Job[], next: Job[]): boolean {
+  if (prev.length !== next.length) return false;
+  for (let i = 0; i < prev.length; i++) {
+    if (!isSameJobSnapshot(prev[i], next[i])) return false;
+  }
+  return true;
+}
+
+function shouldKeepExistingOverIncoming(existing: Job, incoming: Job): boolean {
+  if (incoming.updatedAt < existing.updatedAt) return true;
+  // กันผล poll ที่ค้างกลางทางทับสถานะ optimistic d365PoStatus='PENDING' ก่อนเซิร์ฟเวอร์ขยับ updatedAt
+  if (
+    incoming.updatedAt === existing.updatedAt &&
+    existing.d365PoStatus === 'PENDING' &&
+    incoming.d365PoStatus !== 'PENDING' &&
+    incoming.status !== 'APPROVED'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function mergeIncrementalJobs(prev: Job[], delta: Job[]): Job[] {
+  if (delta.length === 0) return prev;
+  const prevById = new Map<string, Job>();
+  for (const job of prev) prevById.set(job.id, job);
+
+  let changed = false;
+  const deltaById = new Map<string, Job>();
+  const newJobs: Job[] = [];
+
+  for (const job of delta) {
+    const existing = prevById.get(job.id);
+    if (!existing) {
+      changed = true;
+      deltaById.set(job.id, job);
+      newJobs.push(job);
+    } else if (shouldKeepExistingOverIncoming(existing, job)) {
+      continue;
+    } else if (!isSameJobSnapshot(existing, job)) {
+      changed = true;
+      deltaById.set(job.id, job);
+    }
+  }
+
+  if (!changed) return prev;
+
+  const merged = [
+    ...newJobs,
+    ...prev.map(job => deltaById.get(job.id) ?? job),
+  ];
+  merged.sort((a, b) => (b.createdAt > a.createdAt ? 1 : b.createdAt < a.createdAt ? -1 : 0));
+  return merged;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated, selectedCompany } = useAuth();
+  const userId = user?.id;
+  const userRole = user?.role;
+  const userCompanyCode = user?.companyCode;
+  const userBranchId = user?.branchId;
+  const userSupplierId = user?.supplierId;
 
   const [currentRole, setCurrentRole] = useState<UserRole>('ADMIN');
   const [currentCompany, setCurrentCompany] = useState<'ALL' | CompanyCode>('ALL');
   const [currentBranchId, setCurrentBranchId] = useState<string>('');
   const [currentSupplierIdState, setCurrentSupplierIdState] = useState<string>('');
-  const currentSupplierId = user?.role === 'SUPPLIER' ? (user.supplierId || '') : currentSupplierIdState;
+  const currentSupplierId = userRole === 'SUPPLIER' ? (userSupplierId || '') : currentSupplierIdState;
 
   const setCurrentSupplierId = useCallback((id: string) => {
-    if (user?.role === 'SUPPLIER') {
-      setCurrentSupplierIdState(user.supplierId || '');
+    if (userRole === 'SUPPLIER') {
+      setCurrentSupplierIdState(userSupplierId || '');
       return;
     }
     setCurrentSupplierIdState(id);
-  }, [user]);
+  }, [userRole, userSupplierId]);
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -160,6 +242,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [jobs, setJobs] = useState<Job[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const [jobsTruncated, setJobsTruncated] = useState<boolean>(false);
 
   // ─── Fetch data from API (split so mutations refresh only what they affect) ───
   // Master data: companies (+ flattened branches) and suppliers
@@ -200,19 +283,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const isFetchingJobsRef = useRef(false);
+  const lastServerTimeRef = useRef<string | null>(null);
+  const lastFullLoadAtRef = useRef<number>(0);
+  const lastFetchAtRef = useRef<number>(0);
+  const pendingPoIdsRef = useRef<Set<string>>(new Set());
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (options?: { full?: boolean }) => {
     if (isFetchingJobsRef.current) return;
     isFetchingJobsRef.current = true;
+    const now = Date.now();
+    lastFetchAtRef.current = now;
+
+    const shouldFullLoad =
+      Boolean(options?.full) ||
+      !lastServerTimeRef.current ||
+      now - lastFullLoadAtRef.current >= FULL_RELOAD_INTERVAL_MS;
+
     try {
-      const res = await fetch('/api/jobs', { cache: 'no-store' });
+      const url = shouldFullLoad
+        ? '/api/jobs?view=list'
+        : `/api/jobs?view=list&updatedSince=${encodeURIComponent(lastServerTimeRef.current!)}`;
+      const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.jobs) setJobs(data.jobs);
+      if (typeof data.serverTime === 'string') {
+        lastServerTimeRef.current = data.serverTime;
+      }
+      if (!Array.isArray(data.jobs)) return;
+      const incoming = data.jobs as Job[];
+
+      const pendingPoApproved = incoming.some(
+        job => pendingPoIdsRef.current.has(job.id) && job.status === 'APPROVED'
+      );
+      if (shouldFullLoad) {
+        lastFullLoadAtRef.current = Date.now();
+        setJobsTruncated(Boolean(data.truncated));
+        setJobs(prev => {
+          const prevById = new Map(prev.map(j => [j.id, j]));
+          const reconciled = incoming.map(job => {
+            const existing = prevById.get(job.id);
+            if (existing && shouldKeepExistingOverIncoming(existing, job)) {
+              return existing;
+            }
+            return job;
+          });
+          return areJobListsEqual(prev, reconciled) ? prev : reconciled;
+        });
+      } else if (incoming.length > 0) {
+        setJobs(prev => mergeIncrementalJobs(prev, incoming));
+      }
+      // หาก incremental/full poll รับรู้ว่า PO ที่รออยู่เพิ่งอนุมัติเสร็จก่อน 5s poller → รีเฟรชรถด้วย
+      if (pendingPoApproved) {
+        void fetchVehicles();
+      }
     } catch (e) {
       console.error('Failed to fetch jobs:', e);
     } finally {
       isFetchingJobsRef.current = false;
+    }
+  }, [fetchVehicles]);
+
+  const refreshJobs = useCallback(async () => {
+    await fetchJobs({ full: true });
+  }, [fetchJobs]);
+
+  // ดึงใบงานเดียวแบบเต็มจาก /api/jobs/[id] แล้วแทนที่ใน state (ใช้หลัง action ระดับใบงาน)
+  const refreshJob = useCallback(async (id: string): Promise<Job | null> => {
+    if (!id) return null;
+    try {
+      const res = await fetch(`/api/jobs/${id}`, { cache: 'no-store' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data?.job) return null;
+      const freshJob = data.job as Job;
+      setJobs(prev => {
+        const idx = prev.findIndex(j => j.id === freshJob.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = freshJob;
+          return next;
+        }
+        const next = [freshJob, ...prev];
+        next.sort((a, b) => (b.createdAt > a.createdAt ? 1 : b.createdAt < a.createdAt ? -1 : 0));
+        return next;
+      });
+      return freshJob;
+    } catch (e) {
+      console.error('Failed to refresh job:', e);
+      return null;
     }
   }, []);
 
@@ -230,48 +388,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Full reload of everything (initial load + refreshData)
   const fetchData = useCallback(async () => {
     try {
-      await Promise.all([fetchMasterData(), fetchVehicles(), fetchJobs(), fetchInvoices()]);
+      await Promise.all([fetchMasterData(), fetchVehicles(), fetchJobs({ full: true }), fetchInvoices()]);
     } finally {
       setIsLoaded(true);
     }
   }, [fetchMasterData, fetchVehicles, fetchJobs, fetchInvoices]);
 
-  // Job create / status changes can lock or release vehicles → refresh both
+  // Job create / status changes can lock or release vehicles → refresh both (incremental jobs + vehicles)
   const fetchJobsAndVehicles = useCallback(async () => {
-    await Promise.all([fetchJobs(), fetchVehicles()]);
+    await Promise.all([fetchJobs({ full: false }), fetchVehicles()]);
   }, [fetchJobs, fetchVehicles]);
 
   // ─── ติดตามสถานะ PO ที่กำลังส่งไป D365 เบื้องหลัง ─────
-  // หลังอนุมัติ ระบบส่ง PO แบบ background (after()) → งานจะอยู่สถานะ PENDING ชั่วครู่
-  // ดึงเฉพาะงานนั้นทุก 5 วินาที (สูงสุด ~1 นาที) จนได้ผลลัพธ์ แล้วอัปเดตเฉพาะงานนั้นใน state
+  // เมื่อกดอนุมัติ API จะจอง d365PoStatus=PENDING แล้วตอบ 202 ทันที จากนั้นเปิด PO และปิดอนุมัติใน after()
+  // (ใบงานจะยังไม่เปลี่ยนเป็น APPROVED จนกว่า PO สำเร็จ)
+  // ดึงเฉพาะงานที่ PENDING ทุก 5 วินาที สูงสุด 48 ครั้ง (~4 นาที เผื่อ PO timeout 120 วินาที + OData recovery)
   const pendingPoJobIds = useMemo(
     () => jobs.filter(j => j.d365PoStatus === 'PENDING').map(j => j.id).sort().join(','),
     [jobs]
   );
 
   useEffect(() => {
+    pendingPoIdsRef.current = new Set(pendingPoJobIds ? pendingPoJobIds.split(',') : []);
+  }, [pendingPoJobIds]);
+
+  useEffect(() => {
     if (!pendingPoJobIds) return;
     const ids = pendingPoJobIds.split(',');
+    const MAX_POLL_ATTEMPTS = 48; // 48 x 5 วินาที = 4 นาที
     let attempts = 0;
     let cancelled = false;
 
     const timer = setInterval(async () => {
       attempts++;
-      if (attempts >= 12) clearInterval(timer);
+      if (attempts >= MAX_POLL_ATTEMPTS) clearInterval(timer);
       const results = await Promise.all(
         ids.map(id =>
-          fetch(`/api/jobs/${id}`)
+          fetch(`/api/jobs/${id}`, { cache: 'no-store' })
             .then(res => (res.ok ? res.json() : null))
             .catch(() => null)
         )
       );
       if (cancelled) return;
       const settled = new Map<string, Job>();
+      let hasApproved = false;
       for (const r of results) {
-        if (r?.job && r.job.d365PoStatus !== 'PENDING') settled.set(r.job.id, r.job as Job);
+        if (r?.job && r.job.d365PoStatus !== 'PENDING') {
+          settled.set(r.job.id, r.job as Job);
+          if (r.job.status === 'APPROVED') hasApproved = true;
+        }
       }
       if (settled.size > 0) {
         setJobs(prev => prev.map(j => settled.get(j.id) ?? j));
+        if (hasApproved) {
+          void fetchVehicles();
+        }
       }
     }, 5000);
 
@@ -279,91 +450,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cancelled = true;
       clearInterval(timer);
     };
-  }, [pendingPoJobIds]);
+  }, [pendingPoJobIds, fetchVehicles]);
 
-  // ─── Auto-refresh ใบงานอัตโนมัติ (Kanban / หน้างานทั้งหมดอัปเดตแบบไม่ต้องรีเฟรชเอง) ─────
+  // ─── Auto-refresh ใบงานแบบ incremental ทุก 30 วินาที (+ โหลดเต็มทุก ~5 นาที และ debounce focus/visibility) ─────
   useEffect(() => {
     if (!isAuthenticated) return;
 
     const refreshIfVisible = () => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible') {
-        fetchJobs();
+        void fetchJobs({ full: false });
       }
     };
 
-    const interval = setInterval(refreshIfVisible, 10000);
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') fetchJobs();
-    };
-    const handleFocus = () => fetchJobs();
+    const interval = setInterval(refreshIfVisible, POLL_INTERVAL_MS);
 
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('focus', handleFocus);
+    // รวม focus + visibilitychange เป็น handler เดียวพร้อม debounce >= 5 วินาทีจากครั้งล่าสุด
+    const handleResume = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (Date.now() - lastFetchAtRef.current < FOCUS_DEBOUNCE_MS) return;
+      void fetchJobs({ full: false });
+    };
+
+    document.addEventListener('visibilitychange', handleResume);
+    window.addEventListener('focus', handleResume);
 
     return () => {
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleResume);
+      window.removeEventListener('focus', handleResume);
     };
   }, [isAuthenticated, fetchJobs]);
 
-  // ─── Sync user auth data to context ─────────────
-  useEffect(() => {
-    if (!isAuthenticated || !user) {
+  // ─── Sync user auth data to context (อ้างอิงเฉพาะค่า primitive ที่เสถียรแทน user object ทั้งก้อน) ─────────────
+  const authSyncKey = isAuthenticated && userId
+    ? `${userId}|${userRole || ''}|${userCompanyCode || ''}|${userBranchId || ''}|${userSupplierId || ''}|${selectedCompany || ''}`
+    : 'GUEST';
+  const [prevAuthSyncKey, setPrevAuthSyncKey] = useState<string | null>(null);
+  if (prevAuthSyncKey !== authSyncKey) {
+    setPrevAuthSyncKey(authSyncKey);
+    if (!isAuthenticated || !userId) {
       setCurrentRole('ADMIN');
       setCurrentCompany('ALL');
       setCurrentBranchId('');
-      setCurrentSupplierId('');
-      return;
-    }
+      setCurrentSupplierIdState('');
+      setJobsTruncated(false);
+    } else {
+      setCurrentRole((userRole || 'ADMIN') as UserRole);
+      setCurrentBranchId(userBranchId || '');
+      setCurrentSupplierIdState(userSupplierId || '');
 
-    setCurrentRole(user.role as UserRole);
-    setCurrentBranchId(user.branchId || '');
-    setCurrentSupplierId(user.supplierId || '');
-
-    // Set company based on user's role + login selection
-    if (user.role === 'MASTER') {
-      // Master can see everything, allow switching companies
-      setCurrentCompany(selectedCompany || 'ALL');
-    } else if (user.role === 'ADMIN') {
-      // Admin is locked to their company
-      if (user.companyCode) {
-        setCurrentCompany(user.companyCode as CompanyCode);
-      } else {
+      // Set company based on user's role + login selection
+      if (userRole === 'MASTER') {
+        // Master can see everything, allow switching companies
         setCurrentCompany(selectedCompany || 'ALL');
+      } else if (userRole === 'ADMIN') {
+        // Admin is locked to their company
+        if (userCompanyCode) {
+          setCurrentCompany(userCompanyCode as CompanyCode);
+        } else {
+          setCurrentCompany(selectedCompany || 'ALL');
+        }
+      } else if (userCompanyCode) {
+        setCurrentCompany(userCompanyCode as CompanyCode);
       }
-    } else if (user.companyCode) {
-      setCurrentCompany(user.companyCode as CompanyCode);
     }
+  }
 
+  useEffect(() => {
+    // รีเซ็ตตัวชี้เวลาเพื่อให้โหลดเต็มใหม่เมื่อเปลี่ยนผู้ใช้หรือบริษัท
+    lastServerTimeRef.current = null;
+    lastFullLoadAtRef.current = 0;
+    lastFetchAtRef.current = 0;
+    if (!isAuthenticated || !userId) return;
     fetchData();
-  }, [isAuthenticated, user, selectedCompany, fetchData]);
+  }, [isAuthenticated, userId, userRole, userCompanyCode, userBranchId, userSupplierId, selectedCompany, fetchData]);
 
   const activeBranch = useMemo(
     () => branches.find(b => b.id === currentBranchId),
     [branches, currentBranchId]
   );
-  const effectiveSupplierId = user?.role === 'SUPPLIER' ? (user.supplierId || '') : currentSupplierId;
+  const effectiveSupplierId = userRole === 'SUPPLIER' ? (userSupplierId || '') : currentSupplierId;
   const activeSupplier = useMemo(
     () => suppliers.find(s => s.id === effectiveSupplierId),
     [suppliers, effectiveSupplierId]
   );
-
-  const userRole = user?.role;
-  const userSupplierId = user?.supplierId;
 
   // ─── Filtered data ──────────────────────────────
   const filteredJobs = useMemo(() => jobs.filter(job => {
     if (currentRole === 'BRANCH') {
       // Branch user sees all jobs involving their branch (requester, origin, or destination)
       // regardless of company code (e.g. EV7 transfers car to GI-อยุธยา)
-      return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;
+      return job.branchId === currentBranchId || job.pickupBranchId === currentBranchId || job.destBranchId === currentBranchId;
     }
     if (currentCompany !== 'ALL' && job.companyCode !== currentCompany) return false;
     if (currentRole === 'MASTER') {
       // If MASTER has selected a specific branch, filter by it
       if (currentBranchId) {
-        return job.branchId === currentBranchId || job.originBranchId === currentBranchId || job.destBranchId === currentBranchId;
+        return job.branchId === currentBranchId || job.pickupBranchId === currentBranchId || job.destBranchId === currentBranchId;
       }
       return true;
     }
@@ -432,11 +615,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({
           jobType: 'VEHICLE_SLIDE',
           companyId: company?.id,
-          branchId: params.branchId || params.originBranchId,
+          branchId: params.branchId || params.pickupBranchId,
           supplierId: params.supplierId,
           vin: params.vin,
           vins: params.vins,
-          originBranchId: params.originBranchId,
+          pickupBranchId: params.pickupBranchId,
           destBranchId: params.destBranchId || undefined,
           customDestAddress: params.customDestAddress,
           customDestLat: params.customDestLat,
@@ -477,7 +660,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     jobId: string, 
     status: JobStatus, 
     options?: { rejectReason?: string; approvedBy?: string }
-  ): Promise<{ success: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }> => {
+  ): Promise<{ success: boolean; pending?: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }> => {
     try {
       const res = await fetch(`/api/jobs/${jobId}/status`, {
         method: 'PATCH',
@@ -509,6 +692,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           d365Po: data.d365Po,
         };
       }
+
+      // 202 Pending: กำลังเปิด PO ใน D365 เบื้องหลัง → ยังไม่เปลี่ยน status เป็น APPROVED (poller จะอัปเดตเมื่อเสร็จ)
+      if (res.status === 202 || data.pending) {
+        setJobs(prev =>
+          prev.map(j =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  d365PoStatus: 'PENDING',
+                  d365PoMessage: data.message || 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+                  d365PoSentAt: new Date().toISOString(),
+                }
+              : j
+          )
+        );
+        return { success: true, pending: true };
+      }
+
       // อัปเดต state ทันทีเพื่อให้ UI และเลข PO แสดงผลโดยไม่ต้องรอโหลดข้อมูลรถทั้งหมดซ้ำ
       setJobs(prev =>
         prev.map(j => {
@@ -533,9 +734,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // ซิงค์ข้อมูลใบงานและรถเบื้องหลังโดยไม่บล็อกปุ่มผู้ใช้
       void fetchJobsAndVehicles();
       return { success: true, d365Po: data.d365Po };
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Update job status failed:', e);
-      return { success: false, error: e?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ' };
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ',
+      };
     }
   }, [fetchJobsAndVehicles]);
 
@@ -577,6 +781,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           allCompleted: false,
           error: data.error || 'ไม่สามารถอนุมัติรายการได้',
           d365Po: data.d365Po,
+        };
+      }
+      // 202 Pending: คันสุดท้ายที่ทำให้ปิดใบงาน → กำลังเปิด PO ใน D365 เบื้องหลัง ยังไม่เปลี่ยน status เป็น APPROVED
+      if (res.status === 202 || data.pending) {
+        setJobs(prev =>
+          prev.map(j =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  d365PoStatus: 'PENDING',
+                  d365PoMessage: data.message || 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+                  d365PoSentAt: new Date().toISOString(),
+                }
+              : j
+          )
+        );
+        return {
+          completed: data.progress?.completed ?? 0,
+          approved: data.progress?.approved ?? 0,
+          cancelled: data.progress?.cancelled ?? 0,
+          total: data.progress?.total ?? 0,
+          allResolved: !!data.progress?.allResolved,
+          allApproved: false,
+          allCompleted: !!data.progress?.allResolved,
+          pending: true,
         };
       }
       if (data.success) {
@@ -639,9 +868,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       await fetchJobsAndVehicles();
       return { success: true, addedCount: data.addedCount };
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Add vehicles to job failed:', e);
-      return { success: false, error: e?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์' };
+      return {
+        success: false,
+        error: e instanceof Error ? e.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์',
+      };
     }
   }, [fetchJobsAndVehicles]);
 
@@ -653,12 +885,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(evidence),
       });
-      // Evidence only adds a photo to the job → jobs only
-      await fetchJobs();
+      // อัปเดตเฉพาะใบงานนี้แทนการโหลดใบงานทั้งหมดซ้ำ
+      await refreshJob(jobId);
     } catch (e) {
       console.error('Add evidence failed:', e);
     }
-  }, [fetchJobs]);
+  }, [refreshJob]);
 
   // ─── Action: Create Invoice (via API) ───────────
   const createInvoice = useCallback(async (params: CreateInvoiceParams) => {
@@ -707,6 +939,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Memoize the context value so the 29+ consumers only re-render when something they read changes
   const value = useMemo<AppContextType>(() => ({
     isLoaded,
+    jobsTruncated,
     currentRole,
     setCurrentRole,
     currentCompany,
@@ -734,10 +967,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addJobEvidence,
     createInvoice,
     refreshData,
-    refreshJobs: fetchJobs,
+    refreshJobs,
+    refreshJob,
+    refreshJobsAndVehicles: fetchJobsAndVehicles,
     resetToDefaultData,
   }), [
     isLoaded,
+    jobsTruncated,
     currentRole,
     currentCompany,
     currentBranchId,
@@ -762,7 +998,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addJobEvidence,
     createInvoice,
     refreshData,
-    fetchJobs,
+    refreshJobs,
+    refreshJob,
+    fetchJobsAndVehicles,
     resetToDefaultData,
   ]);
 

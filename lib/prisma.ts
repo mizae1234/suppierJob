@@ -43,7 +43,7 @@ function isCurrentSchemaUpToDate(client?: PrismaClient): boolean {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const jobFields = (client as any)._runtimeDataModel?.models?.Job?.fields as Array<{ name: string }> | undefined;
   if (!Array.isArray(jobFields)) return true;
-  return jobFields.some((f) => f.name === 'destWarehouseId') && jobFields.some((f) => f.name === 'pickupBranchId');
+  return jobFields.some((f) => f.name === 'destWarehouseId') && jobFields.some((f) => f.name === 'pickupBranchId') && jobFields.some((f) => f.name === 'd365TransferStatus');
 }
 
 function createFreshPrismaClient(): PrismaClient {

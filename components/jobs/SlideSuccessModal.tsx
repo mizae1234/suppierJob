@@ -60,7 +60,7 @@ export function SlideSuccessModal({
               {selectedVins.slice(0, 3).join(', ')}{selectedVins.length > 3 ? ` ... (รวม ${selectedVins.length} คัน)` : ''}
             </span>
           </p>
-          <p><strong>เส้นทาง:</strong> {createdJob.originBranchName} &rarr; {createdJob.destBranchName || createdJob.customDestAddress || 'ปลายทางที่ระบุ'}</p>
+          <p><strong>เส้นทาง:</strong> {createdJob.pickupBranchName} &rarr; {createdJob.destBranchName || createdJob.customDestAddress || 'ปลายทางที่ระบุ'}</p>
           <p><strong>ระยะทาง:</strong> {distance ? `${distance} กม.` : '-'}</p>
           <p><strong>Supplier:</strong> {createdJob.supplierName}</p>
           <p><strong>เวลารับรถ:</strong> {formatThaiDateTime(createdJob.pickupDateTime)}</p>

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, invalidateUserSession } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { parseBody, updateUserSchema } from '@/lib/validation';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -57,7 +59,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const sessionUser = auth.user;
 
     const { id } = await context.params;
-    const body = await request.json();
+    const parsed = await parseBody(request, updateUserSchema);
+    if (parsed.response) return parsed.response;
     const {
       displayName,
       firstName,
@@ -68,7 +71,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       companyId,
       branchId,
       supplierId,
-    } = body;
+    } = parsed.data;
 
     const existingUser = await prisma.user.findUnique({
       where: { id },
@@ -76,15 +79,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     if (!existingUser) {
       return NextResponse.json({ error: 'ไม่พบผู้ใช้งานนี้ในระบบ' }, { status: 404 });
-    }
-
-    if (!displayName || !displayName.trim()) {
-      return NextResponse.json({ error: 'กรุณากรอกชื่อที่แสดง (Display Name)' }, { status: 400 });
-    }
-
-    const validRoles = ['MASTER', 'ADMIN', 'BRANCH', 'SUPPLIER'];
-    if (role && !validRoles.includes(role)) {
-      return NextResponse.json({ error: 'บทบาท (Role) ไม่ถูกต้อง' }, { status: 400 });
     }
 
     // Role-specific validation
@@ -194,10 +188,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     });
 
     return NextResponse.json({ message: 'ลบผู้ใช้งานเรียบร้อยแล้ว' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('DELETE /api/users/[id] error:', error);
     // If foreign key constraint
-    if (error.code === 'P2003') {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
       return NextResponse.json(
         { error: 'ไม่สามารถลบผู้ใช้นี้ได้เนื่องจากมีข้อมูลความสัมพันธ์ในระบบ กรุณาเลือกปิดการใช้งาน (Deactivate) แทน' },
         { status: 400 }

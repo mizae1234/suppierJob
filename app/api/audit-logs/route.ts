@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 
@@ -20,18 +21,53 @@ export async function GET(request: NextRequest) {
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
-    const where: any = {};
+    const where: Prisma.AuditLogWhereInput = {};
 
-    if (userId) where.userId = userId;
+    // Pagination
+    const parsedPage = pageParam ? parseInt(pageParam, 10) : NaN;
+    const page = Number.isFinite(parsedPage) ? Math.max(1, parsedPage) : 1;
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) ? Math.min(100, Math.max(1, parsedLimit)) : 50;
+    const skip = (page - 1) * limit;
+
+    // ADMIN ที่ผูกกับบริษัท เห็นเฉพาะ Audit Log ของผู้ใช้ในบริษัทตนเอง (รวมผู้ใช้สาขาที่สังกัดบริษัทนั้น)
+    if (user.role === 'ADMIN' && user.companyId) {
+      const companyUsers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { companyId: user.companyId },
+            { branch: { companyId: user.companyId } },
+          ],
+        },
+        select: { id: true },
+      });
+      const companyUserIds = companyUsers.map((u) => u.id);
+
+      if (userId) {
+        if (!companyUserIds.includes(userId)) {
+          return NextResponse.json({ logs: [], total: 0, page, totalPages: 0 });
+        }
+        where.userId = userId;
+      } else {
+        if (companyUserIds.length === 0) {
+          return NextResponse.json({ logs: [], total: 0, page, totalPages: 0 });
+        }
+        where.userId = { in: companyUserIds };
+      }
+    } else if (userId) {
+      where.userId = userId;
+    }
+
     if (action) where.action = action;
     if (entityType) where.entityType = entityType;
     if (supplierId) where.supplierId = supplierId;
 
     // Date range filter
     if (from || to) {
-      where.createdAt = {};
-      if (from) where.createdAt.gte = new Date(from);
-      if (to) where.createdAt.lte = new Date(to + 'T23:59:59.999Z');
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (from) createdAt.gte = new Date(from);
+      if (to) createdAt.lte = new Date(to + 'T23:59:59.999Z');
+      where.createdAt = createdAt;
     }
 
     // Search
@@ -43,14 +79,9 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Pagination
-    const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : 1;
-    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10))) : 50;
-    const skip = (page - 1) * limit;
-
     const [total, logs] = await Promise.all([
-      (prisma as any).auditLog.count({ where }),
-      (prisma as any).auditLog.findMany({
+      prisma.auditLog.count({ where }),
+      prisma.auditLog.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
@@ -59,7 +90,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Format dates
-    const formatted = (logs as any[]).map((log: any) => ({
+    const formatted = logs.map((log) => ({
       ...log,
       createdAt: log.createdAt.toISOString(),
     }));

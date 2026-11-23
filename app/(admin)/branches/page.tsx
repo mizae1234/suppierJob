@@ -94,7 +94,10 @@ export default function BranchManagementPage() {
   };
 
   useEffect(() => {
-    loadBranches();
+    const timer = setTimeout(() => {
+      void loadBranches();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [contextBranches]);
 
   // Copy helper
@@ -391,7 +394,7 @@ export default function BranchManagementPage() {
           const hasGps = Boolean(myBranch.latitude && myBranch.longitude);
           const branchVehicles = vehicles.filter((v) => v.currentBranchId === myBranch.id);
           const branchJobs = jobs.filter(
-            (j) => j.branchId === myBranch.id || j.originBranchId === myBranch.id || j.destBranchId === myBranch.id
+            (j) => j.branchId === myBranch.id || j.pickupBranchId === myBranch.id || j.destBranchId === myBranch.id
           );
           const activeJobs = branchJobs.filter((j) =>
             ['PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL'].includes(j.status)
@@ -676,7 +679,7 @@ export default function BranchManagementPage() {
             const hasGps = Boolean(branch.latitude && branch.longitude);
             const branchVehicles = vehicles.filter((v) => v.currentBranchId === branch.id);
             const branchJobs = jobs.filter(
-              (j) => j.branchId === branch.id || j.originBranchId === branch.id || j.destBranchId === branch.id
+              (j) => j.branchId === branch.id || j.pickupBranchId === branch.id || j.destBranchId === branch.id
             );
             const activeJobs = branchJobs.filter((j) =>
               ['PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL'].includes(j.status)
@@ -890,7 +893,7 @@ export default function BranchManagementPage() {
                   const hasGps = Boolean(branch.latitude && branch.longitude);
                   const branchVehicles = vehicles.filter((v) => v.currentBranchId === branch.id);
                   const branchJobs = jobs.filter(
-                    (j) => j.branchId === branch.id || j.originBranchId === branch.id || j.destBranchId === branch.id
+                    (j) => j.branchId === branch.id || j.pickupBranchId === branch.id || j.destBranchId === branch.id
                   );
                   const activeJobs = branchJobs.filter((j) =>
                     ['PENDING_SUPPLIER', 'IN_PROGRESS', 'WAITING_APPROVAL'].includes(j.status)

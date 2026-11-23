@@ -58,7 +58,7 @@ export function VendorFailedAttemptModal({ job, onClose, onSubmit }: VendorFaile
   const vehicleLabels = activeItems.length > 0
     ? activeItems.map(i => getVehicleLabel(i.vin, i.licensePlate))
     : [getVehicleLabel(job.vin, job.vehicle?.licensePlate)];
-  const origin = job.customOriginAddress || job.originBranchName || job.branchName;
+  const origin = job.customOriginAddress || job.pickupBranchName || job.branchName;
   const dest = job.customDestAddress || job.destBranchName || 'ปลายทาง';
 
   const noteTooShort = note.trim().length < SLIDE_FAIL_NOTE_MIN_LENGTH;

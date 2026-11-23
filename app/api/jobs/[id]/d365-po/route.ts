@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { prisma } from '@/lib/prisma';
-import { canViewJob } from '@/lib/job-access';
+import { canMutateJob, canViewJob } from '@/lib/job-access';
 
 // GET: ดึงประวัติการยิงเปิด Purchase Order (D365PoLog) ของใบงานนี้
 export async function GET(
@@ -23,7 +23,10 @@ export async function GET(
         branchId: true,
         pickupBranchId: true,
         destBranchId: true,
+        requestedById: true,
         supplierId: true,
+        pickupBranch: { select: { companyId: true } },
+        destBranch: { select: { companyId: true } },
       },
     });
 
@@ -31,10 +34,26 @@ export async function GET(
       return NextResponse.json({ error: 'ไม่พบข้อมูลใบสั่งงาน' }, { status: 404 });
     }
 
-    const logs = await prisma.d365PoLog.findMany({
-      where: { jobId: id },
-      orderBy: { createdAt: 'desc' },
-    });
+    // เฉพาะ ADMIN/MASTER ที่ดูรายละเอียดดิบ (requestPayload/responseBody/requestUrl) ได้
+    const isAdminOrMaster = user.role === 'ADMIN' || user.role === 'MASTER';
+    const logs = isAdminOrMaster
+      ? await prisma.d365PoLog.findMany({
+          where: { jobId: id },
+          orderBy: { createdAt: 'desc' },
+        })
+      : await prisma.d365PoLog.findMany({
+          where: { jobId: id },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            purchId: true,
+            message: true,
+            trigger: true,
+            createdAt: true,
+            amount: true,
+          },
+        });
 
     return NextResponse.json({ logs });
   } catch (error) {
@@ -72,12 +91,15 @@ export async function POST(
         branchId: true,
         pickupBranchId: true,
         destBranchId: true,
+        requestedById: true,
         supplierId: true,
+        pickupBranch: { select: { companyId: true } },
+        destBranch: { select: { companyId: true } },
       },
     });
 
     // ADMIN ต้องอยู่ในขอบเขตบริษัทของงาน (ตอบ 404 เหมือนไม่พบ เพื่อไม่เปิดเผยว่ามีงานนี้อยู่)
-    if (!job || !canViewJob(user, job)) {
+    if (!job || !canMutateJob(user, job)) {
       return NextResponse.json({ error: 'ไม่พบข้อมูลใบสั่งงาน' }, { status: 404 });
     }
 

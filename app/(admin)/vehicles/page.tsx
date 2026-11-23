@@ -265,24 +265,35 @@ export default function VehicleStockPage() {
   }, [selectedCompanyFilter, debouncedSlideSearchQuery]);
 
   useEffect(() => {
-    if (activeTab === 'SLIDE_LOGS') {
-      fetchSlideLogs();
-    }
+    if (activeTab !== 'SLIDE_LOGS') return;
+    const timer = setTimeout(() => {
+      void fetchSlideLogs();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [activeTab, fetchSlideLogs]);
 
   useEffect(() => () => slideLogsAbortRef.current?.abort(), []);
 
   // Load slide logs for selected vehicle modal
-  useEffect(() => {
-    if (!selectedVehicle) {
+  const selectedVin = selectedVehicle?.vin ?? null;
+  const [prevSelectedVin, setPrevSelectedVin] = useState<string | null>(selectedVin);
+  if (prevSelectedVin !== selectedVin) {
+    setPrevSelectedVin(selectedVin);
+    if (!selectedVin) {
       setVinSlideLogs([]);
       setModalTab('JOBS');
-      return;
+    } else {
+      setLoadingVinSlideLogs(true);
     }
-    setLoadingVinSlideLogs(true);
-    fetch(`/api/vehicles/slide-logs?vin=${encodeURIComponent(selectedVehicle.vin)}`)
+  }
+
+  useEffect(() => {
+    if (!selectedVin) return;
+    let cancelled = false;
+    fetch(`/api/vehicles/slide-logs?vin=${encodeURIComponent(selectedVin)}`)
       .then(res => res.json())
       .then(data => {
+        if (cancelled) return;
         if (data.success && Array.isArray(data.logs)) {
           setVinSlideLogs(data.logs);
           if (data.logs.length > 0 && vinHistory.length === 0) {
@@ -291,8 +302,13 @@ export default function VehicleStockPage() {
         }
       })
       .catch(console.error)
-      .finally(() => setLoadingVinSlideLogs(false));
-  }, [selectedVehicle, vinHistory.length]);
+      .finally(() => {
+        if (!cancelled) setLoadingVinSlideLogs(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedVin, vinHistory.length]);
 
   // Filtered slide logs in Tab 2
   const displayedSlideLogs = useMemo(() => {
@@ -306,7 +322,7 @@ export default function VehicleStockPage() {
 
   // Action badge configuration
   const getActionBadge = (action: string) => {
-    const config: Record<string, { label: string; bg: string; text: string; icon: any }> = {
+    const config: Record<string, { label: string; bg: string; text: string; icon: React.ComponentType<{ className?: string }> }> = {
       CREATED: { label: 'สร้างใบงานสไลด์', bg: 'bg-sky-50 border-sky-200', text: 'text-sky-800', icon: Clock },
       PICKUP_VERIFIED: { label: 'ยืนยันรับรถขึ้นสไลด์', bg: 'bg-indigo-50 border-indigo-200', text: 'text-indigo-800', icon: CheckCircle2 },
       IN_TRANSIT: { label: 'อยู่ระหว่างขนส่ง', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-800', icon: Truck },
@@ -340,7 +356,11 @@ export default function VehicleStockPage() {
   }, []);
 
   useEffect(() => {
-    if (canSyncD365) fetchD365Info();
+    if (!canSyncD365) return;
+    const timer = setTimeout(() => {
+      void fetchD365Info();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [canSyncD365, fetchD365Info]);
 
   const handleSyncD365 = async () => {
@@ -974,7 +994,7 @@ export default function VehicleStockPage() {
                 ) : (
                   vinHistory.map(job => {
                     const isSlide = job.jobType === 'VEHICLE_SLIDE';
-                    const originName = job.customOriginAddress || job.originBranchName || job.branchName;
+                    const originName = job.customOriginAddress || job.pickupBranchName || job.branchName;
                     const destName = job.customDestAddress || job.destBranchName || '-';
 
                     return (

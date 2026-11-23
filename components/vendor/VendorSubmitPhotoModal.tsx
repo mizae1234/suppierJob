@@ -55,7 +55,7 @@ export function VendorSubmitPhotoModal({
   const isSlide = target.type === 'VEHICLE_SLIDE';
   const originName = target.originName
     || target.job?.customOriginAddress 
-    || target.job?.originBranchName 
+    || target.job?.pickupBranchName 
     || target.job?.branchName 
     || target.branchName 
     || 'จุดรับรถต้นทาง';

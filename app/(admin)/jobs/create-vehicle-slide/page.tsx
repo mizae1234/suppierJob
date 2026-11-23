@@ -1,85 +1,52 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
+import { Truck, ArrowLeft } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
-import TagSearch from '@/components/ui/TagSearch';
-import BranchSelect from '@/components/ui/BranchSelect';
-import { CustomDropdown, DropdownOption } from '@/components/ui/CustomDropdown';
-import { CompanyCode, Job, Vehicle } from '@/types';
-import { haversineDistance, getSupplierVendorCode } from '@/lib/job-utils';
+import { CompanyCode, Job } from '@/types';
+import { getSupplierVendorCode } from '@/lib/job-utils';
 import {
-  calculateSlideJobCost,
-  getRecommendedSlideSupplier,
-  getBranchDefaultCoords,
-  SlideCalculationResult,
-} from '@/lib/vehicle-slide-rates';
-import { SlideConfirmModal, SlideSuccessModal, CancelJobConfirmModal, SupplierSelector, D365VendorWarning } from '@/components/jobs';
-import dynamic from 'next/dynamic';
-import { 
-  Truck, 
-  MapPin, 
-  ArrowLeft, 
-  CheckCircle2, 
-  Map,
-  Building2,
-  Navigation,
-  AlertCircle,
-  Loader2,
-  Check,
-  Minus,
-  Lock,
-  Sparkles,
-  Calculator,
-  PencilLine,
-  RotateCcw,
-  Warehouse,
-  X
-} from 'lucide-react';
+  SlideConfirmModal,
+  SlideSuccessModal,
+  CancelJobConfirmModal,
+  SupplierSelector,
+  D365VendorWarning,
+} from '@/components/jobs';
+import type { ScheduleContactValues } from './_types';
 import {
-  SlidePricingMode,
-  SLIDE_PRICING_AUTO,
-  SLIDE_PRICING_MANUAL,
-  MANUAL_PRICE_NOTE_MIN_LENGTH,
-  MANUAL_PRICE_NOTE_MAX_LENGTH,
-  getManualPriceDiff,
-} from '@/lib/slide-pricing';
-import {
-  D365_SHOWROOM_WAREHOUSE_TO_BRANCH,
-  D365WarehouseOption,
-  getD365WarehouseForBranch,
-  getD365WarehouseName,
-  getFallbackWarehouseOptionsForBranch,
-  isValidWarehouseId,
-} from '@/lib/d365/warehouses';
+  buildSlideJobPayload,
+  getDefaultDateTimeInput,
+  validateSlideJobForm,
+} from './_utils';
+import { useSlideRoute } from './_hooks/useSlideRoute';
+import { useVehicleSelection } from './_hooks/useVehicleSelection';
+import { useDestWarehouses } from './_hooks/useDestWarehouses';
+import { useSlidePricing } from './_hooks/useSlidePricing';
+import VehicleStockPicker from './_components/VehicleStockPicker';
+import RouteSelector from './_components/RouteSelector';
+import PricingSection from './_components/PricingSection';
+import ScheduleContactSection from './_components/ScheduleContactSection';
+import SubmitBar from './_components/SubmitBar';
 
 // Dynamic import to avoid SSR issues with Leaflet
 const MapPickerModal = dynamic(() => import('@/components/jobs/MapPickerModal'), { ssr: false });
 
-const getDefaultDateTimeInput = (hoursFromNow: number): string =>
-  new Date(Date.now() + 3600 * 1000 * hoursFromNow).toISOString().slice(0, 16);
-
-const getBranchShortLabel = (code?: string, name?: string) => {
-  if (code) {
-    if (code === 'GI06' || code.startsWith('EV7')) return 'EV7';
-    return code;
-  }
-  return name || 'ต่างสาขา';
-};
-
 export default function CreateVehicleSlidePage() {
   const router = useRouter();
-  const { 
+  const { showToast } = useToast();
+  const {
     currentRole,
     currentCompany,
-    currentBranchId, 
-    activeBranch, 
-    branches, 
+    currentBranchId,
+    activeBranch,
+    branches,
     companies,
-    suppliers, 
-    vehicles, 
+    suppliers,
+    vehicles,
     createVehicleSlideJob,
     refreshData,
     updateJobStatus,
@@ -89,7 +56,7 @@ export default function CreateVehicleSlidePage() {
 
   // Slide suppliers (handles both array and comma-separated string)
   const slideSuppliers = useMemo(() => {
-    return suppliers.filter(s => {
+    return suppliers.filter((s) => {
       if (Array.isArray(s.services)) {
         return s.services.includes('VEHICLE_SLIDE');
       }
@@ -100,10 +67,10 @@ export default function CreateVehicleSlidePage() {
   // Branches filtered by selected company context
   const availableBranches = useMemo(() => {
     if (currentCompany === 'ALL') return branches;
-    const companyObj = companies.find(c => c.code === currentCompany);
+    const companyObj = companies.find((c) => c.code === currentCompany);
     if (!companyObj) return branches;
     const filtered = branches.filter(
-      b => b.companyId === companyObj.id || (currentCompany === 'EV7' && (b.code === 'GI06' || b.code?.startsWith('EV7')))
+      (b) => b.companyId === companyObj.id || (currentCompany === 'EV7' && (b.code === 'GI06' || b.code?.startsWith('EV7')))
     );
     return filtered.length > 0 ? filtered : branches;
   }, [branches, companies, currentCompany]);
@@ -113,187 +80,77 @@ export default function CreateVehicleSlidePage() {
     currentBranchId || availableBranches[0]?.id || branches[0]?.id || ''
   );
   const selectedOriginBranchId = useMemo(() => {
-    if (rawSelectedOriginBranchId && branches.some(b => b.id === rawSelectedOriginBranchId)) {
+    if (rawSelectedOriginBranchId && branches.some((b) => b.id === rawSelectedOriginBranchId)) {
       return rawSelectedOriginBranchId;
     }
     return (
-      (currentBranchId && branches.find(b => b.id === currentBranchId)?.id) ||
-      (authUser?.branchId && branches.find(b => b.id === authUser.branchId)?.id) ||
+      (currentBranchId && branches.find((b) => b.id === currentBranchId)?.id) ||
+      (authUser?.branchId && branches.find((b) => b.id === authUser.branchId)?.id) ||
       availableBranches[0]?.id ||
       branches[0]?.id ||
       rawSelectedOriginBranchId
     );
   }, [rawSelectedOriginBranchId, branches, currentBranchId, authUser, availableBranches]);
-  const originBranchObj = branches.find(b => b.id === selectedOriginBranchId);
+  const originBranchObj = branches.find((b) => b.id === selectedOriginBranchId);
 
-  // Branch filter for vehicle stock list (defaults to ALL to show cars from all branches)
-  const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('ALL');
-
-  // All vehicles available for slide (excluding maintenance / out of stock)
-  const availableStockVehicles = useMemo(() => {
-    return vehicles.filter(v => v.status !== 'MAINTENANCE' && v.status !== 'OUT_OF_STOCK');
-  }, [vehicles]);
-
-  // Dropdown options for branch filter
-  const branchFilterOptions: DropdownOption[] = useMemo(() => {
-    const totalCount = availableStockVehicles.length;
-    const allOption: DropdownOption = {
-      value: 'ALL',
-      label: 'ทุกสาขา (All Branches)',
-      badge: `${totalCount} คัน`,
-      badgeClass: 'bg-emerald-100 text-emerald-800 font-bold',
-      icon: Building2,
-    };
-
-    const list: DropdownOption[] = branches
-      .map(b => {
-        const count = availableStockVehicles.filter(v => v.currentBranchId === b.id).length;
-        return {
-          value: b.id,
-          label: b.name,
-          sublabel: b.code ? `รหัส: ${b.code}` : undefined,
-          badge: `${count} คัน`,
-          badgeClass: count > 0 ? 'bg-gray-100 text-gray-800 font-semibold' : 'bg-gray-50 text-gray-400',
-          dot: b.code.startsWith('EV7') || b.code === 'GI06' ? '#0f5238' : '#3b82f6',
-        };
-      });
-
-    return [allOption, ...list];
-  }, [branches, availableStockVehicles]);
-
-  // State & Handler for cancelling busy vehicle order (if not verified by supplier yet)
-  const [vehicleToCancel, setVehicleToCancel] = useState<(typeof vehicles)[0] | null>(null);
-  const [isCancellingBusyJob, setIsCancellingBusyJob] = useState(false);
-
-  const handleOpenCancelModal = (e: React.MouseEvent, vehicle: (typeof vehicles)[0]) => {
-    e.stopPropagation();
-    const busyJob = vehicle.activeJob;
-    if (!busyJob) return;
-
-    if (busyJob.verifiedAt) {
-      showToast('ไม่สามารถยกเลิกได้ เนื่องจาก Supplier ได้ถ่ายรูปยืนยันตัวรถแล้ว', 'error');
-      return;
-    }
-
-    setVehicleToCancel(vehicle);
-  };
-
-  const handleConfirmCancelBusyJob = async () => {
-    if (!vehicleToCancel) return;
-    const busyJob = vehicleToCancel.activeJob;
-    if (!busyJob) return;
-
-    setIsCancellingBusyJob(true);
-    try {
-      if (busyJob.itemId) {
-        const res = await updateCarWashItemStatus(busyJob.jobId, busyJob.itemId, 'CANCELLED', 'ยกเลิกโดยผู้ดูแลระบบ');
-        if (res) {
-          showToast(`✓ ยกเลิกงานรถคัน ${vehicleToCancel.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
-          setVehicleToCancel(null);
-        } else {
-          showToast('ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
-        }
-      } else {
-        const res = await updateJobStatus(busyJob.jobId, 'CANCELLED', { rejectReason: 'ยกเลิกโดยผู้ดูแลระบบ' });
-        if (res.success) {
-          showToast(`✓ ยกเลิกงานรถคัน ${vehicleToCancel.vin} สำเร็จ — ปลดล็อคพร้อมสั่งงานใหม่แล้ว`, 'success');
-          setVehicleToCancel(null);
-        } else {
-          showToast(res.error || 'ไม่สามารถยกเลิกงานสำหรับรถคันนี้ได้', 'error');
-        }
-      }
-    } catch {
-      showToast('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์', 'error');
-    } finally {
-      setIsCancellingBusyJob(false);
-    }
-  };
-
-
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const canEditBranchPin = currentRole === 'ADMIN' || currentRole === 'MASTER';
 
   // Auto-fill requester from logged-in user
-  const autoName = authUser?.firstName && authUser?.lastName 
-    ? `${authUser.firstName} ${authUser.lastName}` 
-    : authUser?.displayName || 'เจ้าหน้าที่สาขาต้นทาง';
-
-  // Form State
-  const [selectedVins, setSelectedVins] = useState<string[]>([]);
-  // ปลายทางเริ่มต้นว่าง — ให้ผู้สั่งงานเลือกเอง (ไม่เติมค่าให้ล่วงหน้า)
-  const [destBranchId, setDestBranchId] = useState<string>('');
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
-  const [pickupDateTime, setPickupDateTime] = useState<string>(() => getDefaultDateTimeInput(2));
-  const [deliveryDateTime, setDeliveryDateTime] = useState<string>(() => getDefaultDateTimeInput(6));
-  const [contactPerson, setContactPerson] = useState<string>('');
-  const [contactPhone, setContactPhone] = useState<string>('');
-  const [transferReason, setTransferReason] = useState<string>('');
+  const autoName =
+    authUser?.firstName && authUser?.lastName
+      ? `${authUser.firstName} ${authUser.lastName}`
+      : authUser?.displayName || 'เจ้าหน้าที่สาขาต้นทาง';
   const [requestedBy] = useState<string>(autoName);
   const [requesterPosition] = useState<string>(authUser?.position || '');
   const [requesterPhone] = useState<string>(authUser?.phone || '');
-  // ── วิธีคิดค่าบริการ: AUTO = ระบบคำนวณ (ค่าเริ่มต้น), MANUAL = พนักงานกรอกระยะทาง/ราคาต่อคันเอง ──
-  const [pricingMode, setPricingMode] = useState<SlidePricingMode>(SLIDE_PRICING_AUTO);
-  const [fetchedDrivingDist, setFetchedDrivingDist] = useState<{ key: string; km: number } | null>(null);
-  const [manualDistance, setManualDistance] = useState<number>(0);
-  const [manualCost, setManualCost] = useState<number>(0);
-  const [manualPriceNote, setManualPriceNote] = useState<string>('');
-  const isManualPricing = pricingMode === SLIDE_PRICING_MANUAL;
 
-  // ── Hybrid Destination Mode ──
-  const [destMode, setDestMode] = useState<'branch' | 'custom'>('branch');
-  const [customDest, setCustomDest] = useState<{
-    lat: number;
-    lng: number;
-    address: string;
-    distance: number;
-  } | null>(null);
+  // Schedule & contact form state
+  const [scheduleContact, setScheduleContact] = useState<ScheduleContactValues>(() => ({
+    pickupDateTime: getDefaultDateTimeInput(2),
+    deliveryDateTime: getDefaultDateTimeInput(6),
+    contactPerson: '',
+    contactPhone: '',
+    transferReason: '',
+  }));
 
-  // ── Hybrid Pickup (Origin) Mode ──
-  // 'branch' = รับรถที่สาขาต้นทาง, 'custom' = ปักหมุดจุดรับรถเอง (เช่น รถจอดอยู่ลานนอกสาขา)
-  const [originMode, setOriginMode] = useState<'branch' | 'custom'>('branch');
-  const [customOrigin, setCustomOrigin] = useState<{
-    lat: number;
-    lng: number;
-    address: string;
-  } | null>(null);
+  const handleScheduleContactChange = useCallback(
+    <K extends keyof ScheduleContactValues>(field: K, value: ScheduleContactValues[K]) => {
+      setScheduleContact((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
 
-  // Which point the map picker is currently editing (null = closed)
-  // 'branch' = แก้พิกัดถาวรของสาขาต้นทาง (บันทึกลงฐานข้อมูลสาขา)
-  const [mapPickerMode, setMapPickerMode] = useState<'origin' | 'dest' | 'branch' | null>(null);
-  const [isSavingBranchPin, setIsSavingBranchPin] = useState(false);
-  const canEditBranchPin = currentRole === 'ADMIN' || currentRole === 'MASTER';
-
-  // Search in branch vehicles
-  const [searchTags, setSearchTags] = useState<string[]>([]);
-
-  // Created job modal
+  // Created job & confirmation modals
   const [createdJob, setCreatedJob] = useState<Job | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedVehicles = useMemo(() => {
-    return vehicles.filter(v => selectedVins.includes(v.vin));
-  }, [vehicles, selectedVins]);
+  // Route, custom pins & real road distance
+  const route = useSlideRoute({
+    branches,
+    originBranchObj,
+    selectedOriginBranchId,
+    refreshData,
+    showToast,
+  });
 
-  // ค้นหาสาขาที่เป็นเจ้าของรถต้นสังกัด (Original Vehicle Owner Branch ตาม d365SiteId)
-  const getVehicleOwnerBranch = useCallback(
-    (v?: Vehicle | null) => {
-      if (!v) return undefined;
-      const siteCode = (v.d365SiteId || v.ownerBranchCode || '').trim().toUpperCase();
-      if (siteCode) {
-        const byCode = branches.find(b => b.code.trim().toUpperCase() === siteCode);
-        if (byCode) return byCode;
-      }
-      if (v.ownerBranchId) {
-        const byOwnerId = branches.find(b => b.id === v.ownerBranchId);
-        if (byOwnerId) return byOwnerId;
-      }
-      if (v.currentBranchId) {
-        const byCurrentId = branches.find(b => b.id === v.currentBranchId);
-        if (byCurrentId) return byCurrentId;
-      }
-      return undefined;
-    },
-    [branches]
-  );
+  // Vehicle stock filtering, selection & busy-job cancellation
+  const vehicleSelection = useVehicleSelection({
+    vehicles,
+    branches,
+    currentRole,
+    activeBranchId: activeBranch?.id,
+    currentBranchId,
+    authUserBranchId: authUser?.branchId,
+    setSelectedOriginBranchId,
+    setDestBranchId: route.setDestBranchId,
+    updateJobStatus,
+    updateCarWashItemStatus,
+    showToast,
+  });
+
+  const { selectedVehicles, getVehicleOwnerBranch, selectedBranchFilter } = vehicleSelection;
 
   // สาขาที่รับผิดชอบค่าใช้จ่ายและใช้ยิงเปิด PO ใน D365 = สาขาที่เป็นเจ้าของรถต้นสังกัดเสมอ
   const orderingBranchObj = useMemo(() => {
@@ -302,13 +159,13 @@ export default function CreateVehicleSlidePage() {
       if (ownerBranch) return ownerBranch;
     }
     if (selectedBranchFilter !== 'ALL') {
-      const filterBranch = branches.find(b => b.id === selectedBranchFilter);
+      const filterBranch = branches.find((b) => b.id === selectedBranchFilter);
       if (filterBranch) return filterBranch;
     }
     return originBranchObj;
   }, [selectedVehicles, getVehicleOwnerBranch, selectedBranchFilter, branches, originBranchObj]);
 
-  const selectedSupplier = slideSuppliers.find(s => s.id === selectedSupplierId);
+  const selectedSupplier = slideSuppliers.find((s) => s.id === selectedSupplierId);
   const hasVendorCode = Boolean(
     selectedSupplier &&
       (orderingBranchObj
@@ -320,499 +177,98 @@ export default function CreateVehicleSlidePage() {
       ((selectedSupplier.vendorCodes && selectedSupplier.vendorCodes.length > 0) || hasVendorCode)
   );
   const isLockedBySupplier = !selectedSupplier || !hasAnyVendorCode;
-  const destBranch = branches.find(b => b.id === destBranchId);
 
-  // ── รหัสคลัง D365 ปลายทาง (สไลด์ระหว่างสาขา) — ตั้งต้นเป็นคลังหลักของสาขาปลายทาง แก้ไขได้ ──
-  const [destWarehouseInput, setDestWarehouseInput] = useState<{ branchId: string; value: string } | null>(null);
-  const [d365WarehousesByCompany, setD365WarehousesByCompany] = useState<Record<string, D365WarehouseOption[]>>({});
-  const defaultDestWarehouse = getD365WarehouseForBranch(destBranch?.code) || '';
+  // D365 warehouses (destination & origin summary)
+  const warehouses = useDestWarehouses({
+    destBranch: route.destBranch,
+    destBranchId: route.destBranchId,
+    originBranchObj,
+    vehicles,
+    selectedVehicles: vehicleSelection.selectedVehicles,
+  });
 
-  // ดึงรายการคลัง D365 ของสาขาปลายทางจาก API เส้น /api/integrations/d365/warehouses
-  useEffect(() => {
-    const code = destBranch?.code?.trim().toUpperCase();
-    if (!code || d365WarehousesByCompany[code]) return;
-    let cancelled = false;
-    fetch(`/api/integrations/d365/warehouses?company=${encodeURIComponent(code)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !Array.isArray(data?.warehouses)) return;
-        setD365WarehousesByCompany((prev) => ({
-          ...prev,
-          [code]: data.warehouses as D365WarehouseOption[],
-        }));
-      })
-      .catch(() => {
-        /* fallback ใช้ค่าตั้งต้นใน lib/d365/warehouses.ts */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [destBranch?.code, d365WarehousesByCompany]);
-
-  const d365WarehouseCatalog = useMemo(() => {
-    const code = destBranch?.code?.trim().toUpperCase();
-    if (!code) return [] as D365WarehouseOption[];
-    const base = d365WarehousesByCompany[code] ?? getFallbackWarehouseOptionsForBranch(code);
-    const seen = new Set(base.map((w) => w.warehouseId));
-    const extra: D365WarehouseOption[] = [];
-    for (const v of vehicles) {
-      const wh = v.d365WarehouseId?.trim();
-      const mappedBranch = wh ? D365_SHOWROOM_WAREHOUSE_TO_BRANCH[wh] : undefined;
-      if (wh && v.currentBranchId === destBranchId && !seen.has(wh) && (!mappedBranch || mappedBranch === code)) {
-        seen.add(wh);
-        extra.push({
-          warehouseId: wh,
-          warehouseName: getD365WarehouseName(wh) || wh,
-          dataAreaId: code,
-        });
-      }
-    }
-    return [...base, ...extra];
-  }, [destBranch?.code, destBranchId, d365WarehousesByCompany, vehicles]);
-
-  // เลือกได้เฉพาะคลังที่อยู่ในรายการ (dropdown) — ค่าเริ่มต้น = คลังหลักของสาขา หรือคลังแรกในรายการ
-  const destWarehouseId = useMemo(() => {
-    const ids = d365WarehouseCatalog.map((w) => w.warehouseId);
-    const picked = destWarehouseInput && destWarehouseInput.branchId === destBranchId ? destWarehouseInput.value : '';
-    if (picked && ids.includes(picked)) return picked;
-    if (defaultDestWarehouse && ids.includes(defaultDestWarehouse)) return defaultDestWarehouse;
-    return ids[0] || '';
-  }, [d365WarehouseCatalog, destWarehouseInput, destBranchId, defaultDestWarehouse]);
-
-  const destWarehouseDropdownOptions: DropdownOption[] = useMemo(
-    () =>
-      d365WarehouseCatalog.map((w) => ({
-        value: w.warehouseId,
-        label: `${w.warehouseId} · ${w.warehouseName}`,
-        ...(w.warehouseId === defaultDestWarehouse
-          ? { badge: 'คลังหลัก', badgeClass: 'bg-emerald-50 text-emerald-700' }
-          : {}),
-      })),
-    [d365WarehouseCatalog, defaultDestWarehouse]
-  );
-
-  const selectedDestWarehouseName = useMemo(() => {
-    if (!destWarehouseId) return null;
-    const found = d365WarehouseCatalog.find((w) => w.warehouseId === destWarehouseId.trim());
-    return found?.warehouseName || getD365WarehouseName(destWarehouseId);
-  }, [destWarehouseId, d365WarehouseCatalog]);
-  const originWarehouseSummary = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const v of selectedVehicles) {
-      const wh = v.d365WarehouseId?.trim() || 'ไม่ระบุ';
-      counts[wh] = (counts[wh] || 0) + 1;
-    }
-    return Object.entries(counts);
-  }, [selectedVehicles]);
-
-  // คลังต้นทาง (ที่รถจอดอยู่ตาม D365) แยกตามคลัง พร้อมรายการรถในแต่ละคลัง
-  const originBranchMainWarehouse = getD365WarehouseForBranch(originBranchObj?.code) || '';
-  const originWarehouseGroups = useMemo(() => {
-    const groups: Record<string, string[]> = {};
-    for (const v of selectedVehicles) {
-      const wh = v.d365WarehouseId?.trim() || '';
-      (groups[wh] ||= []).push(v.licensePlate || v.vin);
-    }
-    return Object.entries(groups).map(([warehouseId, labels]) => ({
-      warehouseId,
-      warehouseName: warehouseId ? getD365WarehouseName(warehouseId) : null,
-      labels,
-    }));
-  }, [selectedVehicles]);
-
-  // (ไม่เติมสาขาปลายทางให้อัตโนมัติ — ผู้สั่งงานต้องเลือกเอง)
-
-  // Smart route supplier recommendation (used as recommendation hints, not auto-selected)
-  const supplierRecommendation = useMemo(() => {
-    return getRecommendedSlideSupplier(
-      originBranchObj?.code,
-      originBranchObj?.name,
-      destMode === 'branch' ? destBranch?.code : null,
-      destMode === 'branch' ? destBranch?.name : null
-    );
-  }, [originBranchObj?.code, originBranchObj?.name, destBranch?.code, destBranch?.name, destMode]);
-
-  // Effective pickup / drop-off coordinates (custom pin overrides branch location)
-  const originPoint = useMemo(() => {
-    if (originMode === 'custom' && customOrigin) {
-      return { lat: customOrigin.lat, lng: customOrigin.lng, name: customOrigin.address.split(',')[0] || 'จุดรับรถ' };
-    }
-    if (originBranchObj?.latitude && originBranchObj?.longitude) {
-      return { lat: originBranchObj.latitude, lng: originBranchObj.longitude, name: originBranchObj.name };
-    }
-    const fallback = getBranchDefaultCoords(originBranchObj?.code || originBranchObj?.name || selectedOriginBranchId);
-    if (fallback) {
-      return { lat: fallback.lat, lng: fallback.lng, name: originBranchObj?.name || selectedOriginBranchId };
-    }
-    return null;
-  }, [originMode, customOrigin, originBranchObj, selectedOriginBranchId]);
-
-  const destPoint = useMemo(() => {
-    if (destMode === 'custom') {
-      return customDest ? { lat: customDest.lat, lng: customDest.lng, name: customDest.address.split(',')[0] || 'ปลายทาง' } : null;
-    }
-    if (destBranch?.latitude && destBranch?.longitude) {
-      return { lat: destBranch.latitude, lng: destBranch.longitude, name: destBranch.name };
-    }
-    const fallback = getBranchDefaultCoords(destBranch?.code || destBranch?.name || destBranchId);
-    if (fallback) {
-      return { lat: fallback.lat, lng: fallback.lng, name: destBranch?.name || destBranchId };
-    }
-    return null;
-  }, [destMode, customDest, destBranch, destBranchId]);
-
-  const routeCoordKey = originPoint && destPoint
-    ? `${originPoint.lat},${originPoint.lng}->${destPoint.lat},${destPoint.lng}`
-    : '';
-  const fallbackRoadDist = useMemo(() => {
-    if (!originPoint || !destPoint) return 0;
-    const straight = haversineDistance(originPoint.lat, originPoint.lng, destPoint.lat, destPoint.lng);
-    return Math.round(straight * 1.25 * 10) / 10;
-  }, [originPoint, destPoint]);
-
-  const autoDistance =
-    routeCoordKey && fetchedDrivingDist?.key === routeCoordKey
-      ? fetchedDrivingDist.km
-      : fallbackRoadDist;
-
-  // ระยะทางที่ใช้: โหมดกรอกเองใช้ค่าที่กรอก / โหมดอัตโนมัติแสดงเฉพาะเมื่อมีทั้งจุดรับและจุดส่งแล้ว (ยังไม่เลือก = ว่าง)
-  const routeDistance = originPoint && destPoint ? autoDistance : 0;
-  const distance = isManualPricing ? manualDistance : routeDistance;
-
-  // Auto-calculate real road distance whenever pickup or drop-off point changes
-  // (โหมดกรอกเองใช้ manualDistance แยก จึงไม่ถูกเขียนทับ)
-  useEffect(() => {
-    if (!originPoint || !destPoint || !routeCoordKey) return;
-
-    let cancelled = false;
-    fetch(`/api/routes/driving?originLat=${originPoint.lat}&originLng=${originPoint.lng}&destLat=${destPoint.lat}&destLng=${destPoint.lng}`)
-      .then(res => res.json())
-      .then(data => {
-        if (!cancelled && data.success && data.distanceKm) {
-          setFetchedDrivingDist({ key: routeCoordKey, km: data.distanceKm });
-        }
-      })
-      .catch(err => {
-        console.warn('Real driving distance fetch error:', err);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [originPoint, destPoint, routeCoordKey]);
-
-  // Dynamic slide pricing recalculation based on contract matrices
-  const pricingCalculation = useMemo<SlideCalculationResult | null>(() => {
-    if (!selectedSupplierId) return null;
-    return calculateSlideJobCost({
-      supplierCodeOrId: selectedSupplier?.code || selectedSupplierId,
-      supplierName: selectedSupplier?.name,
-      distanceKm: distance,
-      originMode,
-      destMode,
-      originBranchCode: originBranchObj?.code,
-      originBranchName: originBranchObj?.name,
-      destBranchCode: destMode === 'branch' ? destBranch?.code : null,
-      destBranchName: destMode === 'branch' ? destBranch?.name : null,
-      carCount: selectedVins.length || 1,
-    });
-  }, [
-    selectedSupplier?.code,
-    selectedSupplier?.name,
+  // Auto & manual pricing calculation
+  const pricing = useSlidePricing({
+    selectedSupplier,
     selectedSupplierId,
-    distance,
-    originMode,
-    destMode,
-    originBranchObj?.code,
-    originBranchObj?.name,
-    destBranch?.code,
-    destBranch?.name,
-    selectedVins.length,
-  ]);
-
-  const contractCostPerCar = pricingCalculation?.costPerCar ?? 0;
-  const estimatedCost = isManualPricing ? manualCost : contractCostPerCar;
-  const manualPriceDiff = isManualPricing ? getManualPriceDiff(manualCost, contractCostPerCar) : null;
-
-  const handleChangePricingMode = (mode: SlidePricingMode) => {
-    if (mode === pricingMode) return;
-    if (mode === SLIDE_PRICING_MANUAL) {
-      // ตั้งต้นจากค่าที่ระบบคำนวณ ให้พนักงานแก้ต่อได้ทันที
-      setManualDistance(routeDistance);
-      setManualCost(contractCostPerCar);
-    }
-    setPricingMode(mode);
-  };
-
-  const originLabel = originMode === 'custom' && customOrigin
-    ? customOrigin.address.split(',').slice(0, 2).join(',')
-    : originBranchObj?.name;
-
-  const filteredVehicles = useMemo(() => {
-    return availableStockVehicles.filter(v => {
-      if (selectedBranchFilter !== 'ALL' && v.currentBranchId !== selectedBranchFilter) {
-        return false;
-      }
-      if (searchTags.length === 0) return true;
-      return searchTags.some(q => {
-        const term = q.toLowerCase();
-        return (
-          v.vin.toLowerCase().includes(term) ||
-          v.model.toLowerCase().includes(term) ||
-          (v.licensePlate && v.licensePlate.toLowerCase().includes(term)) ||
-          (v.color && v.color.toLowerCase().includes(term)) ||
-          (v.currentBranchName && v.currentBranchName.toLowerCase().includes(term)) ||
-          (v.currentBranchCode && v.currentBranchCode.toLowerCase().includes(term))
-        );
-      });
-    });
-  }, [availableStockVehicles, selectedBranchFilter, searchTags]);
-
-  // Cars with unfinished work can't be picked (select-all skips them)
-  const selectableVehicles = filteredVehicles.filter(v => !v.activeJob);
-
-  // Select all filtered vehicles state and handlers
-  const isAllFilteredSelected = selectableVehicles.length > 0 && selectableVehicles.every(v => selectedVins.includes(v.vin));
-  const someFilteredSelected = filteredVehicles.some(v => selectedVins.includes(v.vin));
-
-  const handleToggleSelectAllFiltered = () => {
-    if (isAllFilteredSelected) {
-      const filteredVinSet = new Set(filteredVehicles.map(v => v.vin));
-      setSelectedVins(prev => {
-        const next = prev.filter(vin => !filteredVinSet.has(vin));
-        if (next.length === 0 && currentRole === 'BRANCH') {
-          const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
-          if (myBranchId) setSelectedOriginBranchId(myBranchId);
-        }
-        return next;
-      });
-    } else {
-      const anchorVehicle =
-        (selectedVins.length > 0 ? vehicles.find(v => v.vin === selectedVins[0]) : undefined) ||
-        selectableVehicles[0];
-      if (!anchorVehicle) return;
-
-      const targetBranchId = anchorVehicle.currentBranchId;
-      const targetOwnerBranch = getVehicleOwnerBranch(anchorVehicle);
-      const targetVehicles = selectableVehicles.filter(v => {
-        if (v.currentBranchId !== targetBranchId) return false;
-        const vOwner = getVehicleOwnerBranch(v);
-        if (targetOwnerBranch && vOwner && vOwner.id !== targetOwnerBranch.id) return false;
-        return true;
-      });
-
-      if (targetBranchId) {
-        setSelectedOriginBranchId(targetBranchId);
-      }
-      const newVins = new Set([...selectedVins, ...targetVehicles.map(v => v.vin)]);
-      setSelectedVins(Array.from(newVins));
-
-      if (targetVehicles.length < selectableVehicles.length) {
-        const targetBranch = branches.find(b => b.id === targetBranchId);
-        const targetBranchLabel = getBranchShortLabel(targetBranch?.code, targetBranch?.name);
-        const ownerLabel = targetOwnerBranch ? getBranchShortLabel(targetOwnerBranch.code, targetOwnerBranch.name) : targetBranchLabel;
-        showToast(
-          `เลือกเฉพาะรถที่จอดอยู่ ${targetBranchLabel} และเป็นรถของสาขา ${ownerLabel} (${targetVehicles.length} คัน)`,
-          'info'
-        );
-      }
-    }
-  };
-
-  const handleToggleVehicle = (vin: string) => {
-    const clickedVehicle = vehicles.find(v => v.vin === vin);
-    if (!clickedVehicle) return;
-
-    if (!selectedVins.includes(vin)) {
-      const busyJob = clickedVehicle.activeJob;
-      if (busyJob) {
-        showToast(`รถคันนี้มีงานค้างอยู่ (ใบงาน ${busyJob.jobNumber}) — สั่งงานซ้ำได้เมื่องานเดิมเสร็จสิ้น`, 'warning');
-        return;
-      }
-
-      // If other vehicles are already selected, ensure they are from the same origin branch and same owner branch (PO branch)
-      if (selectedVins.length > 0) {
-        const firstSelected = vehicles.find(v => v.vin === selectedVins[0]);
-        if (firstSelected && firstSelected.currentBranchId !== clickedVehicle.currentBranchId) {
-          const firstBranch = branches.find(b => b.id === firstSelected.currentBranchId);
-          const clickedBranch = branches.find(b => b.id === clickedVehicle.currentBranchId);
-          const firstLabel = getBranchShortLabel(firstBranch?.code || firstSelected.currentBranchCode, firstBranch?.name);
-          const clickedLabel = getBranchShortLabel(clickedBranch?.code || clickedVehicle.currentBranchCode, clickedBranch?.name);
-          showToast(
-            `เลือกได้เฉพาะรถสาขา ${firstLabel} (คันนี้อยู่ ${clickedLabel})`,
-            'warning'
-          );
-          return;
-        }
-        const firstOwnerBranch = getVehicleOwnerBranch(firstSelected);
-        const clickedOwnerBranch = getVehicleOwnerBranch(clickedVehicle);
-        if (firstOwnerBranch && clickedOwnerBranch && firstOwnerBranch.id !== clickedOwnerBranch.id) {
-          const firstOwnerLabel = getBranchShortLabel(firstOwnerBranch.code, firstOwnerBranch.name);
-          const clickedOwnerLabel = getBranchShortLabel(clickedOwnerBranch.code, clickedOwnerBranch.name);
-          showToast(
-            `เลือกได้เฉพาะรถที่มีสาขาเจ้าของรถเดียวกัน (${firstOwnerLabel}) เพื่อเปิด PO ใน D365 (คันนี้เป็นรถของ ${clickedOwnerLabel})`,
-            'warning'
-          );
-          return;
-        }
-      } else {
-        // First vehicle selected: auto-sync Origin Branch to this vehicle's current location!
-        if (clickedVehicle.currentBranchId) {
-          setSelectedOriginBranchId(clickedVehicle.currentBranchId);
-          // If branch user, and the car is from another branch, default destination to user's branch!
-          const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
-          if (currentRole === 'BRANCH' && myBranchId && myBranchId !== clickedVehicle.currentBranchId) {
-            setDestBranchId(myBranchId);
-          }
-        }
-      }
-    }
-
-    setSelectedVins(prev => {
-      const next = prev.includes(vin) ? prev.filter(v => v !== vin) : [...prev, vin];
-      if (next.length === 0 && currentRole === 'BRANCH') {
-        const myBranchId = activeBranch?.id || currentBranchId || authUser?.branchId;
-        if (myBranchId) setSelectedOriginBranchId(myBranchId);
-      }
-      return next;
-    });
-  };
-
-  const { showToast } = useToast();
-
-  // Save a permanent GPS pin for the origin branch (affects all future jobs)
-  const handleSaveBranchPin = async (data: { lat: number; lng: number; address: string }) => {
-    if (!originBranchObj) return;
-    setIsSavingBranchPin(true);
-    try {
-      const res = await fetch(`/api/branches/${originBranchObj.id}/location`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude: data.lat, longitude: data.lng, address: data.address }),
-      });
-      const result = await res.json();
-      if (!res.ok || !result.success) {
-        showToast(result.error || 'บันทึกพิกัดสาขาไม่สำเร็จ', 'error');
-        return;
-      }
-      await refreshData();
-      showToast(`บันทึกพิกัดสาขา ${originBranchObj.name} เรียบร้อยแล้ว`, 'success');
-    } catch (e) {
-      console.error(e);
-      showToast('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง', 'error');
-    } finally {
-      setIsSavingBranchPin(false);
-    }
-  };
+    routeDistance: route.routeDistance,
+    originMode: route.originMode,
+    destMode: route.destMode,
+    originBranchObj,
+    destBranch: route.destBranch,
+    selectedCount: vehicleSelection.selectedVins.length,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedVins.length === 0) {
-      showToast('กรุณาเลือกรถ (VIN) อย่างน้อย 1 คันที่ต้องการสไลด์', 'warning');
+    const validationError = validateSlideJobForm({
+      selectedVinsCount: vehicleSelection.selectedVins.length,
+      originMode: route.originMode,
+      customOrigin: route.customOrigin,
+      destMode: route.destMode,
+      destBranchId: route.destBranchId,
+      selectedOriginBranchId,
+      destWarehouseId: warehouses.destWarehouseId,
+      customDest: route.customDest,
+      selectedSupplierId,
+      hasVendorCode,
+      contactPhone: scheduleContact.contactPhone,
+      isManualPricing: pricing.isManualPricing,
+      manualDistance: pricing.manualDistance,
+      manualCost: pricing.manualCost,
+      manualPriceNote: pricing.manualPriceNote,
+      estimatedCost: pricing.estimatedCost,
+    });
+    if (validationError) {
+      showToast(validationError.message, validationError.type);
       return;
     }
-    if (originMode === 'custom' && !customOrigin) {
-      showToast('กรุณาปักหมุดจุดรับรถบนแผนที่', 'warning');
-      return;
-    }
-    if (destMode === 'branch') {
-      if (!destBranchId) {
-        showToast('กรุณาเลือกสาขาปลายทาง', 'warning');
-        return;
-      }
-      if (destBranchId === selectedOriginBranchId && originMode === 'branch') {
-        showToast('สาขาปลายทางต้องไม่ซ้ำกับสาขาต้นทาง', 'error');
-        return;
-      }
-      if (!destWarehouseId.trim() || !isValidWarehouseId(destWarehouseId)) {
-        showToast('กรุณาเลือก Warehouse ID ปลายทาง (คลัง D365)', 'warning');
-        return;
-      }
-    } else {
-      if (!customDest) {
-        showToast('กรุณาเลือกจุดปลายทางบนแผนที่', 'warning');
-        return;
-      }
-    }
-    if (!selectedSupplierId) {
-      showToast('กรุณาเลือก Supplier รถสไลด์', 'warning');
-      return;
-    }
-    if (!hasVendorCode) {
-      showToast('ไม่สามารถสั่งงานได้ — ต้องเลือก Supplier ที่มีรหัส Vendor D365 ของสาขานี้เท่านั้น', 'error');
-      return;
-    }
-    if (contactPhone.replace(/\D/g, '').length !== 10) {
-      showToast('กรุณากรอกเบอร์โทรผู้ติดต่อให้ครบ 10 หลัก', 'warning');
-      return;
-    }
-    if (isManualPricing) {
-      if (!(manualDistance > 0)) {
-        showToast('กรุณากรอกระยะทาง (กม.) สำหรับการกรอกค่าบริการเอง', 'warning');
-        return;
-      }
-      if (!(manualCost > 0)) {
-        showToast('กรุณากรอกค่าใช้จ่ายต่อคันสำหรับการกรอกค่าบริการเอง', 'warning');
-        return;
-      }
-      if (manualPriceNote.trim().length < MANUAL_PRICE_NOTE_MIN_LENGTH) {
-        showToast(`กรุณาระบุหมายเหตุการกรอกค่าบริการเองอย่างน้อย ${MANUAL_PRICE_NOTE_MIN_LENGTH} ตัวอักษร`, 'warning');
-        return;
-      }
-    } else if (!(estimatedCost > 0)) {
-      showToast('ไม่สามารถคำนวณค่าบริการตามสัญญาได้ กรุณาตรวจสอบเส้นทาง หรือเลือกกรอกค่าบริการเอง', 'warning');
-      return;
-    }
-
     setShowConfirmModal(true);
   };
 
   const handleConfirmSlideJob = async () => {
     setIsSubmitting(true);
     try {
-      const matchedCompany = companies.find(c => c.id === orderingBranchObj?.companyId);
+      const matchedCompany = companies.find((c) => c.id === orderingBranchObj?.companyId);
       const companyCode: CompanyCode = (matchedCompany?.code as CompanyCode) || 'EV7';
 
-      const newJob = await createVehicleSlideJob({
+      const payload = buildSlideJobPayload({
         companyCode,
         branchId: orderingBranchObj?.id || selectedOriginBranchId,
-        originBranchId: selectedOriginBranchId,
-        destBranchId: destMode === 'branch' ? destBranchId : '',
-        destWarehouseId: destMode === 'branch' ? destWarehouseId.trim() : undefined,
+        pickupBranchId: selectedOriginBranchId,
+        destMode: route.destMode,
+        destBranchId: route.destBranchId,
+        destWarehouseId: warehouses.destWarehouseId,
+        originMode: route.originMode,
+        customOrigin: route.customOrigin,
+        customDest: route.customDest,
         supplierId: selectedSupplierId,
-        vin: selectedVins[0],
-        vins: selectedVins,
-        pickupDateTime,
-        deliveryDateTime,
-        contactPerson,
-        contactPhone,
-        transferReason,
+        selectedVins: vehicleSelection.selectedVins,
+        scheduleContact,
         requestedBy,
         requesterPosition,
         requesterPhone,
-        estimatedCost,
-        distance,
-        pricingMode,
-        manualPriceNote: isManualPricing ? manualPriceNote.trim() : undefined,
-        ...(destMode === 'custom' && customDest ? {
-          customDestAddress: customDest.address,
-          customDestLat: customDest.lat,
-          customDestLng: customDest.lng,
-        } : {}),
-        ...(originMode === 'custom' && customOrigin ? {
-          customOriginAddress: customOrigin.address,
-          customOriginLat: customOrigin.lat,
-          customOriginLng: customOrigin.lng,
-        } : {}),
-      } as Parameters<typeof createVehicleSlideJob>[0]);
+        estimatedCost: pricing.estimatedCost,
+        distance: pricing.distance,
+        pricingMode: pricing.pricingMode,
+        isManualPricing: pricing.isManualPricing,
+        manualPriceNote: pricing.manualPriceNote,
+      });
+
+      const newJob = await createVehicleSlideJob(
+        payload as Parameters<typeof createVehicleSlideJob>[0]
+      );
 
       setShowConfirmModal(false);
-      showToast(`บันทึกและสร้างคำขอรถสไลด์เรียบร้อยแล้ว (${selectedVins.length} คัน)!`, 'success');
+      showToast(`บันทึกและสร้างคำขอรถสไลด์เรียบร้อยแล้ว (${vehicleSelection.selectedVins.length} คัน)!`, 'success');
       if (newJob) setCreatedJob(newJob);
     } catch (err) {
       console.error(err);
       setShowConfirmModal(false);
-      showToast(err instanceof Error && err.message ? err.message : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง', 'error');
+      showToast(
+        err instanceof Error && err.message ? err.message : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง',
+        'error'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -858,984 +314,137 @@ export default function CreateVehicleSlidePage() {
             currentBranchId={orderingBranchObj?.id}
             currentBranchCode={orderingBranchObj?.code}
             currentBranchName={orderingBranchObj?.name}
-            recommendedSupplierCode={supplierRecommendation?.recommendedCode}
-            recommendationReason={supplierRecommendation?.reason}
+            recommendedSupplierCode={route.supplierRecommendation?.recommendedCode}
+            recommendationReason={route.supplierRecommendation?.reason}
           />
           {/* ใบงานสไลด์ผูกกับสาขาของผู้สั่งงาน → PO เปิดในบริษัทของสาขาผู้สั่งงาน */}
-          <D365VendorWarning
-            supplier={selectedSupplier}
-            branch={orderingBranchObj}
+          <D365VendorWarning supplier={selectedSupplier} branch={orderingBranchObj} />
+
+          {/* Step 2: Select VIN from any branch + Selected Preview */}
+          <VehicleStockPicker
+            isLockedBySupplier={isLockedBySupplier}
+            currentRole={currentRole}
+            branches={branches}
+            availableStockCount={vehicleSelection.availableStockVehicles.length}
+            filter={{
+              selectedBranchFilter: vehicleSelection.selectedBranchFilter,
+              onBranchFilterChange: vehicleSelection.setSelectedBranchFilter,
+              branchFilterOptions: vehicleSelection.branchFilterOptions,
+              searchTags: vehicleSelection.searchTags,
+              onSearchTagsChange: vehicleSelection.setSearchTags,
+            }}
+            selection={{
+              selectedVins: vehicleSelection.selectedVins,
+              selectedVinSet: vehicleSelection.selectedVinSet,
+              selectedVehicles: vehicleSelection.selectedVehicles,
+              filteredVehicles: vehicleSelection.filteredVehicles,
+              selectableVehiclesCount: vehicleSelection.selectableVehicles.length,
+              isAllFilteredSelected: vehicleSelection.isAllFilteredSelected,
+              someFilteredSelected: vehicleSelection.someFilteredSelected,
+              onToggleSelectAll: vehicleSelection.handleToggleSelectAllFiltered,
+              onToggleVehicle: vehicleSelection.handleToggleVehicle,
+            }}
+            cancelBusyJob={{
+              vehicleToCancel: vehicleSelection.vehicleToCancel,
+              isCancellingBusyJob: vehicleSelection.isCancellingBusyJob,
+              onOpenCancelModal: vehicleSelection.handleOpenCancelModal,
+            }}
           />
-
-          {/* Step 2: Select VIN from any branch */}
-          <div className={`p-5 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-3 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">2</span>
-                <span>เลือกรถที่ต้องการสไลด์ (VIN)</span>
-              </h2>
-              <span className="text-xs text-gray-500">เลือกแล้ว {selectedVins.length} คัน</span>
-            </div>
-
-            {/* Filter by Branch */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold text-gray-600 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>สาขาที่รถจอดอยู่:</span>
-                </span>
-                {selectedBranchFilter !== 'ALL' && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBranchFilter('ALL')}
-                    className="text-[10px] text-emerald-700 hover:underline font-semibold cursor-pointer"
-                  >
-                    ดูรถทุกสาขา ({availableStockVehicles.length} คัน)
-                  </button>
-                )}
-              </label>
-              <CustomDropdown
-                options={branchFilterOptions}
-                value={selectedBranchFilter}
-                onChange={(val) => setSelectedBranchFilter(val)}
-                placeholder="เลือกสาขาที่รถจอดอยู่"
-                className="w-full text-xs"
-              />
-            </div>
-
-            <TagSearch
-              tags={searchTags}
-              onTagsChange={setSearchTags}
-              placeholder="ค้นหาตาม VIN / รุ่น / ทะเบียน / สาขา... (กด Enter เพื่อเพิ่ม)"
-              accentColor="#0f5238"
-            />
-
-            {/* Select All Bar */}
-            {filteredVehicles.length > 0 && (
-              <div className="flex items-center justify-between px-1 py-1 text-xs border-b border-gray-100">
-                <button
-                  type="button"
-                  onClick={handleToggleSelectAllFiltered}
-                  className="flex items-center gap-2 font-medium text-gray-700 hover:text-emerald-900 transition-colors select-none py-1 group cursor-pointer"
-                >
-                  <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
-                    isAllFilteredSelected
-                      ? 'bg-[#0f5238] border-[#0f5238] text-white'
-                      : someFilteredSelected
-                        ? 'bg-emerald-100 border-[#0f5238] text-[#0f5238]'
-                        : 'border-gray-300 group-hover:border-gray-400 bg-white'
-                  }`}>
-                    {isAllFilteredSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                    {!isAllFilteredSelected && someFilteredSelected && <Minus className="w-3 h-3 stroke-[3]" />}
-                  </div>
-                  <span className="font-semibold text-xs text-gray-800 group-hover:text-emerald-900">
-                    {isAllFilteredSelected
-                      ? 'ยกเลิกการเลือกทั้งหมด'
-                      : `เลือกทั้งหมด (${selectableVehicles.length} คัน)`}
-                  </span>
-                </button>
-
-                {searchTags.length > 0 && (
-                  <span className="text-[11px] text-emerald-800 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
-                    ผลการค้นหา {filteredVehicles.length} คัน
-                  </span>
-                )}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
-              {filteredVehicles.length === 0 ? (
-                <div className="p-6 text-center text-xs text-gray-400">
-                  {selectedBranchFilter === 'ALL'
-                    ? 'ไม่มีรถสถานะพร้อมย้ายในสต็อก หรือไม่ตรงกับการค้นหา'
-                    : 'ไม่มีรถสถานะพร้อมย้ายในสาขานี้ หรือไม่ตรงกับการค้นหา'}
-                </div>
-              ) : (
-                filteredVehicles.map(v => {
-                  const isSelected = selectedVins.includes(v.vin);
-                  const busyJob = v.activeJob;
-                  const isWash = busyJob?.jobType === 'CAR_WASH';
-                  const branchDisplay = v.currentBranchName || branches.find(b => b.id === v.currentBranchId)?.name || v.currentBranchCode || 'ไม่ระบุสาขา';
-
-                  return (
-                    <div
-                      key={v.vin}
-                      onClick={() => handleToggleVehicle(v.vin)}
-                      title={busyJob ? `รถคันนี้มีงานค้างอยู่: ${busyJob.jobNumber} (${isWash ? 'งานล้างรถ' : 'งานรถสไลด์'})` : undefined}
-                      className={`p-3 rounded-xl border transition-all flex items-start gap-3 select-none ${
-                        isSelected
-                          ? 'border-emerald-600 bg-emerald-50/70 shadow-xs ring-1 ring-emerald-500/20 cursor-pointer'
-                          : busyJob
-                          ? 'border-gray-200/80 bg-gray-50/90 hover:bg-gray-100/60 cursor-not-allowed'
-                          : 'border-gray-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/20 hover:shadow-2xs cursor-pointer'
-                      }`}
-                    >
-                      {/* Left icon / checkbox */}
-                      <div className="pt-0.5 shrink-0">
-                        {isSelected ? (
-                          <div className="w-5 h-5 rounded-lg bg-emerald-700 text-white flex items-center justify-center shadow-2xs">
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
-                        ) : busyJob ? (
-                          <div className="w-5 h-5 rounded-lg bg-amber-100/90 text-amber-700 border border-amber-300/70 flex items-center justify-center shadow-2xs">
-                            <Lock className="w-3 h-3" />
-                          </div>
-                        ) : (
-                          <div className="w-5 h-5 rounded-lg border-2 border-gray-300 hover:border-emerald-500 bg-white transition-colors" />
-                        )}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        {/* Top row: Primary Identifier (Plate / VIN) & Branch Badge */}
-                        <div className="flex items-center justify-between gap-1.5 min-w-0">
-                          {v.licensePlate ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-gray-300 text-gray-900 text-xs font-bold shadow-2xs shrink-0 tracking-tight">
-                              {v.licensePlate}
-                            </span>
-                          ) : (
-                            <span className="font-mono text-xs font-bold text-gray-900 truncate">
-                              {v.vin}
-                            </span>
-                          )}
-
-                          {/* Branch badge */}
-                          {(() => {
-                            const branchCode = getBranchShortLabel(v.currentBranchCode, v.currentBranchName);
-                            const isEv7 = (v as Vehicle & { companyCode?: string }).companyCode === 'EV7' || branchCode === 'EV7';
-                            return (
-                              <span 
-                                className={`text-[9px] px-1.5 py-0.5 rounded-md font-semibold shrink-0 border ${
-                                  isEv7
-                                    ? 'bg-emerald-50 text-[#0f5238] border-emerald-300'
-                                    : 'bg-blue-50 text-blue-700 border-blue-200/80'
-                                }`}
-                                title={branchDisplay}
-                              >
-                                {branchCode}
-                              </span>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Secondary row: VIN (only shown if license plate exists above) */}
-                        {v.licensePlate && (
-                          <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                            <span className="text-[10px] font-medium text-gray-400 shrink-0">VIN:</span>
-                            <span className="font-mono text-[11px] font-semibold text-gray-600 truncate">
-                              {v.vin}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Model & Color */}
-                        <div className="flex items-center justify-between gap-1.5 mt-0.5">
-                          <p className="text-xs font-medium text-gray-700 truncate">
-                            {v.model}
-                            {v.color && <span className="text-gray-400 font-normal"> · {v.color}</span>}
-                          </p>
-                          <span
-                            className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono font-semibold shrink-0 border ${
-                              v.d365WarehouseId
-                                ? 'bg-gray-50 text-gray-600 border-gray-200'
-                                : 'bg-red-50 text-red-600 border-red-200'
-                            }`}
-                            title="รหัสคลัง D365 ที่รถจอดอยู่ปัจจุบัน (Warehouse ID)"
-                          >
-                            WH {v.d365WarehouseId || 'ไม่ระบุ'}
-                          </span>
-                        </div>
-
-                        {/* Status tag */}
-                        {busyJob ? (
-                          <div className="mt-2 flex items-center justify-between gap-2 p-2 px-2.5 rounded-xl bg-gradient-to-r from-amber-50/90 via-amber-50/70 to-orange-50/50 border border-amber-200/80 shadow-2xs">
-                            {/* Left: Icon & Details */}
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs ${
-                                isWash 
-                                  ? 'bg-amber-100/90 text-amber-700 border border-amber-200/80' 
-                                  : 'bg-sky-100/90 text-sky-700 border border-sky-200/80'
-                              }`}>
-                                {isWash ? (
-                                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                                ) : (
-                                  <Truck className="w-3.5 h-3.5 text-sky-600" />
-                                )}
-                              </div>
-
-                              <div className="min-w-0 flex flex-col justify-center">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-bold text-[11px] text-amber-950 tracking-tight leading-none">
-                                    ติดงาน{isWash ? 'ล้างรถ' : 'รถสไลด์'}
-                                  </span>
-                                  <span className="font-mono text-[10px] font-bold text-amber-900 bg-white/90 px-1.5 py-0.5 rounded-md border border-amber-200/70 leading-none shadow-2xs">
-                                    {busyJob.jobNumber}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-800/80 leading-none">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                    busyJob.verifiedAt ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'
-                                  }`} />
-                                  <span className="font-medium">
-                                    {busyJob.verifiedAt ? 'ยืนยันตัวรถแล้ว' : 'รอดำเนินการ'}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Right: Cancel Action / Verified badge */}
-                            <div className="shrink-0 flex items-center">
-                              {currentRole !== 'SUPPLIER' && (
-                                busyJob.canCancel !== false && !busyJob.verifiedAt ? (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => handleOpenCancelModal(e, v)}
-                                    disabled={isCancellingBusyJob && vehicleToCancel?.vin === v.vin}
-                                    className="w-7 h-7 rounded-lg bg-white hover:bg-red-50 text-gray-400 hover:text-red-600 border border-amber-200/80 hover:border-red-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs active:scale-95 disabled:opacity-50 group"
-                                    title="ยกเลิกคำสั่งงานสำหรับรถคันนี้"
-                                    aria-label="ยกเลิกคำสั่งงานสำหรับรถคันนี้"
-                                  >
-                                    {isCancellingBusyJob && vehicleToCancel?.vin === v.vin ? (
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" />
-                                    ) : (
-                                      <X className="w-3.5 h-3.5 stroke-[2.5] group-hover:scale-110 transition-transform" />
-                                    )}
-                                  </button>
-                                ) : (
-                                  <span className="text-[9px] text-gray-400 italic px-1.5 py-0.5 rounded bg-white/70 border border-amber-200/60" title="Supplier ถ่ายรูปยืนยันตัวรถแล้ว ไม่สามารถยกเลิกได้">
-                                    เริ่มงานแล้ว
-                                  </span>
-                                )
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span>พร้อมย้าย</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Selected Vehicle Card Preview */}
-          {selectedVehicles.length > 0 && (
-            <div className="p-5 rounded-2xl bg-gradient-to-br from-[#0f5238] to-[#1b4332] text-white shadow-md flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">
-                  {selectedVehicles.length === 1 ? 'คันที่เลือกจะขนย้าย' : `รถที่เลือกขนย้าย (${selectedVehicles.length} คัน)`}
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-white/20 text-xs font-bold">
-                  {selectedVehicles.length === 1 ? selectedVehicles[0].vehicleType : `รวม ${selectedVehicles.length} คัน`}
-                </span>
-              </div>
-              {selectedVehicles.length === 1 ? (
-                <>
-                  <div>
-                    <h3 className="text-lg font-bold">{selectedVehicles[0].model}</h3>
-                    <p className="font-mono text-xs text-emerald-200 mt-0.5">{selectedVehicles[0].vin}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 pt-3 border-t border-white/10 text-xs">
-                    <div>
-                      <span className="text-emerald-300">สีตัวถัง:</span>
-                      <p className="font-semibold">{selectedVehicles[0].color}</p>
-                    </div>
-                    <div>
-                      <span className="text-emerald-300">ทะเบียน:</span>
-                      <p className="font-semibold">{selectedVehicles[0].licensePlate || 'ป้ายแดง/ไม่มีทะเบียน'}</p>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
-                  {selectedVehicles.map((sv, idx) => (
-                    <div key={sv.vin} className="flex items-center justify-between text-xs py-1 border-b border-white/10 last:border-none">
-                      <div className="min-w-0 pr-2">
-                        <p className="font-mono font-bold truncate">{idx + 1}. {sv.vin}</p>
-                        <p className="text-[11px] text-emerald-200 truncate">{sv.model} • {sv.color}</p>
-                      </div>
-                      <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] shrink-0 font-medium">
-                        {sv.licensePlate || 'ป้ายแดง'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Column 2: Route, Schedule, Cost & Submit */}
-        <div className={`lg:col-span-2 flex flex-col gap-5 transition-opacity ${isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''}`}>
+        <div
+          className={`lg:col-span-2 flex flex-col gap-5 transition-opacity ${
+            isLockedBySupplier ? 'pointer-events-none opacity-45 select-none' : ''
+          }`}
+        >
           {/* Step 3: Route & Schedule */}
           <div className="p-6 rounded-2xl bg-white border border-emerald-950/10 shadow-xs flex flex-col gap-4">
             <h2 className="text-base font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
-              <span className="w-6 h-6 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">3</span>
+              <span className="w-6 h-6 rounded-full bg-emerald-100 text-[#0f5238] text-xs flex items-center justify-center font-bold">
+                3
+              </span>
               <span>ระบุเส้นทางและกำหนดการเดินทาง</span>
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Origin Branch + Pickup Point */}
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-1 flex items-center justify-between">
-                  <span>สาขาต้นทาง (Origin Branch):</span>
-                  {selectedVins.length > 0 && originBranchObj && (
-                    <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      ตามตำแหน่งรถที่เลือก ({originBranchObj.code ? originBranchObj.code : originBranchObj.name})
-                    </span>
-                  )}
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {currentRole === 'ADMIN' || selectedVins.length === 0 ? (
-                    <BranchSelect
-                      branches={branches}
-                      value={selectedOriginBranchId}
-                      onChange={(id) => { setSelectedOriginBranchId(id); setSelectedVins([]); }}
-                    />
-                  ) : (
-                    <div
-                      className="w-full h-10 px-3 rounded-xl border border-emerald-300 bg-emerald-50/70 flex items-center gap-2 text-xs font-bold text-emerald-950 min-w-0"
-                      title={originBranchObj?.name ? `${originBranchObj.name} (${originBranchObj.code})` : ''}
-                    >
-                      <Building2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                      <span className="truncate flex-1">
-                        {originBranchObj?.name ? `${originBranchObj.name} (${originBranchObj.code})` : 'ไม่พบข้อมูลสาขา'}
-                      </span>
-                      <span className="shrink-0 text-[10px] font-semibold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-300">
-                        ตำแหน่งรถ
-                      </span>
-                    </div>
-                  )}
+              <RouteSelector
+                branches={branches}
+                currentRole={currentRole}
+                selectedVinsCount={vehicleSelection.selectedVins.length}
+                origin={{
+                  selectedOriginBranchId,
+                  originBranchObj,
+                  originMode: route.originMode,
+                  customOrigin: route.customOrigin,
+                  canEditBranchPin,
+                  isSavingBranchPin: route.isSavingBranchPin,
+                  originBranchMainWarehouse: warehouses.originBranchMainWarehouse,
+                  originWarehouseGroups: warehouses.originWarehouseGroups,
+                  onOriginBranchChange: (id) => {
+                    setSelectedOriginBranchId(id);
+                    vehicleSelection.setSelectedVins([]);
+                  },
+                  onOriginModeChange: route.setOriginMode,
+                }}
+                destination={{
+                  destMode: route.destMode,
+                  destBranchId: route.destBranchId,
+                  customDest: route.customDest,
+                  onDestModeChange: route.setDestMode,
+                  onDestBranchChange: route.setDestBranchId,
+                }}
+                destWarehouse={{
+                  destWarehouseId: warehouses.destWarehouseId,
+                  defaultDestWarehouse: warehouses.defaultDestWarehouse,
+                  options: warehouses.destWarehouseDropdownOptions,
+                  selectedDestWarehouseName: warehouses.selectedDestWarehouseName,
+                  originWarehouseSummary: warehouses.originWarehouseSummary,
+                  onSelectWarehouse: warehouses.handleSelectDestWarehouse,
+                }}
+                pricingPreview={{
+                  distance: pricing.distance,
+                  selectedSupplierId,
+                  previewCost: pricing.pricingCalculation?.costPerCar ?? pricing.estimatedCost,
+                }}
+                onOpenMapPicker={route.setMapPickerMode}
+              />
 
-                  {/* Pickup Mode Toggle */}
-                  <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 h-10">
-                    <button
-                      type="button"
-                      onClick={() => setOriginMode('branch')}
-                      className={`flex-1 h-full flex items-center justify-center gap-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
-                        originMode === 'branch'
-                          ? 'bg-white text-[#0f5238] shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      <Building2 className="w-3.5 h-3.5" />
-                      <span>รับที่สาขา</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOriginMode('custom');
-                        // First time: open the map right away, pre-pinned at the branch location
-                        if (!customOrigin) setMapPickerMode('origin');
-                      }}
-                      className={`flex-1 h-full flex items-center justify-center gap-1.5 px-2 rounded-lg text-xs font-semibold transition-all ${
-                        originMode === 'custom'
-                          ? 'bg-white text-amber-700 shadow-sm'
-                          : 'text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      <Map className="w-3.5 h-3.5" />
-                      <span>ปักหมุดจุดรับรถ</span>
-                    </button>
-                  </div>
-                </div>
+              <PricingSection
+                isManualPricing={pricing.isManualPricing}
+                routeDistance={route.routeDistance}
+                distance={pricing.distance}
+                estimatedCost={pricing.estimatedCost}
+                contractCostPerCar={pricing.contractCostPerCar}
+                manualPriceNote={pricing.manualPriceNote}
+                manualPriceDiff={pricing.manualPriceDiff}
+                pricingCalculation={pricing.pricingCalculation}
+                selectedSupplierId={selectedSupplierId}
+                selectedVinsCount={vehicleSelection.selectedVins.length}
+                onChangePricingMode={pricing.handleChangePricingMode}
+                onManualDistanceChange={pricing.setManualDistance}
+                onManualCostChange={pricing.setManualCost}
+                onManualPriceNoteChange={pricing.setManualPriceNote}
+                onResetManualToAuto={pricing.handleResetManualToAuto}
+              />
 
-                {/* Branch pickup: show branch address / coordinate status + edit branch pin */}
-                {originMode === 'branch' && (
-                  <div className="mt-1.5 flex items-center justify-between gap-2">
-                    <div className={`min-w-0 text-[11px] flex items-center gap-1.5 flex-wrap ${
-                      originBranchObj?.latitude && originBranchObj?.longitude ? 'text-gray-600' : 'text-amber-600'
-                    }`}>
-                      <MapPin className={`w-3.5 h-3.5 shrink-0 ${originBranchObj?.latitude && originBranchObj?.longitude ? 'text-emerald-600' : 'text-amber-500'}`} />
-                      <span className="truncate flex items-center gap-1.5 flex-wrap">
-                        {originBranchObj?.latitude && originBranchObj?.longitude ? (
-                          <>
-                            <span className="text-gray-700 font-medium">{originBranchObj.address || 'ปักหมุดแล้ว'}</span>
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-mono border border-emerald-200">
-                              GPS: {originBranchObj.latitude.toFixed(5)}, {originBranchObj.longitude.toFixed(5)}
-                            </span>
-                          </>
-                        ) : (() => {
-                          const fb = getBranchDefaultCoords(originBranchObj?.code || originBranchObj?.name || selectedOriginBranchId);
-                          if (fb) {
-                            return (
-                              <>
-                                <span className="text-gray-700 font-medium">{fb.address}</span>
-                                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-mono border border-emerald-200">
-                                  GPS: {fb.lat.toFixed(4)}, {fb.lng.toFixed(4)}
-                                </span>
-                              </>
-                            );
-                          }
-                          return 'สาขานี้ยังไม่มีพิกัด GPS — Supplier จะนำทางได้ไม่แม่น';
-                        })()}
-                      </span>
-                    </div>
-                    {canEditBranchPin && originBranchObj && (
-                      <button
-                        type="button"
-                        onClick={() => setMapPickerMode('branch')}
-                        disabled={isSavingBranchPin}
-                        className={`shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
-                          originBranchObj.latitude && originBranchObj.longitude
-                            ? 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-                            : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                        }`}
-                        title="แก้พิกัดสาขาถาวร (มีผลกับทุกงานที่ใช้สาขานี้)"
-                      >
-                        {isSavingBranchPin ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
-                        <span>{originBranchObj.latitude && originBranchObj.longitude ? 'แก้หมุดสาขา' : 'ปักหมุดสาขา'}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Origin D365 Warehouse (คลังที่รถจอดอยู่ปัจจุบัน) */}
-                <div className="mt-2 p-2.5 rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[11px] font-semibold text-gray-700 flex items-center gap-1.5">
-                      <Warehouse className="w-3.5 h-3.5 text-gray-500" />
-                      <span>Warehouse ต้นทาง (คลัง D365 ที่รถจอดอยู่):</span>
-                    </span>
-                    {originBranchMainWarehouse && (
-                      <span className="text-[10px] text-gray-500">
-                        คลังหลักของสาขา: <b className="font-mono text-gray-700">{originBranchMainWarehouse}</b>
-                      </span>
-                    )}
-                  </div>
-                  {originWarehouseGroups.length === 0 ? (
-                    <p className="text-[10px] text-gray-400">เลือกรถเพื่อดูคลังที่รถจอดอยู่ปัจจุบัน</p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {originWarehouseGroups.map(g => (
-                        <div
-                          key={g.warehouseId || 'none'}
-                          className={`flex items-center justify-between gap-2 px-2 py-1 rounded-lg border text-[11px] ${
-                            g.warehouseId ? 'bg-white border-gray-200' : 'bg-red-50 border-red-200'
-                          }`}
-                          title={g.labels.join(', ')}
-                        >
-                          <span className="min-w-0 truncate">
-                            {g.warehouseId ? (
-                              <>
-                                <b className="font-mono text-gray-900">{g.warehouseId}</b>
-                                {g.warehouseName && <span className="text-gray-500"> · {g.warehouseName}</span>}
-                              </>
-                            ) : (
-                              <b className="text-red-600">ไม่ระบุคลังใน D365</b>
-                            )}
-                          </span>
-                          <span className={`shrink-0 font-semibold ${g.warehouseId ? 'text-gray-600' : 'text-red-600'}`}>
-                            {g.labels.length} คัน
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Custom pickup pin */}
-                {originMode === 'custom' && (
-                  <button
-                    type="button"
-                    onClick={() => setMapPickerMode('origin')}
-                    className={`mt-3 w-full flex items-center gap-3 p-4 rounded-xl border-2 border-dashed transition-all overflow-hidden ${
-                      customOrigin
-                        ? 'border-amber-300 bg-amber-50/50 hover:bg-amber-50'
-                        : 'border-gray-300 bg-gray-50 hover:bg-white hover:border-amber-500'
-                    }`}
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                      customOrigin ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-500'
-                    }`}>
-                      <MapPin className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 text-left min-w-0">
-                      {customOrigin ? (
-                        <>
-                          <p className="text-xs font-bold text-gray-900 line-clamp-2 leading-relaxed break-words" title={customOrigin.address}>
-                            {customOrigin.address}
-                          </p>
-                          <span className="text-[10px] text-gray-500 font-mono">
-                            {customOrigin.lat.toFixed(5)}, {customOrigin.lng.toFixed(5)}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <p className="text-xs font-semibold text-gray-700">คลิกเพื่อปักหมุดจุดรับรถ</p>
-                          <p className="text-[10px] text-gray-400 mt-0.5">ใช้เมื่อรถไม่ได้จอดที่สาขา เช่น ลานจอดสำรอง, บ้านลูกค้า</p>
-                        </>
-                      )}
-                    </div>
-                    <Navigation className={`w-4 h-4 flex-shrink-0 ${customOrigin ? 'text-amber-600' : 'text-gray-400'}`} />
-                  </button>
-                )}
-              </div>
-
-              {/* Destination Mode Toggle + Picker */}
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-2">
-                  ปลายทาง (Destination): *
-                </label>
-
-                {/* Mode Toggle */}
-                <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 mb-3">
-                  <button
-                    type="button"
-                    onClick={() => { setDestMode('branch'); }}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      destMode === 'branch'
-                        ? 'bg-white text-[#0f5238] shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>เลือกสาขา</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setDestMode('custom'); }}
-                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                      destMode === 'custom'
-                        ? 'bg-white text-[#0f5238] shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    <Map className="w-3.5 h-3.5" />
-                    <span>ปักหมุดบนแผนที่</span>
-                  </button>
-                </div>
-
-                {/* Branch Mode */}
-                {destMode === 'branch' && (
-                  <div className="flex flex-col gap-3">
-                    <BranchSelect
-                      branches={branches}
-                      value={destBranchId}
-                      onChange={(id) => { setDestBranchId(id); }}
-                      disabledIds={selectedOriginBranchId ? { [selectedOriginBranchId]: 'ต้นทาง' } : {}}
-                      placeholder="เลือกสาขาปลายทาง"
-                    />
-
-                    {/* Destination D365 Warehouse ID (required for branch-to-branch slide) */}
-                    <div className="p-3 rounded-xl border border-gray-200 bg-gray-50/60 flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-gray-700">
-                          Warehouse ID ปลายทาง (คลัง D365): <span className="text-red-500">*</span>
-                        </span>
-                        {defaultDestWarehouse && (
-                          <span className="text-[10px] text-gray-500">
-                            คลังหลักของสาขา: <b className="font-mono text-gray-700">{defaultDestWarehouse}</b>
-                          </span>
-                        )}
-                      </div>
-                      <CustomDropdown
-                        value={destWarehouseId}
-                        onChange={(wh) => setDestWarehouseInput({ branchId: destBranchId, value: wh })}
-                        options={destWarehouseDropdownOptions}
-                        placeholder={
-                          !destBranchId
-                            ? 'กรุณาเลือกสาขาปลายทางก่อน'
-                            : destWarehouseDropdownOptions.length > 0 ? 'เลือกคลังปลายทาง' : 'ไม่พบคลัง D365 ของสาขานี้'
-                        }
-                        icon={Warehouse}
-                        disabled={destWarehouseDropdownOptions.length === 0}
-                        dropdownWidth="w-full"
-                        buttonClassName={`bg-white font-mono ${!destWarehouseId ? 'border-red-300' : ''}`}
-                      />
-                      {destWarehouseDropdownOptions.length === 0 && destBranchId && (
-                        <p className="text-[10px] text-red-500">
-                          ไม่พบรายการคลัง D365 ของสาขาปลายทางนี้ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มการแมปคลัง
-                        </p>
-                      )}
-                      {originWarehouseSummary.length > 0 && (
-                        <p className="text-[10px] text-gray-500 leading-relaxed">
-                          โอนคลังใน D365 เมื่อสาขาอนุมัติ:{' '}
-                          {originWarehouseSummary.map(([wh, count], idx) => (
-                            <span key={wh}>
-                              {idx > 0 && ', '}
-                              <b className="font-mono text-gray-700">{wh}</b> ({count} คัน)
-                            </span>
-                          ))}
-                          {' → '}
-                          <b className="font-mono text-[#0f5238]">{destWarehouseId || '-'}</b>
-                          {selectedDestWarehouseName && (
-                            <span className="text-gray-600"> ({selectedDestWarehouseName})</span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Custom Map Mode */}
-                {destMode === 'custom' && (
-                  <div className="flex flex-col gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setMapPickerMode('dest')}
-                      className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 border-dashed transition-all overflow-hidden ${
-                        customDest
-                          ? 'border-emerald-300 bg-emerald-50/50 hover:bg-emerald-50'
-                          : 'border-gray-300 bg-gray-50 hover:bg-white hover:border-[#0f5238]'
-                      }`}
-                    >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        customDest ? 'bg-emerald-100 text-[#0f5238]' : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        <MapPin className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 text-left min-w-0">
-                        {customDest ? (
-                          <>
-                            <p className="text-xs font-bold text-gray-900 line-clamp-2 leading-relaxed break-words" title={customDest.address}>
-                              {customDest.address}
-                            </p>
-                            <div className="flex items-center gap-3 mt-1">
-                              <span className="text-[10px] text-gray-500 font-mono">
-                                {customDest.lat.toFixed(4)}, {customDest.lng.toFixed(4)}
-                              </span>
-                              <span className="text-[10px] font-bold text-emerald-700">
-                                ~{distance.toFixed(1)} กม.
-                              </span>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-xs font-semibold text-gray-700">คลิกเพื่อเปิดแผนที่</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">เลือกจุดปลายทาง เช่น บ้านลูกค้า, อู่ซ่อม ฯลฯ</p>
-                          </>
-                        )}
-                      </div>
-                      <Navigation className={`w-4 h-4 flex-shrink-0 ${
-                        customDest ? 'text-emerald-600' : 'text-gray-400'
-                      }`} />
-                    </button>
-
-                    {/* Distance & Cost Preview */}
-                    {customDest && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="p-2.5 rounded-xl bg-[#f4f9f5] border border-emerald-950/10">
-                          <p className="text-[10px] text-gray-500 font-semibold">ระยะทาง</p>
-                          <p className="text-sm font-bold text-[#0f5238]">{distance.toFixed(1)} กม.</p>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-[#f4f9f5] border border-emerald-950/10">
-                          <p className="text-[10px] text-gray-500 font-semibold">ค่าบริการ (ประมาณ)</p>
-                          <p className="text-sm font-bold text-[#0f5238]">
-                            {selectedSupplierId ? `฿${(pricingCalculation?.costPerCar ?? estimatedCost).toLocaleString()}` : 'รอเลือก Supplier'}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Pricing Mode Toggle (AUTO / MANUAL) */}
-              <div className="md:col-span-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <label className="block text-xs font-semibold text-gray-700">
-                    วิธีคิดค่าบริการ (Pricing Method):
-                  </label>
-                  <div className="grid grid-cols-2 p-1 rounded-xl bg-gray-100 border border-gray-200/80 gap-1 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => handleChangePricingMode(SLIDE_PRICING_AUTO)}
-                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        !isManualPricing ? 'bg-white text-[#0f5238] shadow-xs' : 'text-gray-500 hover:text-gray-800'
-                      }`}
-                    >
-                      <Calculator className="w-3.5 h-3.5" />
-                      <span>คำนวณอัตโนมัติ</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleChangePricingMode(SLIDE_PRICING_MANUAL)}
-                      className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        isManualPricing ? 'bg-white text-amber-800 shadow-xs' : 'text-gray-500 hover:text-gray-800'
-                      }`}
-                    >
-                      <PencilLine className="w-3.5 h-3.5" />
-                      <span>กรอกเอง</span>
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[10px] text-gray-500 mt-1">
-                  {isManualPricing
-                    ? 'กรอกระยะทางและค่าใช้จ่ายต่อคันเอง (เช่น Supplier คิดระยะทางจากจุดจอดรถ → จุดรับ → จุดส่ง) พร้อมระบุหมายเหตุ'
-                    : 'ระบบคำนวณระยะทางจากแผนที่ และค่าบริการต่อคันตามสัญญาของ Supplier'}
-                </p>
-              </div>
-
-              {/* Distance */}
-              <div>
-                <div className="flex items-center justify-between mb-1 gap-2">
-                  <label className="block text-xs font-semibold text-gray-700 whitespace-nowrap">
-                    ระยะทาง (Distance): <span className="text-red-500">*</span>
-                  </label>
-                  <span className={`text-[10px] font-medium whitespace-nowrap ${isManualPricing ? 'text-amber-700' : 'text-gray-400'}`}>
-                    {isManualPricing ? (routeDistance > 0 ? `ระบบคำนวณได้ ${routeDistance.toFixed(1)} กม.` : 'ยังไม่ได้เลือกเส้นทาง') : 'คำนวณตามเส้นทาง'}
-                  </span>
-                </div>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={distance === 0 ? '' : distance}
-                    readOnly={!isManualPricing}
-                    onChange={(e) => {
-                      if (!isManualPricing) return;
-                      const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                      setManualDistance(Number.isFinite(val) ? val : 0);
-                    }}
-                    placeholder="เช่น 35"
-                    required
-                    className={`w-full h-10 pl-3 pr-12 rounded-xl border text-xs font-bold text-gray-900 outline-none transition-all ${
-                      isManualPricing
-                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-400'
-                        : 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                    }`}
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-xs font-semibold text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
-                    กม.
-                  </div>
-                </div>
-              </div>
-
-              {/* Cost per car */}
-              <div>
-                <div className="flex items-center justify-between mb-1 gap-2">
-                  <label className="block text-xs font-semibold text-gray-700 whitespace-nowrap">
-                    ค่าใช้จ่ายต่อคัน (Cost): <span className="text-red-500">*</span>
-                  </label>
-                  {isManualPricing ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setManualDistance(routeDistance);
-                        setManualCost(contractCostPerCar);
-                      }}
-                      className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-lg border text-amber-800 bg-amber-50 hover:bg-amber-100 border-amber-300 transition-colors cursor-pointer whitespace-nowrap"
-                      title="ตั้งค่าระยะทางและราคากลับเป็นค่าที่ระบบคำนวณ (ยังอยู่ในโหมดกรอกเอง)"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>ใช้ค่าที่ระบบคำนวณ</span>
-                    </button>
-                  ) : (
-                    <span
-                      className="text-[10px] font-semibold px-2 py-0.5 rounded-lg border text-emerald-700 bg-emerald-50 border-emerald-200/80 whitespace-nowrap max-w-[210px] truncate"
-                      title={pricingCalculation?.formulaDetail || 'ราคาคำนวณตามสัญญาของ Supplier นี้'}
-                    >
-                      {pricingCalculation?.formulaBadge || (selectedSupplierId ? 'คำนวณตามสัญญา' : 'กรุณาเลือก Supplier')}
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={estimatedCost === 0 ? '' : estimatedCost}
-                    readOnly={!isManualPricing}
-                    onChange={(e) => {
-                      if (!isManualPricing) return;
-                      const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                      setManualCost(Number.isFinite(val) ? val : 0);
-                    }}
-                    placeholder="เช่น 1600"
-                    required
-                    className={`w-full h-10 pl-3 pr-14 rounded-xl border text-xs font-bold text-[#0f5238] outline-none transition-all ${
-                      isManualPricing
-                        ? 'border-amber-300 bg-white focus:ring-2 focus:ring-amber-400'
-                        : 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                    }`}
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-xs font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                    บาท
-                  </div>
-                </div>
-                <div className="mt-1 flex flex-col gap-0.5">
-                  {selectedVins.length > 1 && (
-                    <p className="text-[10px] text-emerald-700 font-semibold">
-                      ต่อคัน (รวม {selectedVins.length} คัน = ฿{(estimatedCost * selectedVins.length).toLocaleString()})
-                    </p>
-                  )}
-                  {!selectedSupplierId ? (
-                    <p className="text-[10px] text-amber-600 font-medium">
-                      กรุณาเลือก Supplier รถสไลด์ในขั้นตอนที่ 1 เพื่อคำนวณอัตราค่าบริการตามสัญญา
-                    </p>
-                  ) : isManualPricing ? (
-                    <p className="text-[10px] text-gray-500 leading-tight">
-                      ราคาตามสัญญา (ที่ระยะ {distance.toFixed(1)} กม.): ฿{contractCostPerCar.toLocaleString()}/คัน
-                      {manualPriceDiff && manualPriceDiff.diff !== 0 && (
-                        <span className={`ml-1 font-bold ${manualPriceDiff.diff > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                          ({manualPriceDiff.diff > 0 ? '+' : ''}{manualPriceDiff.diff.toLocaleString()} บาท / {manualPriceDiff.diff > 0 ? '+' : ''}{manualPriceDiff.percent}%)
-                        </span>
-                      )}
-                    </p>
-                  ) : pricingCalculation ? (
-                    <p className="text-[10px] text-gray-500 leading-tight">
-                      {pricingCalculation.formulaDetail}
-                    </p>
-                  ) : null}
-                  {!isManualPricing && pricingCalculation?.isSpecialQuote && (
-                    <div className="mt-1 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-medium flex items-center gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                      <span>ระยะทางเกิน 1,000 กม. กรุณาติดต่อขอราคาพิเศษ หรือเลือก &quot;กรอกเอง&quot;</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Manual pricing note (required) */}
-              {isManualPricing && (
-                <div className="md:col-span-2">
-                  <div className="flex items-center justify-between mb-1 gap-2">
-                    <label htmlFor="manual-price-note" className="block text-xs font-semibold text-gray-700">
-                      หมายเหตุการกรอกค่าบริการเอง: <span className="text-red-500">*</span>
-                    </label>
-                    <span className="text-[10px] text-gray-400">{manualPriceNote.length}/{MANUAL_PRICE_NOTE_MAX_LENGTH}</span>
-                  </div>
-                  <textarea
-                    id="manual-price-note"
-                    value={manualPriceNote}
-                    onChange={(e) => setManualPriceNote(e.target.value.slice(0, MANUAL_PRICE_NOTE_MAX_LENGTH))}
-                    placeholder="เช่น Supplier คิดระยะทางจากจุดจอดรถ (บางนา) → จุดรับรถ → จุดส่งรถ รวม 71 กม."
-                    rows={2}
-                    required
-                    className="w-full p-3 rounded-xl border border-amber-300 text-xs focus:ring-2 focus:ring-amber-400 outline-none resize-none bg-white"
-                  />
-                  {manualPriceNote.length > 0 && manualPriceNote.trim().length < MANUAL_PRICE_NOTE_MIN_LENGTH && (
-                    <p className="text-[10px] text-red-500 mt-1">กรุณาระบุอย่างน้อย {MANUAL_PRICE_NOTE_MIN_LENGTH} ตัวอักษร</p>
-                  )}
-                </div>
-              )}
-
-              {/* Pickup Time */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  วันและเวลารับรถ (Pickup Date/Time): *
-                </label>
-                <input
-                  type="datetime-local"
-                  value={pickupDateTime}
-                  onChange={(e) => setPickupDateTime(e.target.value)}
-                  required
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-                />
-              </div>
-
-              {/* Delivery Time */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  กำหนดเวลาส่งมอบ (Estimated Delivery): *
-                </label>
-                <input
-                  type="datetime-local"
-                  value={deliveryDateTime}
-                  onChange={(e) => setDeliveryDateTime(e.target.value)}
-                  required
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-                />
-              </div>
-
-              {/* Contact Person */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  ชื่อผู้ติดต่อปลายทาง / ชื่อลูกค้า: *
-                </label>
-                <input
-                  type="text"
-                  value={contactPerson}
-                  onChange={(e) => setContactPerson(e.target.value)}
-                  required
-                  placeholder="เช่น คุณสมชาย (ลูกค้า / ผู้จัดการสาขา)"
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-                />
-              </div>
-
-              {/* Contact Phone */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-gray-700">
-                    เบอร์โทรผู้ติดต่อ: *
-                  </label>
-                  <span className={`text-[10px] font-medium ${contactPhone.length === 10 ? 'text-emerald-600' : 'text-gray-400'}`}>
-                    {contactPhone.length}/10 หลัก
-                  </span>
-                </div>
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  maxLength={10}
-                  pattern="[0-9]{10}"
-                  value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  required
-                  placeholder="เช่น 08xxxxxxxx (ตัวเลข 10 หลัก)"
-                  className="w-full h-10 px-3 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-                />
-              </div>
-
-              {/* Reason */}
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  เหตุผลการย้ายรถ: *
-                </label>
-                <textarea
-                  rows={2}
-                  value={transferReason}
-                  onChange={(e) => setTransferReason(e.target.value)}
-                  required
-                  placeholder="เช่น ย้ายสต็อกตามใบจองลูกค้า, รถทดลองขับสาขา, ส่งซ่อมด่วน..."
-                  className="w-full p-2.5 rounded-xl border border-gray-200 text-xs font-medium focus:ring-2 focus:ring-[#0f5238] outline-none"
-                />
-              </div>
+              <ScheduleContactSection
+                values={scheduleContact}
+                onChange={handleScheduleContactChange}
+              />
             </div>
 
             {/* Submit Action */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-gray-100 mt-2">
-              <div>
-                <p className="text-xs text-gray-600">
-                  <span className="text-gray-500">Supplier:</span>{' '}
-                  <span className="font-bold text-gray-900">{selectedSupplier?.name || '-'}</span>
-                </p>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  <span className="text-gray-500">เส้นทาง:</span>{' '}
-                  <span className="font-semibold text-gray-800">
-                    {originLabel} &rarr;{' '}
-                    {destMode === 'branch'
-                      ? destBranch?.name
-                      : customDest
-                        ? customDest.address.split(',').slice(0, 2).join(',')
-                        : 'ยังไม่ได้เลือกจุดปลายทาง'}
-                  </span>
-                  {distance > 0 && <span className="text-gray-400 ml-1 font-normal">({distance} กม.)</span>}
-                </p>
-                {selectedVins.length > 0 && (
-                  <p className="text-[11px] text-emerald-700 font-semibold mt-1">
-                    เลือก {selectedVins.length} คัน &bull; ฿{estimatedCost.toLocaleString()}/คัน{' '}
-                    {selectedVins.length > 1 && (
-                      <span className="font-bold">(รวม ฿{(estimatedCost * selectedVins.length).toLocaleString()})</span>
-                    )}
-                  </p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#0f5238] text-white text-xs font-bold hover:bg-[#0a3d28] shadow-md transition-all cursor-pointer whitespace-nowrap"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>บันทึกและส่งมอบหมายงานรถสไลด์</span>
-              </button>
-            </div>
+            <SubmitBar
+              supplierName={selectedSupplier?.name}
+              originLabel={route.originLabel}
+              destMode={route.destMode}
+              destBranchName={route.destBranch?.name}
+              customDest={route.customDest}
+              distance={pricing.distance}
+              selectedVinsCount={vehicleSelection.selectedVins.length}
+              estimatedCost={pricing.estimatedCost}
+            />
           </div>
         </div>
       </form>
@@ -1844,18 +453,22 @@ export default function CreateVehicleSlidePage() {
       <SlideConfirmModal
         isOpen={showConfirmModal}
         isSubmitting={isSubmitting}
-        selectedVins={selectedVins}
-        originLabel={originLabel || ''}
-        destLabel={destMode === 'branch' ? `${destBranch?.name || ''}${destWarehouseId ? ` (คลัง ${destWarehouseId})` : ''}` : (customDest?.address || '')}
-        distance={distance}
+        selectedVins={vehicleSelection.selectedVins}
+        originLabel={route.originLabel || ''}
+        destLabel={
+          route.destMode === 'branch'
+            ? `${route.destBranch?.name || ''}${warehouses.destWarehouseId ? ` (คลัง ${warehouses.destWarehouseId})` : ''}`
+            : route.customDest?.address || ''
+        }
+        distance={pricing.distance}
         supplierName={selectedSupplier?.name || ''}
-        pickupDateTime={pickupDateTime}
-        estimatedCost={estimatedCost}
-        formulaBadge={isManualPricing ? 'กรอกค่าบริการเอง' : pricingCalculation?.formulaBadge}
+        pickupDateTime={scheduleContact.pickupDateTime}
+        estimatedCost={pricing.estimatedCost}
+        formulaBadge={pricing.isManualPricing ? 'กรอกค่าบริการเอง' : pricing.pricingCalculation?.formulaBadge}
         formulaDetail={
-          isManualPricing
-            ? `หมายเหตุ: ${manualPriceNote.trim()} (ราคาตามสัญญา ฿${contractCostPerCar.toLocaleString()}/คัน)`
-            : pricingCalculation?.formulaDetail
+          pricing.isManualPricing
+            ? `หมายเหตุ: ${pricing.manualPriceNote.trim()} (ราคาตามสัญญา ฿${pricing.contractCostPerCar.toLocaleString()}/คัน)`
+            : pricing.pricingCalculation?.formulaDetail
         }
         onClose={() => setShowConfirmModal(false)}
         onConfirm={handleConfirmSlideJob}
@@ -1864,80 +477,33 @@ export default function CreateVehicleSlidePage() {
       {/* Confirmation Modal */}
       <SlideSuccessModal
         createdJob={createdJob}
-        selectedVins={selectedVins}
-        distance={distance}
-        estimatedCost={estimatedCost}
-        formulaBadge={isManualPricing ? 'กรอกค่าบริการเอง' : pricingCalculation?.formulaBadge}
+        selectedVins={vehicleSelection.selectedVins}
+        distance={pricing.distance}
+        estimatedCost={pricing.estimatedCost}
+        formulaBadge={pricing.isManualPricing ? 'กรอกค่าบริการเอง' : pricing.pricingCalculation?.formulaBadge}
         onClose={() => setCreatedJob(null)}
       />
 
       {/* Map Picker Modal — shared for pickup pin, destination pin and branch pin */}
       <MapPickerModal
-        isOpen={mapPickerMode !== null}
-        onClose={() => setMapPickerMode(null)}
-        mode={mapPickerMode === 'dest' ? 'dest' : 'origin'}
-        onConfirm={(data) => {
-          if (mapPickerMode === 'branch') {
-            handleSaveBranchPin(data);
-          } else if (mapPickerMode === 'origin') {
-            setCustomOrigin({ lat: data.lat, lng: data.lng, address: data.address });
-          } else {
-            setCustomDest(data);
-          }
-          if (typeof data.distance === 'number' && data.distance > 0) {
-            const nextOrig = mapPickerMode === 'origin' ? { lat: data.lat, lng: data.lng } : originPoint;
-            const nextDest = mapPickerMode === 'dest' ? { lat: data.lat, lng: data.lng } : destPoint;
-            if (nextOrig && nextDest) {
-              setFetchedDrivingDist({
-                key: `${nextOrig.lat},${nextOrig.lng}->${nextDest.lat},${nextDest.lng}`,
-                km: data.distance,
-              });
-            }
-          }
-        }}
-        {...(mapPickerMode === 'branch'
-          ? {
-              // Edit the branch's permanent location — start from current branch pin
-              pointLabel: `ตำแหน่งสาขา ${originBranchObj?.name || ''}`.trim(),
-              originLat: destPoint?.lat ?? originPoint?.lat,
-              originLng: destPoint?.lng ?? originPoint?.lng,
-              originName: destPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
-              referenceCaption: destPoint ? 'ปลายทาง' : 'ตำแหน่งเดิม',
-              initialLat: originBranchObj?.latitude ?? originPoint?.lat,
-              initialLng: originBranchObj?.longitude ?? originPoint?.lng,
-            }
-          : mapPickerMode === 'origin'
-          ? {
-              // Reference = drop-off if known, otherwise the origin branch
-              originLat: destPoint?.lat ?? originPoint?.lat,
-              originLng: destPoint?.lng ?? originPoint?.lng,
-              originName: destPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
-              referenceCaption: destPoint ? 'ปลายทาง' : 'สาขาต้นทาง',
-              // Start from the existing job pin, or from the branch location so the user just drags it
-              initialLat: customOrigin?.lat ?? originPoint?.lat,
-              initialLng: customOrigin?.lng ?? originPoint?.lng,
-            }
-          : {
-              originLat: originPoint?.lat,
-              originLng: originPoint?.lng,
-              originName: originPoint?.name || originBranchObj?.name || 'สาขาต้นทาง',
-              referenceCaption: originMode === 'custom' && customOrigin ? 'จุดรับรถ' : 'สาขาต้นทาง',
-              initialLat: customDest?.lat ?? originPoint?.lat,
-              initialLng: customDest?.lng ?? originPoint?.lng,
-            })}
+        isOpen={route.mapPickerMode !== null}
+        onClose={() => route.setMapPickerMode(null)}
+        mode={route.mapPickerMode === 'dest' ? 'dest' : 'origin'}
+        onConfirm={route.handleMapPickerConfirm}
+        {...route.mapPickerProps}
       />
 
       {/* Cancel Busy Vehicle Modal */}
       <CancelJobConfirmModal
-        isOpen={Boolean(vehicleToCancel)}
-        onClose={() => setVehicleToCancel(null)}
-        onConfirm={handleConfirmCancelBusyJob}
-        isLoading={isCancellingBusyJob}
-        jobNumber={vehicleToCancel?.activeJob?.jobNumber}
-        vin={vehicleToCancel?.vin}
-        vehicleModel={vehicleToCancel?.model}
-        vehicleColor={vehicleToCancel?.color}
-        licensePlate={vehicleToCancel?.licensePlate}
+        isOpen={Boolean(vehicleSelection.vehicleToCancel)}
+        onClose={() => vehicleSelection.setVehicleToCancel(null)}
+        onConfirm={vehicleSelection.handleConfirmCancelBusyJob}
+        isLoading={vehicleSelection.isCancellingBusyJob}
+        jobNumber={vehicleSelection.vehicleToCancel?.activeJob?.jobNumber}
+        vin={vehicleSelection.vehicleToCancel?.vin}
+        vehicleModel={vehicleSelection.vehicleToCancel?.model}
+        vehicleColor={vehicleSelection.vehicleToCancel?.color}
+        licensePlate={vehicleSelection.vehicleToCancel?.licensePlate}
         warningMessage="เมื่อยกเลิกแล้ว รถจะถูกปลดล็อคให้สั่งงานใหม่ได้ทันที"
       />
     </div>

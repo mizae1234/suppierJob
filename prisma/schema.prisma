@@ -252,6 +252,11 @@ model Job {
   d365PoMessage    String?       // ข้อความตอบกลับจาก D365 FO
   d365PoSentAt     DateTime?     // เวลาที่ส่งเปิด PO
 
+  // บันทึกการโอนย้ายคลัง (D365 Inventory Transfer Journal) — ใช้ติดตาม/retry เมื่อโอนคลังไม่สำเร็จหลังอนุมัติ
+  d365TransferStatus  String?    // SUCCESS, FAILED, PENDING, SKIPPED
+  d365TransferMessage String?
+  d365TransferSentAt  DateTime?
+
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -262,6 +267,8 @@ model Job {
   @@index([branchId])
   @@index([pickupBranchId])
   @@index([destBranchId])
+  @@index([requestedById])
+  @@index([updatedAt])
   @@index([status])
   @@index([createdAt])
   @@index([vin])
@@ -286,6 +293,9 @@ model CarWashItem {
   verifiedAt      DateTime?
   verifiedBy      String?
   verifyMethod    String?  // VIN | PLATE
+
+  // คลัง D365 ต้นทางของรถคันนี้ (snapshot ก่อนย้ายคลังในระบบ) — ใช้ยิง Transfer Journal ให้ถูกคลัง
+  fromWarehouseId String?
 
   @@index([jobId])
   @@index([vin])

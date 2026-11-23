@@ -159,6 +159,8 @@ export interface CarWashItem {
   verifiedAt?: string;
   verifiedBy?: string;
   verifyMethod?: 'VIN' | 'PLATE';
+  // คลัง D365 ต้นทางที่ snapshot ก่อนย้ายคลัง
+  fromWarehouseId?: string | null;
 }
 
 // PENDING = รอ Supplier | COMPLETED = Supplier ส่งงานแล้ว (รอตรวจรับ)
@@ -173,6 +175,7 @@ export interface CarWashItemProgress {
   allResolved: boolean;
   allApproved: boolean;
   allCompleted: boolean;
+  pending?: boolean;
   error?: string;
   d365Po?: {
     success: boolean;
@@ -213,12 +216,6 @@ export interface Job {
   pickupBranchAddress?: string;
   pickupBranchLat?: number;
   pickupBranchLng?: number;
-  originBranchId?: string;
-  originBranchCode?: string;
-  originBranchName?: string;
-  originBranchAddress?: string;
-  originBranchLat?: number;
-  originBranchLng?: number;
   destBranchId?: string;
   destBranchCode?: string;
   destBranchName?: string;
@@ -267,6 +264,8 @@ export interface Job {
 
   // หลักฐานภาพถ่าย
   evidences: JobEvidence[];
+  /** จำนวนรูปหลักฐานทั้งหมดของใบงาน (ใช้คู่กับโหมด list ที่ส่งมาเฉพาะรูป thumbnail) */
+  evidenceCount?: number;
 
   // บันทึกกิจกรรม / Timeline
   activities?: JobActivity[];
@@ -282,6 +281,11 @@ export interface Job {
   d365PoStatus?: string | null;
   d365PoMessage?: string | null;
   d365PoSentAt?: string | null;
+
+  // D365 Inventory Transfer Journal
+  d365TransferStatus?: 'SUCCESS' | 'FAILED' | 'PENDING' | 'SKIPPED' | string | null;
+  d365TransferMessage?: string | null;
+  d365TransferSentAt?: string | null;
 
   createdAt: string;
   updatedAt: string;
@@ -330,7 +334,7 @@ export interface VehicleSlideLog {
   jobId: string;
   jobNumber: string;
   action: 'CREATED' | 'PICKUP_VERIFIED' | 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | string;
-  originBranchId?: string;
+  pickupBranchId?: string;
   originName: string;
   originAddress?: string;
   originLat?: number;

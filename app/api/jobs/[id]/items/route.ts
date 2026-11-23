@@ -1,84 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
-import { Prisma } from '@prisma/client';
+import { assertCanMutateJob } from '@/lib/job-access';
 import { logAuditFromUser } from '@/lib/audit-log';
-import { getActiveJobsByVin, type ActiveJobRef } from '@/lib/active-jobs';
-import { getVehicleLabel, haversineDistance } from '@/lib/job-utils';
+import { getActiveJobsByVin } from '@/lib/active-jobs';
+import { AppError, toErrorResponse } from '@/lib/errors';
+import {
+  buildBusyConflictBody,
+  buildOutOfStockBody,
+  reserveVehiclesInTx,
+} from '@/lib/services/vehicles/reserve';
+import { haversineDistance } from '@/lib/job-utils';
 import { getSupplierWashConfig } from '@/lib/car-wash-rates';
 import { calculateSlideJobCost, getBranchDefaultCoords } from '@/lib/vehicle-slide-rates';
 import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
 import { buildJobInclude, serializeJob } from '@/lib/job-serializer';
+import { addJobItemsSchema, parseBody } from '@/lib/validation';
 
 const ADD_ITEMS_TX_TIMEOUT_MS = 20_000;
-
-class JobAddItemConflict extends Error {
-  constructor(public body: Record<string, unknown>, public status = 409) {
-    super(String(body.error));
-    this.name = 'JobAddItemConflict';
-  }
-}
-
-async function buildBusyConflictBody(
-  busy: Map<string, ActiveJobRef>,
-  client: Pick<Prisma.TransactionClient, 'vehicle'>
-) {
-  const plates = await client.vehicle.findMany({
-    where: { vin: { in: [...busy.keys()] } },
-    select: { vin: true, licensePlate: true },
-  });
-  const plateOf = new Map(plates.map(p => [p.vin, p.licensePlate]));
-  const lines = [...busy.entries()].map(([v, j]) =>
-    `${getVehicleLabel(v, plateOf.get(v))} (ใบงาน ${j.jobNumber})`
-  );
-  return {
-    error: `รถต่อไปนี้มีงานที่ยังไม่เสร็จสิ้น สั่งงานซ้ำไม่ได้: ${lines.join(', ')}`,
-    busyVins: [...busy.keys()],
-  };
-}
-
-function buildOutOfStockBody(outOfStock: { vin: string; licensePlate: string | null }[]) {
-  return {
-    error: `รถต่อไปนี้ไม่อยู่ในสต็อกแล้ว (ตามข้อมูล D365) สั่งงานไม่ได้: ${outOfStock.map(v => getVehicleLabel(v.vin, v.licensePlate)).join(', ')}`,
-    outOfStockVins: outOfStock.map(v => v.vin),
-  };
-}
-
-async function reserveVehiclesInTx(
-  tx: Prisma.TransactionClient,
-  vins: string[],
-  newStatus: 'IN_WASH' | 'IN_TRANSIT',
-  allowsOutOfStock: boolean
-) {
-  const uniqueVins = [...new Set(vins.filter(Boolean))];
-  if (uniqueVins.length === 0) return;
-
-  const res = await tx.vehicle.updateMany({
-    where: {
-      vin: { in: uniqueVins },
-      ...(allowsOutOfStock ? {} : { status: { not: 'OUT_OF_STOCK' } }),
-    },
-    data: { status: newStatus },
-  });
-
-  if (res.count !== uniqueVins.length) {
-    const rows = await tx.vehicle.findMany({
-      where: { vin: { in: uniqueVins } },
-      select: { vin: true, licensePlate: true, status: true },
-    });
-    const outOfStock = allowsOutOfStock ? [] : rows.filter(r => r.status === 'OUT_OF_STOCK');
-    if (outOfStock.length > 0) throw new JobAddItemConflict(buildOutOfStockBody(outOfStock));
-    const found = new Set(rows.map(r => r.vin.toUpperCase()));
-    const missing = uniqueVins.filter(v => !found.has(v.toUpperCase()));
-    throw new JobAddItemConflict(
-      { error: `ไม่พบข้อมูลรถในระบบ: ${missing.join(', ') || uniqueVins.join(', ')}` },
-      400
-    );
-  }
-
-  const busy = await getActiveJobsByVin(uniqueVins, tx);
-  if (busy.size > 0) throw new JobAddItemConflict(await buildBusyConflictBody(busy, tx));
-}
 
 /**
  * POST /api/jobs/[id]/items
@@ -94,31 +33,16 @@ export async function POST(
 
   try {
     const { id: jobId } = await params;
-    const body = await request.json();
-    const rawItems: Array<{
-      vin: string;
-      washType?: string;
-      unitPrice?: number;
-      remarks?: string;
-      actualWashDate?: string;
-      model?: string;
-      color?: string;
-      licensePlate?: string;
-    }> = Array.isArray(body.items) ? body.items : [];
-
-    if (rawItems.length === 0) {
-      return NextResponse.json(
-        { error: 'กรุณาเลือกรถที่ต้องการเพิ่มอย่างน้อย 1 คัน' },
-        { status: 400 }
-      );
-    }
+    const parsed = await parseBody(request, addJobItemsSchema);
+    if (parsed.response) return parsed.response;
+    const rawItems = parsed.data.items;
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
       include: {
         carWashItems: true,
-        pickupBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
-        destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true } },
+        pickupBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true, companyId: true } },
+        destBranch: { select: { code: true, name: true, address: true, latitude: true, longitude: true, companyId: true } },
         supplier: {
           select: {
             id: true,
@@ -145,19 +69,8 @@ export async function POST(
     }
 
     // ─── Role & Tenant Isolation ───
-    if (user.role === 'ADMIN' && user.companyId && job.companyId !== user.companyId) {
-      return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขใบงานของบริษัทอื่น' }, { status: 403 });
-    }
-    if (user.role === 'BRANCH' && user.branchId) {
-      const isRelatedBranch =
-        job.requestedById === user.id ||
-        job.branchId === user.branchId ||
-        job.pickupBranchId === user.branchId ||
-        job.destBranchId === user.branchId;
-      if (!isRelatedBranch) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขใบงานของสาขาอื่น' }, { status: 403 });
-      }
-    }
+    const authError = assertCanMutateJob(user, job);
+    if (authError) return authError;
 
     // ─── แนวทางที่ 1 Guard: ต้องอยู่ในสถานะกำลังดำเนินงาน และ Supplier ยังไม่กดยืนยันรถแม้แต่คันเดียว ───
     if (!['IN_PROGRESS', 'PENDING_SUPPLIER'].includes(job.status)) {
@@ -439,14 +352,11 @@ export async function POST(
       addedCount: requestedVins.length,
     });
   } catch (error) {
-    if (error instanceof JobAddItemConflict) {
-      return NextResponse.json(error.body, { status: error.status });
+    if (error instanceof AppError) {
+      return toErrorResponse(error);
     }
     console.error('POST /api/jobs/[id]/items error:', error);
-    return NextResponse.json(
-      { error: 'ไม่สามารถเพิ่มรถเข้าใบงานได้ กรุณาลองใหม่อีกครั้ง' },
-      { status: 500 }
-    );
+    return toErrorResponse(error, 'ไม่สามารถเพิ่มรถเข้าใบงานได้ กรุณาลองใหม่อีกครั้ง');
   }
 }
 

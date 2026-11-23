@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { createBranchSchema, parseBody } from '@/lib/validation';
 
 // GET: ดึงรายการสาขาทั้งหมดพร้อมสถิติจำนวนรถ จำนวนผู้ใช้งาน และจำนวนงาน
 export async function GET(request: NextRequest) {
@@ -96,12 +97,9 @@ export async function POST(request: NextRequest) {
   const { user } = auth;
 
   try {
-    const body = await request.json();
-    const { companyId, code, name, phone, address, latitude, longitude } = body;
-
-    if (!companyId || !code?.trim() || !name?.trim()) {
-      return NextResponse.json({ error: 'กรุณากรอกข้อมูลบริษัท รหัสสาขา และชื่อสาขาให้ครบถ้วน' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, createBranchSchema);
+    if (parsed.response) return parsed.response;
+    const { companyId, code, name, phone, address, latitude, longitude } = parsed.data;
 
     if (user.role === 'ADMIN' && user.companyId && user.companyId !== companyId) {
       return NextResponse.json({ error: 'คุณไม่มีสิทธิ์เพิ่มสาขาให้บริษัทอื่น' }, { status: 403 });
@@ -110,7 +108,7 @@ export async function POST(request: NextRequest) {
     // Check duplicate code across entire system (Globally Unique)
     const existing = await prisma.branch.findFirst({
       where: {
-        code: code.trim(),
+        code,
       },
       include: {
         company: { select: { name: true, code: true } },
@@ -119,22 +117,19 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       return NextResponse.json({
-        error: `รหัสสาขา ${code.trim()} ถูกใช้งานแล้วในระบบ (สังกัด ${existing.company.name})`,
+        error: `รหัสสาขา ${code} ถูกใช้งานแล้วในระบบ (สังกัด ${existing.company.name})`,
       }, { status: 400 });
     }
-
-    const lat = latitude !== undefined && latitude !== '' && latitude !== null ? Number(latitude) : null;
-    const lng = longitude !== undefined && longitude !== '' && longitude !== null ? Number(longitude) : null;
 
     const branch = await prisma.branch.create({
       data: {
         companyId,
-        code: code.trim(),
-        name: name.trim(),
+        code,
+        name,
         phone: phone?.trim() || null,
         address: address?.trim() || null,
-        latitude: lat && Number.isFinite(lat) ? lat : null,
-        longitude: lng && Number.isFinite(lng) ? lng : null,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
       },
       include: {
         company: {

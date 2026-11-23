@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, invalidateUserSession } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { parseBody, toggleUserStatusSchema } from '@/lib/validation';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -31,8 +32,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'ไม่พบผู้ใช้งานนี้ในระบบ' }, { status: 404 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const newStatus = typeof body.isActive === 'boolean' ? body.isActive : !existingUser.isActive;
+    const parsed = await parseBody(request, toggleUserStatusSchema);
+    if (parsed.response) return parsed.response;
+    const newStatus = typeof parsed.data.isActive === 'boolean' ? parsed.data.isActive : !existingUser.isActive;
 
     const updatedUser = await prisma.user.update({
       where: { id },

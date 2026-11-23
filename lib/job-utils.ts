@@ -210,7 +210,7 @@ export function getJobVehicleDisplay(job: Job) {
     return {
       title: `${count} คัน (${firstModel}${firstColor ? ` · ${firstColor}` : ''})`,
       vin: `${firstVin} (+${count - 1} คัน)`,
-      summaryText: `${job.originBranchName || job.branchName} ➔ ${job.destBranchName || job.customDestAddress || '-'}`,
+      summaryText: `${job.pickupBranchName || job.branchName} ➔ ${job.destBranchName || job.customDestAddress || '-'}`,
       isMulti: true,
     };
   }
@@ -224,7 +224,7 @@ export function getJobVehicleDisplay(job: Job) {
   return {
     title: `${model}${color}`,
     vin: vin,
-    summaryText: `${job.originBranchName || job.branchName} ➔ ${job.destBranchName || job.customDestAddress || '-'}`,
+    summaryText: `${job.pickupBranchName || job.branchName} ➔ ${job.destBranchName || job.customDestAddress || '-'}`,
     isMulti: false,
   };
 }
@@ -424,7 +424,7 @@ export function getSlideDirection(
     if (job.destBranchId && job.destBranchId === branchId) {
       return 'INBOUND';
     }
-    const pickupBranchId = job.pickupBranchId || job.originBranchId;
+    const pickupBranchId = job.pickupBranchId;
     if (pickupBranchId === branchId || job.branchId === branchId) {
       return 'OUTBOUND';
     }
@@ -584,7 +584,7 @@ const BRANCH_CORPORATE_DIRECTORY: Record<
  * ค้นหาข้อมูลหัวบิล (Corporate Letterhead) ของสาขาที่เป็นเจ้าของรถต้นสังกัด (Original Vehicle Owner Branch)
  * ลำดับความสำคัญ:
  * 1) รหัสสาขาต้นสังกัดของรถจาก D365 (`d365SiteId` / `vehicleSiteId`) ซึ่งไม่เปลี่ยนแม้รถจะถูกสไลด์ไปสาขาอื่น
- * 2) กรณีงานสไลด์และไม่มี `d365SiteId`: ใช้สาขาต้นทาง (`originBranch`)
+ * 2) กรณีงานสไลด์และไม่มี `d365SiteId`: ใช้สาขาต้นทาง (`pickupBranch`)
  * 3) สาขาที่รถสังกัดในระบบ (`currentBranch`)
  * 4) สาขาที่เปิดใบสั่งงาน (`job.branch`)
  */
@@ -605,8 +605,11 @@ export function getOwnerBranchCorporateInfo(params: {
   const matchedVehicle = targetVin
     ? vehicles.find((v) => v.vin.trim().toUpperCase() === targetVin)
     : undefined;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const jobVehicle = job?.vehicle as any;
+  const jobVehicle = job?.vehicle as
+    | (Vehicle & {
+        currentBranch?: { code?: string | null; name?: string | null; address?: string | null } | null;
+      })
+    | undefined;
 
   // 1) Original owner branch code from D365 (d365SiteId)
   const d365OwnerCode = (
@@ -621,7 +624,7 @@ export function getOwnerBranchCorporateInfo(params: {
   // 2) Pickup branch (for slide jobs) or current vehicle branch or ordering branch
   const fallbackBranchCode = (
     d365OwnerCode ||
-    (job?.jobType === 'VEHICLE_SLIDE' ? (job?.pickupBranchCode || job?.originBranchCode) : '') ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? job?.pickupBranchCode : '') ||
     matchedVehicle?.currentBranchCode ||
     jobVehicle?.currentBranch?.code ||
     activeWashItem?.vehicleBranchCode ||
@@ -632,14 +635,14 @@ export function getOwnerBranchCorporateInfo(params: {
     .toUpperCase();
 
   const fallbackBranchId =
-    (job?.jobType === 'VEHICLE_SLIDE' ? (job?.pickupBranchId || job?.originBranchId) : undefined) ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? job?.pickupBranchId : undefined) ||
     matchedVehicle?.currentBranchId ||
     jobVehicle?.currentBranchId ||
     activeWashItem?.vehicleBranchId ||
     job?.branchId;
 
   const fallbackBranchName =
-    (job?.jobType === 'VEHICLE_SLIDE' ? (job?.pickupBranchName || job?.originBranchName) : undefined) ||
+    (job?.jobType === 'VEHICLE_SLIDE' ? job?.pickupBranchName : undefined) ||
     matchedVehicle?.currentBranchName ||
     jobVehicle?.currentBranch?.name ||
     activeWashItem?.vehicleBranchName ||

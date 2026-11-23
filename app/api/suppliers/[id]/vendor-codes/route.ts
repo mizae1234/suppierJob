@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { findVendorInCompany, normalizeVendorCode, isVendorUsable } from '@/lib/d365/vendors';
 import type { SessionUser } from '@/lib/session';
+import { parseBody, upsertVendorCodeSchema } from '@/lib/validation';
 
 /**
  * รหัส Vendor D365 ของ Supplier แยกตามสาขา (ADMIN/MASTER)
@@ -54,12 +55,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   if (auth.response) return auth.response;
 
   try {
-    const body = await request.json().catch(() => ({}));
-    const branchId = String(body.branchId || '').trim();
-    const vendorCode = normalizeVendorCode(String(body.vendorCode || ''));
-    if (!branchId || !vendorCode) {
-      return NextResponse.json({ error: 'กรุณาระบุสาขาและรหัส Vendor' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, upsertVendorCodeSchema);
+    if (parsed.response) return parsed.response;
+    const branchId = parsed.data.branchId;
+    const vendorCode = normalizeVendorCode(parsed.data.vendorCode);
 
     const [supplier, branch] = await Promise.all([
       prisma.supplier.findUnique({ where: { id }, select: { id: true, d365PartyNumber: true } }),

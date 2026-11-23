@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Job, Vehicle } from '@/types';
+import { CarWashItem, Job, Vehicle } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
@@ -10,17 +10,16 @@ import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import { getOwnerBranchCorporateInfo, getSupplierVendorCode } from '@/lib/job-utils';
 import { STATUS_MAP } from './constants';
 
+const subscribeNoop = () => () => {};
+type ItemWithOptionalVehicle = CarWashItem & { vehicle?: Partial<Vehicle> | null };
+
 export interface WorkOrderPrintDocumentProps {
   job: Job | null;
 }
 
 export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const { companies, branches, suppliers, vehicles } = useApp();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   if (!mounted || !job) return null;
 
@@ -259,11 +258,11 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                 </div>
                 <div>
                   <span className="text-gray-600">สาขา/สถานที่: </span>
-                  <strong className="text-gray-950">{job.originBranchName || job.branchName}</strong>
+                  <strong className="text-gray-950">{job.pickupBranchName || job.branchName}</strong>
                 </div>
-                {(job.customOriginAddress || job.originBranchAddress) && (
+                {(job.customOriginAddress || job.pickupBranchAddress) && (
                   <div className="text-gray-600 text-[9.5px]">
-                    {job.customOriginAddress || job.originBranchAddress}
+                    {job.customOriginAddress || job.pickupBranchAddress}
                   </div>
                 )}
                 <div>
@@ -352,7 +351,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
               {isCarWash && job.carWashItems && job.carWashItems.map((item, idx) => {
                 const isItemCancelled = item.status === 'CANCELLED';
                 const serviceDisplay = getWashServiceDisplay(item.washType);
-                const matchedVehicle = vehicles.find(v => v.vin.toUpperCase() === item.vin.toUpperCase()) || (item as any).vehicle;
+                const matchedVehicle = vehicles.find(v => v.vin.toUpperCase() === item.vin.toUpperCase()) || (item as ItemWithOptionalVehicle).vehicle;
                 const vModel = item.vehicleModel || matchedVehicle?.model || '-';
                 const vColor = item.vehicleColor || matchedVehicle?.color || '';
                 const vPlate = item.licensePlate || matchedVehicle?.licensePlate || '-';
@@ -417,7 +416,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                         : isItemDone
                           ? 'ส่งแล้ว'
                           : 'รอดำเนินการ';
-                    const matchedVehicle = vehicles.find(v => v.vin.toUpperCase() === item.vin.toUpperCase()) || (item as any).vehicle;
+                    const matchedVehicle = vehicles.find(v => v.vin.toUpperCase() === item.vin.toUpperCase()) || (item as ItemWithOptionalVehicle).vehicle;
                     const vModel = item.vehicleModel || matchedVehicle?.model || '-';
                     const vColor = item.vehicleColor || matchedVehicle?.color || '';
                     const vPlate = item.licensePlate || matchedVehicle?.licensePlate || '-';
@@ -436,7 +435,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                           {vPlate}
                         </td>
                         <td className="py-1.5 px-2 border-r border-gray-300 text-gray-900">
-                          {(job.originBranchName || job.branchName)} → {(job.destBranchName || job.customDestAddress || '-')}
+                          {(job.pickupBranchName || job.branchName)} → {(job.destBranchName || job.customDestAddress || '-')}
                           {job.distance ? ` (${job.distance} กม.)` : ''}
                         </td>
                         <td className="py-1.5 px-2 border-r border-gray-300 text-center text-gray-800">
@@ -478,7 +477,7 @@ export function WorkOrderPrintDocument({ job }: WorkOrderPrintDocumentProps) {
                       {vPlate}
                     </td>
                     <td className="py-1.5 px-2 border-r border-gray-300 text-gray-900">
-                      {(job.originBranchName || job.branchName)} → {(job.destBranchName || job.customDestAddress || '-')}
+                      {(job.pickupBranchName || job.branchName)} → {(job.destBranchName || job.customDestAddress || '-')}
                       {job.distance ? ` (${job.distance} กม.)` : ''}
                     </td>
                     <td className="py-1.5 px-2 border-r border-gray-300 text-center text-gray-800">

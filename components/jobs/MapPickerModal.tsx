@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import type * as Leaflet from 'leaflet';
 import { X, MapPin, Navigation, Search, RotateCcw, Loader2 } from 'lucide-react';
 
 interface MapPickerModalProps {
@@ -63,10 +64,10 @@ export default function MapPickerModal({
   const refCaption = referenceCaption || (isOriginMode ? 'ปลายทาง' : 'สาขาต้นทาง');
   const pointNoun = pointLabel || (isOriginMode ? 'จุดรับรถ' : 'จุดปลายทาง');
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<unknown>(null);
-  const markerRef = useRef<unknown>(null);
-  const lineRef = useRef<unknown>(null);
-  const leafletRef = useRef<typeof import('leaflet') | null>(null);
+  const mapInstanceRef = useRef<Leaflet.Map | null>(null);
+  const markerRef = useRef<Leaflet.Marker | null>(null);
+  const lineRef = useRef<Leaflet.Polyline | null>(null);
+  const leafletRef = useRef<typeof Leaflet | null>(null);
 
   const [selectedPos, setSelectedPos] = useState<{ lat: number; lng: number } | null>(null);
   const [address, setAddress] = useState('');
@@ -85,6 +86,7 @@ export default function MapPickerModal({
   const searchAbortRef = useRef<AbortController | null>(null);
   const skipAutocompleteRef = useRef(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const placeMarkerRef = useRef<(lat: number, lng: number) => void>(() => {});
 
   // Inject Leaflet CSS into document head
   useEffect(() => {
@@ -119,14 +121,12 @@ export default function MapPickerModal({
   const handlePlaceMarker = useCallback(
     (lat: number, lng: number) => {
       const L = leafletRef.current;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map = mapInstanceRef.current as any;
+      const map = mapInstanceRef.current;
       if (!map || !L) return;
 
       // Update or create marker
       if (markerRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (markerRef.current as any).setLatLng([lat, lng]);
+        markerRef.current.setLatLng([lat, lng]);
       } else {
         const destIcon = L.divIcon({
           className: '',
@@ -147,7 +147,7 @@ export default function MapPickerModal({
 
         marker.on('dragend', () => {
           const pos = marker.getLatLng();
-          handlePlaceMarker(pos.lat, pos.lng);
+          placeMarkerRef.current(pos.lat, pos.lng);
         });
 
         markerRef.current = marker;
@@ -162,13 +162,11 @@ export default function MapPickerModal({
       reverseGeocode(lat, lng);
 
       if (lineRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (lineRef.current as any).setLatLngs([
+        lineRef.current.setLatLngs([
           [originLat, originLng],
           [lat, lng],
         ]);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (lineRef.current as any).setStyle({
+        lineRef.current.setStyle({
           color: '#0f5238',
           weight: 3,
           dashArray: '6, 6',
@@ -205,13 +203,11 @@ export default function MapPickerModal({
             setRouteType(isRoad ? 'road' : 'straight');
 
             if (lineRef.current) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (lineRef.current as any).setLatLngs(data.coordinates);
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              (lineRef.current as any).setStyle({
+              lineRef.current.setLatLngs(data.coordinates);
+              lineRef.current.setStyle({
                 color: '#0f5238',
                 weight: isRoad ? 4 : 3,
-                dashArray: isRoad ? null : '6, 6',
+                dashArray: isRoad ? undefined : '6, 6',
                 opacity: isRoad ? 0.85 : 0.6,
               });
             }
@@ -229,6 +225,10 @@ export default function MapPickerModal({
     [originLat, originLng, reverseGeocode, pinGradient, pinLabel]
   );
 
+  useEffect(() => {
+    placeMarkerRef.current = handlePlaceMarker;
+  }, [handlePlaceMarker]);
+
   // Jump the map to a point and drop the pin there
   const goTo = useCallback(
     (lat: number, lng: number, selectedName?: string) => {
@@ -237,8 +237,7 @@ export default function MapPickerModal({
         skipAutocompleteRef.current = true;
         setSearchQuery(selectedName);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (mapInstanceRef.current as any).setView([lat, lng], 16);
+      mapInstanceRef.current.setView([lat, lng], 16);
       handlePlaceMarker(lat, lng);
       setSearchResults([]);
       setHighlightedIndex(-1);
@@ -269,11 +268,13 @@ export default function MapPickerModal({
     const q = searchQuery.trim();
     if (q.length < 2) {
       if (searchAbortRef.current) searchAbortRef.current.abort();
-      setSearchResults([]);
-      setHighlightedIndex(-1);
-      setSearchMessage('');
-      setIsSearching(false);
-      return;
+      const resetTimer = setTimeout(() => {
+        setSearchResults([]);
+        setHighlightedIndex(-1);
+        setSearchMessage('');
+        setIsSearching(false);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     // Immediate match if user pasted coordinates or a full Google Maps URL containing coordinates
@@ -394,8 +395,7 @@ export default function MapPickerModal({
 
       // Already initialized
       if (mapInstanceRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mapInstanceRef.current as any).invalidateSize();
+        mapInstanceRef.current.invalidateSize();
         return;
       }
 
@@ -405,8 +405,7 @@ export default function MapPickerModal({
       leafletRef.current = L;
 
       // Fix default icon paths
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      delete (L.Icon.Default.prototype as { _getIconUrl?: unknown })._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
         iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -450,7 +449,7 @@ export default function MapPickerModal({
         .openPopup();
 
       // Click to place destination
-      map.on('click', (e: L.LeafletMouseEvent) => {
+      map.on('click', (e: Leaflet.LeafletMouseEvent) => {
         handlePlaceMarker(e.latlng.lat, e.latlng.lng);
       });
 
@@ -476,16 +475,11 @@ export default function MapPickerModal({
     };
   }, [isOpen, originLat, originLng, originName, handlePlaceMarker, refLabel, refCaption, initialLat, initialLng]);
 
-  // Cleanup when closing
-  useEffect(() => {
+  // Reset UI state when closing
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (prevIsOpen !== isOpen) {
+    setPrevIsOpen(isOpen);
     if (!isOpen) {
-      if (mapInstanceRef.current) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mapInstanceRef.current as any).remove();
-        mapInstanceRef.current = null;
-        markerRef.current = null;
-        lineRef.current = null;
-      }
       setSelectedPos(null);
       setAddress('');
       setDistance(0);
@@ -493,6 +487,16 @@ export default function MapPickerModal({
       setSearchResults([]);
       setSearchMessage('');
       setMapReady(false);
+    }
+  }
+
+  // Cleanup Leaflet instance when closing
+  useEffect(() => {
+    if (!isOpen && mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+      lineRef.current = null;
     }
   }, [isOpen]);
 
@@ -703,12 +707,10 @@ export default function MapPickerModal({
                   onClick={() => {
                     if (routeAbortRef.current) routeAbortRef.current.abort();
                     if (markerRef.current && mapInstanceRef.current) {
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      (markerRef.current as any).remove();
+                      markerRef.current.remove();
                       markerRef.current = null;
                       if (lineRef.current) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        (lineRef.current as any).remove();
+                        lineRef.current.remove();
                         lineRef.current = null;
                       }
                       setSelectedPos(null);

@@ -19,6 +19,8 @@ const UPLOAD_DIR = process.env.UPLOAD_DIR || './storage/uploads';
 
 export const FILES_ROUTE_PREFIX = '/api/files/';
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
+/** เพดานความยาวสตริง Base64 Data URL ก่อน decode (~10MB * 4/3 + เผื่อ header/padding) */
+export const MAX_BASE64_CHARS = Math.ceil((MAX_UPLOAD_BYTES * 4) / 3) + 128;
 
 const IMAGE_TYPES: Record<string, { ext: string; mime: string }> = {
   jpg: { ext: 'jpg', mime: 'image/jpeg' },
@@ -238,6 +240,11 @@ export async function uploadBase64Evidence(params: {
   vin?: string | null;
   evidenceType?: string | null;
 }): Promise<{ url: string; key: string }> {
+  // ตรวจความยาวสตริงก่อน regex / Buffer.from เพื่อกัน memory spike จาก payload ขนาดใหญ่เกิน
+  if (params.base64Data.length > MAX_BASE64_CHARS) {
+    throw new Error('ไฟล์รูปใหญ่เกิน 10MB');
+  }
+
   const match = params.base64Data.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
   if (!match) {
     throw new Error('รูปแบบ Base64 Data URL ไม่ถูกต้อง');

@@ -134,14 +134,12 @@ function JobsContent() {
   }, [activeRange]);
 
   // Sync searchTags when URL query param changes
-  useEffect(() => {
-    const q = searchParams.get('q') || '';
-    if (q) {
-      setSearchTags(q.split(',').map(s => s.trim()).filter(Boolean));
-    } else {
-      setSearchTags([]);
-    }
-  }, [searchParams]);
+  const qParam = searchParams.get('q') || '';
+  const [prevQParam, setPrevQParam] = useState(qParam);
+  if (prevQParam !== qParam) {
+    setPrevQParam(qParam);
+    setSearchTags(qParam ? qParam.split(',').map(s => s.trim()).filter(Boolean) : []);
+  }
 
   // Modal & Drawer states
   const [selectedJob, setSelectedJob] = useState<Job | null>(
@@ -257,23 +255,42 @@ function JobsContent() {
     const isSlide = targetJob?.jobType === 'VEHICLE_SLIDE';
     const myBranchId = activeBranch?.id || currentBranchId;
     const isDest = Boolean(isSlide && targetJob?.destBranchId && targetJob.destBranchId === myBranchId);
-    const isOrigin = Boolean(isSlide && targetJob?.destBranchId && (targetJob.originBranchId === myBranchId || targetJob.branchId === myBranchId));
+    const isOrigin = Boolean(isSlide && targetJob?.destBranchId && (targetJob.pickupBranchId === myBranchId || targetJob.branchId === myBranchId));
 
     let approvedByLabel = customApprovedBy;
     if (!approvedByLabel) {
       if (isDest) {
         approvedByLabel = `ตรวจรับรถโดย ${targetJob?.destBranchName || activeBranch?.name || 'สาขาปลายทาง'}`;
       } else if (isOrigin) {
-        approvedByLabel = `อนุมัติแทนปลายทางโดย ${targetJob?.originBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
+        approvedByLabel = `อนุมัติแทนปลายทางโดย ${targetJob?.pickupBranchName || activeBranch?.name || 'สาขาต้นทาง'}`;
       } else if (activeBranch?.name) {
         approvedByLabel = `สาขา ${activeBranch.name}`;
       }
     }
 
-    showToast(`กำลังอนุมัติใบงาน ${jobLabel} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
     const res = await updateJobStatus(jobId, 'APPROVED', { approvedBy: approvedByLabel || undefined });
     if (res && !res.success) {
       showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
+      return;
+    }
+
+    if (res?.pending) {
+      showToast(
+        `กำลังเปิด PO ใน D365 สำหรับใบงาน ${jobLabel}... ระบบจะเปลี่ยนสถานะเป็นอนุมัติอัตโนมัติเมื่อเปิด PO สำเร็จ`,
+        'info',
+        5500
+      );
+      if (selectedJob?.id === jobId) {
+        setSelectedJob(prev =>
+          prev
+            ? {
+                ...prev,
+                d365PoStatus: 'PENDING',
+                d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+              }
+            : null
+        );
+      }
       return;
     }
 
@@ -306,17 +323,18 @@ function JobsContent() {
 
   // Branch action: Approve a single car (job auto-closes when all cars approved)
   const handleApproveItem = async (job: Job, item: CarWashItem) => {
-    const activeItems = (job.carWashItems || []).filter(i => i.status !== 'CANCELLED');
-    const unapprovedCount = activeItems.filter(i => i.status !== 'APPROVED').length;
-    const willCloseJob = unapprovedCount <= 1;
-
-    if (willCloseJob) {
-      showToast(`กำลังอนุมัติใบงาน ${job.jobNumber} และสร้างใบสั่งซื้อ (PO) ในระบบ D365...`, 'info', 2500);
-    }
-
     const progress = await updateCarWashItemStatus(job.id, item.id, 'APPROVED');
     if (!progress || progress.error) {
       showToast(progress?.error || 'อนุมัติไม่สำเร็จ กรุณาลองใหม่อีกครั้ง', 'error', 6500);
+      return;
+    }
+
+    if (progress.pending) {
+      showToast(
+        `กำลังเปิด PO ใน D365 สำหรับใบงาน ${job.jobNumber}... ระบบจะอนุมัติใบงานอัตโนมัติเมื่อเปิด PO สำเร็จ`,
+        'info',
+        5500
+      );
       return;
     }
 

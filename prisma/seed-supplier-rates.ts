@@ -87,7 +87,7 @@ async function main() {
       code: 'SP-SLIDE03',
       name: 'PCW สไลด์คาร์ (กรุงเทพฯ)',
       showroomLabel: 'กรุงเทพฯ, ปริมณฑล, อยุธยา',
-      phone: '081-000-0000',
+      phone: '',
       address: 'กรุงเทพฯ และปริมณฑล',
       vatType: 'NO_VAT',
       vatRate: 0,

@@ -45,7 +45,7 @@ export const SLIDE_SUPPLIERS: Record<SlideSupplierCode, SlideSupplierInfo> = {
     name: 'PCW สไลด์คาร์ (กรุงเทพฯ)',
     shortName: 'PCW สไลด์คาร์',
     showroomLabel: 'กรุงเทพฯ, ปริมณฑล, อยุธยา',
-    phone: '081-000-0000',
+    phone: '',
     areaDescription: 'กรุงเทพฯ ปริมณฑล และส่งมอบทั่วประเทศ',
     vatType: 'NO_VAT',
     vatRate: 0,

@@ -117,7 +117,6 @@ export async function GET(request: NextRequest) {
       jobNumber: l.jobNumber,
       action: l.action,
       pickupBranchId: l.pickupBranchId,
-      originBranchId: l.pickupBranchId,
       originName: l.originName,
       originAddress: l.originAddress,
       originLat: l.originLat,

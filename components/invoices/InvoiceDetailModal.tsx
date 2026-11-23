@@ -113,17 +113,18 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
   const orderingBranchAddress =
     ownerBranchInfo.address ||
     primaryBranch?.address ||
-    primaryJob?.originBranchAddress ||
+    primaryJob?.pickupBranchAddress ||
     '';
   const orderingBranchPhone = primaryBranch?.phone || primaryJob?.requesterPhone || '';
   const orderingRequester = primaryJob?.requestedBy || '';
   const orderingRequesterPosition = primaryJob?.requesterPosition || '';
 
   // Gather unique D365 PO numbers across all jobs in this invoice
-  const allInvoiceJobs = invoiceJobs.length > 0 ? invoiceJobs : ((invoice.jobs as any[]) || []);
+  const allInvoiceJobs: Array<{ d365PoNumber?: string | null }> =
+    invoiceJobs.length > 0 ? invoiceJobs : (invoice.jobs || []);
   const poNumbers = Array.from(
-    new Set(allInvoiceJobs.map((j: any) => j.d365PoNumber).filter(Boolean))
-  ) as string[];
+    new Set(allInvoiceJobs.map((j) => j.d365PoNumber).filter((po): po is string => Boolean(po)))
+  );
 
   const vehicleItems: VehicleBreakdownItem[] = [];
   for (const j of invoiceJobs) {

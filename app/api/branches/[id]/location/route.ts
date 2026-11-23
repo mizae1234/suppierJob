@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { parseBody, updateBranchLocationSchema } from '@/lib/validation';
 
 // PATCH: อัปเดตพิกัด GPS ของสาขา (ใช้สำหรับคำนวณระยะทาง + ปุ่มนำทางของ Supplier)
 // สิทธิ์: MASTER (ทุกบริษัท), ADMIN (เฉพาะบริษัทตัวเอง)
@@ -15,13 +16,9 @@ export async function PATCH(
 
   try {
     const { id } = await params;
-    const { latitude, longitude, address } = await request.json();
-
-    const lat = Number(latitude);
-    const lng = Number(longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      return NextResponse.json({ error: 'พิกัดไม่ถูกต้อง' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, updateBranchLocationSchema);
+    if (parsed.response) return parsed.response;
+    const { latitude: lat, longitude: lng, address } = parsed.data;
 
     const branch = await prisma.branch.findUnique({ where: { id } });
     if (!branch) {

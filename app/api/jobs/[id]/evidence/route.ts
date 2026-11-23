@@ -1,19 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, type SessionUser } from '@/lib/auth';
-import { uploadBase64Evidence, uploadToStorage, buildS3EvidenceKey, detectImageType, MAX_UPLOAD_BYTES } from '@/lib/s3';
-import { canViewJob } from '@/lib/job-access';
+import {
+  uploadBase64Evidence,
+  uploadToStorage,
+  buildS3EvidenceKey,
+  detectImageType,
+  FILES_ROUTE_PREFIX,
+  isSafeStorageKey,
+  MAX_UPLOAD_BYTES,
+} from '@/lib/s3';
+import { canMutateJob, canViewJob } from '@/lib/job-access';
 
 const EVIDENCE_TYPES = ['BEFORE', 'AFTER', 'PICKUP', 'DROPOFF', 'GENERAL', 'VERIFY', 'ISSUE'];
+/** เพดานขนาด HTTP request body (~15MB รองรับไฟล์ 10MB + base64/multipart overhead) */
+const MAX_REQUEST_BYTES = 15 * 1024 * 1024;
 
 function badRequest(error: string) {
   return NextResponse.json({ error }, { status: 400 });
 }
 
 async function loadJobForUpload(id: string, user: SessionUser) {
-  const job = await prisma.job.findUnique({ where: { id } });
+  const job = await prisma.job.findUnique({
+    where: { id },
+    include: {
+      pickupBranch: { select: { companyId: true } },
+      destBranch: { select: { companyId: true } },
+    },
+  });
   if (!job) return { response: NextResponse.json({ error: 'ไม่พบงานนี้' }, { status: 404 }) };
-  if (!canViewJob(user, job)) {
+  if (!canMutateJob(user, job)) {
     return { response: NextResponse.json({ error: 'คุณไม่มีสิทธิ์แนบหลักฐานในงานนี้' }, { status: 403 }) };
   }
   return { job };
@@ -29,6 +45,18 @@ export async function POST(
   const { user } = auth;
 
   try {
+    // ตรวจขนาด request body ก่อนอ่าน formData/json เพื่อกัน payload ขนาดใหญ่เกิน
+    const contentLengthHeader = request.headers.get('content-length');
+    if (contentLengthHeader) {
+      const contentLength = Number(contentLengthHeader);
+      if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+        return NextResponse.json(
+          { error: 'ขนาดไฟล์หรือข้อมูลใหญ่เกินกำหนด (สูงสุด 15MB)' },
+          { status: 413 }
+        );
+      }
+    }
+
     const { id } = await params;
     const contentType = request.headers.get('content-type') || '';
 
@@ -78,15 +106,22 @@ export async function POST(
         contentType: detected.mime,
       });
 
-      const evidence = await prisma.jobEvidence.create({
-        data: {
-          jobId: id,
-          vin: vin || null,
-          photoUrl,
-          caption: typeof caption === 'string' ? caption.slice(0, 500) : '',
-          evidenceType,
-        },
-      });
+      const [evidence] = await prisma.$transaction([
+        prisma.jobEvidence.create({
+          data: {
+            jobId: id,
+            vin: vin || null,
+            photoUrl,
+            caption: typeof caption === 'string' ? caption.slice(0, 500) : '',
+            evidenceType,
+          },
+        }),
+        // ขยับ updatedAt ของใบงานเพื่อให้ incremental polling (?updatedSince) รับรู้ว่ามีรูปใหม่
+        prisma.job.update({
+          where: { id },
+          data: { updatedAt: new Date() },
+        }),
+      ]);
 
       return NextResponse.json({ success: true, evidence }, { status: 201 });
     }
@@ -128,30 +163,61 @@ export async function POST(
         throw err;
       }
     } else {
-      // Validate safe URL format (prevent javascript:, protocol-relative //host,
-      // and linking to another job's private file under /api/files/)
-      const isSafeUrl =
-        (photoUrl.startsWith('/') && !photoUrl.startsWith('//') && !photoUrl.startsWith('/api/')) ||
-        photoUrl.startsWith('https://');
+      // อนุญาตเฉพาะ URL ภายใน /api/files/<safe-key> เท่านั้น (ไม่อนุญาตลิงก์ https ภายนอกหรือ path อื่น)
+      const isInternalFileUrl =
+        photoUrl.startsWith(FILES_ROUTE_PREFIX) &&
+        isSafeStorageKey(photoUrl.slice(FILES_ROUTE_PREFIX.length));
 
       // จำกัด 800 ตัวอักษร: คอลัมน์ photoUrl มี index (SQL Server จำกัดขนาด key ของ index ~1700 bytes)
-      if (!isSafeUrl || photoUrl.length > 800) {
+      if (!isInternalFileUrl || photoUrl.length > 800) {
         return NextResponse.json(
-          { error: 'รูปแบบ photoUrl ไม่ถูกต้องหรือไม่ปลอดภัย' },
+          { error: 'รองรับเฉพาะการอัปโหลดรูปภาพ (data:image/) หรือไฟล์ภายในระบบ (/api/files/) เท่านั้น' },
           { status: 400 }
+        );
+      }
+
+      // ป้องกันการอ้างอิงไฟล์ส่วนตัวของงานอื่นที่ผู้ใช้ไม่มีสิทธิ์ดู
+      const existingEvidence = await prisma.jobEvidence.findFirst({
+        where: { photoUrl },
+        select: {
+          job: {
+            select: {
+              companyId: true,
+              branchId: true,
+              pickupBranchId: true,
+              destBranchId: true,
+              requestedById: true,
+              supplierId: true,
+              pickupBranch: { select: { companyId: true } },
+              destBranch: { select: { companyId: true } },
+            },
+          },
+        },
+      });
+      if (existingEvidence && !canViewJob(user, existingEvidence.job)) {
+        return NextResponse.json(
+          { error: 'คุณไม่มีสิทธิ์อ้างอิงไฟล์หลักฐานนี้' },
+          { status: 403 }
         );
       }
     }
 
-    const evidence = await prisma.jobEvidence.create({
-      data: {
-        jobId: id,
-        vin: vin || null,
-        photoUrl,
-        caption: typeof caption === 'string' ? caption.slice(0, 500) : '',
-        evidenceType,
-      },
-    });
+    const [evidence] = await prisma.$transaction([
+      prisma.jobEvidence.create({
+        data: {
+          jobId: id,
+          vin: vin || null,
+          photoUrl,
+          caption: typeof caption === 'string' ? caption.slice(0, 500) : '',
+          evidenceType,
+        },
+      }),
+      // ขยับ updatedAt ของใบงานเพื่อให้ incremental polling (?updatedSince) รับรู้ว่ามีรูปใหม่
+      prisma.job.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
 
     return NextResponse.json({ success: true, evidence }, { status: 201 });
   } catch (error) {

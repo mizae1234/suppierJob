@@ -51,15 +51,22 @@ async function findUnlinkedPoInD365(params: {
         typeof h.AccountingDate === 'string' &&
         h.AccountingDate.startsWith(accountingDatePrefix)
     );
+    if (candidates.length === 0) return null;
+
+    // ตรวจสอบเลข PO ที่ผูกกับใบงานในระบบแล้วด้วย query เดียว (แทนการ query ทีละรายการในลูป)
+    const candidatePoNumbers = candidates.map((c) => c.PurchaseOrderNumber!);
+    const linkedJobs = await prisma.job.findMany({
+      where: { d365PoNumber: { in: candidatePoNumbers } },
+      select: { d365PoNumber: true },
+    });
+    const linkedPoSet = new Set(
+      linkedJobs.map((j) => j.d365PoNumber).filter((po): po is string => Boolean(po))
+    );
 
     for (const candidate of candidates) {
       const poNumber = candidate.PurchaseOrderNumber!;
       // ข้ามถ้าเลข PO นี้ผูกกับใบงานอื่นในระบบไปแล้ว
-      const alreadyLinked = await prisma.job.findFirst({
-        where: { d365PoNumber: poNumber },
-        select: { id: true },
-      });
-      if (alreadyLinked) continue;
+      if (linkedPoSet.has(poNumber)) continue;
 
       // ตรวจสอบรายการสินค้าและราคาใน PurchaseOrderLinesV2 ให้ตรงกับจำนวนคันและราคาในใบงาน
       const safePo = poNumber.replace(/'/g, "''");
@@ -195,6 +202,10 @@ export interface SendPoOptions {
   actorId?: string | null;
   actorName?: string | null;
   actorRole?: string | null;
+  /** true เมื่อผู้เรียกจอง d365PoStatus='PENDING' แบบ atomic ไว้ก่อนแล้ว (เช่น ผ่าน Next.js after()) */
+  alreadyClaimed?: boolean;
+  /** ค่า d365PoStatus ก่อนผู้เรียกจองเป็น PENDING — ใช้ตัดสินใจรัน OData recovery เมื่อเคย FAILED */
+  previousPoStatus?: string | null;
 }
 
 async function recordD365PoLog(entry: {
@@ -547,29 +558,39 @@ export async function sendJobToD365PurchaseOrder(
   };
   const payloadJson = JSON.stringify(payload);
 
-  // จองสิทธิ์การส่ง (PENDING) แบบ atomic ควบคู่กับการเตรียม Token ล่วงหน้าแบบขนาน (Parallel)
-  const [claimed, prewarmedToken] = await Promise.all([
-    prisma.job.updateMany({
-      where: {
-        id: jobId,
-        d365PoNumber: null,
-        OR: [
-          { d365PoStatus: null },
-          { d365PoStatus: { not: 'PENDING' } },
-          { d365PoSentAt: null },
-          { d365PoSentAt: { lt: new Date(Date.now() - PO_PENDING_STALE_MS) } },
-        ],
-      },
-      data: {
-        d365PoStatus: 'PENDING',
-        d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
-        d365PoSentAt: new Date(),
-      },
-    }),
-    getD365Token().catch(() => null),
-  ]);
-  if (claimed.count === 0) {
-    return { success: false, message: 'ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่แล้วรีเฟรชหน้าจอ' };
+  const previousPoStatus = options?.previousPoStatus ?? job.d365PoStatus;
+  let prewarmedToken: string | null = null;
+
+  if (options?.alreadyClaimed) {
+    // ผู้เรียกจองสถานะ PENDING แบบ atomic ไว้เรียบร้อยแล้ว — เตรียม Token ล่วงหน้าอย่างเดียว
+    prewarmedToken = await getD365Token().catch(() => null);
+  } else {
+    // จองสิทธิ์การส่ง (PENDING) แบบ atomic ควบคู่กับการเตรียม Token ล่วงหน้าแบบขนาน (Parallel)
+    const [claimed, token] = await Promise.all([
+      prisma.job.updateMany({
+        where: {
+          id: jobId,
+          d365PoNumber: null,
+          OR: [
+            { d365PoStatus: null },
+            { d365PoStatus: { not: 'PENDING' } },
+            { d365PoSentAt: null },
+            { d365PoSentAt: { lt: new Date(Date.now() - PO_PENDING_STALE_MS) } },
+          ],
+        },
+        data: {
+          d365PoStatus: 'PENDING',
+          d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+          d365PoSentAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }),
+      getD365Token().catch(() => null),
+    ]);
+    prewarmedToken = token;
+    if (claimed.count === 0) {
+      return { success: false, message: 'ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่แล้วรีเฟรชหน้าจอ' };
+    }
   }
 
   const accountingDatePrefix = deliveryDateStr.slice(0, 10);
@@ -578,7 +599,7 @@ export async function sendJobToD365PurchaseOrder(
   let requestUrl: string | null = null;
   try {
     // หากเป็นการกดส่งซ้ำหลังจากครั้งก่อนเคยล้มเหลว/Timeout → เช็กใน D365 OData ก่อนว่ามี PO ที่สร้างสำเร็จไปแล้วแต่ไม่ได้รับเลขกลับมาหรือไม่
-    if (job.d365PoStatus === 'FAILED') {
+    if (previousPoStatus === 'FAILED') {
       const existingPurchId = await findUnlinkedPoInD365({
         company: d365Company,
         vendorAccount,

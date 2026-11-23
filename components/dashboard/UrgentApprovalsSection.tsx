@@ -96,7 +96,7 @@ export const UrgentApprovalsSection: React.FC<UrgentApprovalsSectionProps> = ({
                     </div>
                   ))}
                   <span className="text-[11px] text-gray-500 font-medium">
-                    +{job.evidences.length} รูปหลักฐาน
+                    +{job.evidenceCount ?? job.evidences.length} รูปหลักฐาน
                   </span>
                 </div>
               )}

@@ -8,12 +8,9 @@ import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-
 import {
   SLIDE_COMPLETION_FAILED_ATTEMPT,
   SLIDE_FAILED_ATTEMPT_FEE,
-  SLIDE_FAIL_NOTE_MIN_LENGTH,
-  SLIDE_FAIL_NOTE_MAX_LENGTH,
 } from '@/lib/slide-failed-attempt';
+import { failedAttemptSchema, parseBody } from '@/lib/validation';
 
-const MIN_PHOTOS = 1;
-const MAX_PHOTOS = 5;
 /** สถานะที่ Vendor ส่งงานเที่ยวเปล่าได้ (REJECTED = สาขาตีกลับให้ส่งใหม่) */
 const ALLOWED_STATUSES = ['PENDING_SUPPLIER', 'IN_PROGRESS', 'REJECTED'];
 
@@ -42,18 +39,9 @@ export async function POST(
 
   try {
     const { id: jobId } = await params;
-    const body = await request.json().catch(() => ({}));
-
-    const note = typeof body.note === 'string' ? body.note.trim().slice(0, SLIDE_FAIL_NOTE_MAX_LENGTH) : '';
-    const photos: string[] = Array.isArray(body.photos)
-      ? body.photos.filter((p: unknown): p is string => typeof p === 'string' && p.startsWith('data:image/'))
-      : [];
-
-    if (note.length < SLIDE_FAIL_NOTE_MIN_LENGTH) {
-      return badRequest(`กรุณาระบุหมายเหตุ / สาเหตุที่สไลด์ไม่ได้ (อย่างน้อย ${SLIDE_FAIL_NOTE_MIN_LENGTH} ตัวอักษร)`);
-    }
-    if (photos.length < MIN_PHOTOS) return badRequest('กรุณาถ่ายรูปหน้างานอย่างน้อย 1 รูปเพื่อเป็นหลักฐาน');
-    if (photos.length > MAX_PHOTOS) return badRequest(`แนบรูปได้สูงสุด ${MAX_PHOTOS} รูป`);
+    const parsed = await parseBody(request, failedAttemptSchema);
+    if (parsed.response) return parsed.response;
+    const { note, photos } = parsed.data;
 
     const job = await prisma.job.findUnique({
       where: { id: jobId },
@@ -127,6 +115,7 @@ export async function POST(
           actualCost: SLIDE_FAILED_ATTEMPT_FEE,
           completedAt: now,
           rejectReason: null,
+          updatedAt: now,
         },
       });
       if (claimed.count === 0) return false;

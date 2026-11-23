@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { validatePasswordStrength, hashPassword } from '@/lib/password';
+import { createUserSchema, parseBody } from '@/lib/validation';
 
 // GET: ดึงรายการผู้ใช้งานทั้งหมด (เฉพาะ MASTER เท่านั้น)
 export async function GET(request: NextRequest) {
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
     const supplierId = searchParams.get('supplierId') || 'ALL';
     const status = searchParams.get('status') || 'ALL';
 
-    const where: any = {};
+    const where: Prisma.UserWhereInput = {};
 
     // Search filter
     if (search) {
@@ -120,7 +122,8 @@ export async function POST(request: NextRequest) {
     if (auth.response) return auth.response;
     const sessionUser = auth.user;
 
-    const body = await request.json();
+    const parsed = await parseBody(request, createUserSchema);
+    if (parsed.response) return parsed.response;
     const {
       username,
       password,
@@ -133,38 +136,14 @@ export async function POST(request: NextRequest) {
       companyId,
       branchId,
       supplierId,
-    } = body;
+    } = parsed.data;
 
     // 1. Validation
-    if (!username || !username.trim()) {
-      return NextResponse.json({ error: 'กรุณากรอกชื่อผู้ใช้ (Username)' }, { status: 400 });
-    }
-
-    const cleanUsername = username.trim().toLowerCase();
-    if (cleanUsername.length < 3) {
-      return NextResponse.json({ error: 'ชื่อผู้ใช้ต้องมีความยาวอย่างน้อย 3 ตัวอักษร' }, { status: 400 });
-    }
+    const cleanUsername = username.toLowerCase();
 
     const passwordError = validatePasswordStrength(password);
     if (passwordError) {
       return NextResponse.json({ error: passwordError }, { status: 400 });
-    }
-
-    if (!displayName || !displayName.trim()) {
-      return NextResponse.json({ error: 'กรุณากรอกชื่อที่แสดง (Display Name)' }, { status: 400 });
-    }
-
-    const validRoles = ['MASTER', 'ADMIN', 'BRANCH', 'SUPPLIER'];
-    if (!role || !validRoles.includes(role)) {
-      return NextResponse.json({ error: 'บทบาท (Role) ไม่ถูกต้อง' }, { status: 400 });
-    }
-
-    // Role-specific validation
-    if (role === 'BRANCH' && !branchId) {
-      return NextResponse.json({ error: 'ผู้ใช้งานระดับสาขาจำเป็นต้องระบุสาขา' }, { status: 400 });
-    }
-    if (role === 'SUPPLIER' && !supplierId) {
-      return NextResponse.json({ error: 'ผู้ใช้งานคู่ค้าจำเป็นต้องระบุ Supplier' }, { status: 400 });
     }
 
     // 2. Check if username exists

@@ -1,17 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
+import { assertCanMutateJob } from '@/lib/job-access';
 import { logAuditFromUser, AuditAction } from '@/lib/audit-log';
-import { recordVehicleSlideLog, getSlideRouteLabels } from '@/lib/vehicle-slide-log';
-import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
-import { sendJobToD365TransferJournal, resolveJobDestWarehouse } from '@/lib/d365/transfer';
 import {
   isFailedAttemptJob,
   SLIDE_COMPLETION_DELIVERED,
-  SLIDE_FAILED_ATTEMPT_FEE,
 } from '@/lib/slide-failed-attempt';
+import { ConflictError, toErrorResponse } from '@/lib/errors';
+import { validateJobStatusTransition } from '@/lib/services/jobs/state-machine';
+import {
+  claimJobForApprovalPo,
+  finalizeJobApproval,
+  isPoPendingActive,
+  resolveApprovedByLabel,
+  runAsyncApprovalWithPo,
+  STATUS_CONFLICT_MESSAGE,
+} from '@/lib/services/jobs/approve-job';
+import {
+  releaseVehiclesInTx,
+  recordJobSlideMovementLog,
+} from '@/lib/services/jobs/vehicle-movement';
+import { parseBody, updateJobStatusSchema } from '@/lib/validation';
 
-// PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard)
+// PATCH: อัปเดตสถานะงาน พร้อมตรวจสอบสิทธิ์ตามบทบาท (State Transition Guard + Optimistic Locking)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,18 +34,16 @@ export async function PATCH(
 
   try {
     const { id } = await params;
-    const { status, rejectReason, approvedBy } = await request.json();
-
-    if (!status) {
-      return NextResponse.json({ error: 'กรุณาระบุสถานะใหม่' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, updateJobStatusSchema);
+    if (parsed.response) return parsed.response;
+    const { status, rejectReason, approvedBy } = parsed.data;
 
     const job = await prisma.job.findUnique({
       where: { id },
       include: {
         carWashItems: true,
-        pickupBranch: { select: { code: true, name: true, address: true } },
-        destBranch: { select: { code: true, name: true, address: true } },
+        pickupBranch: { select: { code: true, name: true, address: true, companyId: true } },
+        destBranch: { select: { code: true, name: true, address: true, companyId: true } },
         supplier: { select: { name: true } },
       },
     });
@@ -46,76 +56,45 @@ export async function PATCH(
     const isFailedAttempt = isFailedAttemptJob(job);
 
     // ─── Authorization Check ─────────────────────────
-    if (user.role === 'SUPPLIER') {
-      if (job.supplierId !== user.supplierId) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขงานของ Supplier อื่น' }, { status: 403 });
-      }
-      // Supplier can transition to IN_PROGRESS, WAITING_APPROVAL, or CANCELLED (ปฏิเสธงาน)
-      const allowedTransitions = ['IN_PROGRESS', 'WAITING_APPROVAL', 'CANCELLED'];
-      if (!allowedTransitions.includes(status)) {
-        return NextResponse.json(
-          { error: 'Supplier ไม่มีสิทธิ์อนุมัติ หรือแก้ไขสถานะนี้' },
-          { status: 403 }
-        );
-      }
+    const authError = assertCanMutateJob(user, job);
+    if (authError) return authError;
+
+    // ─── State Machine Validation (Unknown status -> 400, Role -> 403, Invalid from->to -> 409) ───
+    const transition = validateJobStatusTransition({
+      role: user.role,
+      from: job.status,
+      to: status,
+      approvedBy: job.approvedBy,
+    });
+    if (!transition.ok) {
+      return NextResponse.json({ error: transition.error }, { status: transition.status });
+    }
+    const nextStatus = transition.to;
+
+    // ป้องกันการเปลี่ยนสถานะระหว่างที่ระบบกำลังเปิด PO ใน D365 อยู่
+    if (isPoPendingActive(job)) {
+      return NextResponse.json(
+        { error: 'ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่' },
+        { status: 409 }
+      );
+    }
+
+    // ─── Business Guards ─────────────────────────────
+    if (user.role === 'SUPPLIER' && nextStatus === 'WAITING_APPROVAL') {
       // ต้องยืนยันตัวรถ (VIN/ทะเบียน + รูป) ก่อนส่งงาน
-      if (status === 'WAITING_APPROVAL') {
-        const notVerified = job.jobType === 'VEHICLE_SLIDE'
+      const notVerified =
+        job.jobType === 'VEHICLE_SLIDE'
           ? !job.verifiedAt
-          : job.carWashItems.some(c => ['PENDING', 'REJECTED'].includes(c.status) && !c.verifiedAt);
-        if (notVerified) {
-          return NextResponse.json(
-            { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
-            { status: 400 }
-          );
-        }
-      }
-    } else if (user.role === 'BRANCH') {
-      // Branch user (ทั้งสาขาผู้สั่ง, สาขาจุดรับรถ, และสาขาปลายทาง) สามารถจัดการ/ยกเลิกใบงานที่เกี่ยวข้องกับสาขาตัวเองได้
-      const isRelatedBranch = 
-        job.requestedById === user.id ||
-        job.branchId === user.branchId || 
-        job.pickupBranchId === user.branchId || 
-        job.destBranchId === user.branchId;
-
-      if (user.branchId && !isRelatedBranch) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์จัดการงานของสาขาอื่น' }, { status: 403 });
-      }
-    } else if (user.role === 'ADMIN') {
-      if (user.companyId && job.companyId !== user.companyId) {
-        return NextResponse.json({ error: 'คุณไม่มีสิทธิ์แก้ไขงานของบริษัทอื่น' }, { status: 403 });
-      }
-    }
-
-    // ─── Status Transition & Concurrency Guard ────────
-    if (status === 'APPROVED') {
-      if (job.status === 'APPROVED') {
+          : job.carWashItems.some((c) => ['PENDING', 'REJECTED'].includes(c.status) && !c.verifiedAt);
+      if (notVerified) {
         return NextResponse.json(
-          { error: `งานนี้ได้รับการอนุมัติเรียบร้อยแล้ว${job.approvedBy ? ` โดย ${job.approvedBy}` : ''}` },
-          { status: 400 }
-        );
-      }
-      if (job.status === 'CANCELLED') {
-        return NextResponse.json(
-          { error: 'งานนี้ถูกยกเลิกแล้ว ไม่สามารถอนุมัติได้' },
+          { error: 'กรุณายืนยันตัวรถ (VIN/ทะเบียน) ก่อนส่งงาน' },
           { status: 400 }
         );
       }
     }
 
-    if (status === 'CANCELLED') {
-      if (job.status === 'CANCELLED') {
-        return NextResponse.json(
-          { error: 'งานนี้ถูกยกเลิกไปแล้ว' },
-          { status: 400 }
-        );
-      }
-      if (['APPROVED', 'INVOICED'].includes(job.status)) {
-        return NextResponse.json(
-          { error: 'งานนี้ผ่านการตรวจรับแล้ว ไม่สามารถยกเลิกได้' },
-          { status: 400 }
-        );
-      }
+    if (nextStatus === 'CANCELLED') {
       const hasVerified = Boolean(job.verifiedAt || job.carWashItems?.some((i) => i.verifiedAt));
       if (hasVerified && user.role !== 'MASTER') {
         return NextResponse.json(
@@ -126,60 +105,78 @@ export async function PATCH(
       // Vendor มาหน้างานและส่งเป็นเที่ยวเปล่าแล้ว → ต้องอนุมัติค่าเที่ยวเปล่า ไม่ใช่ยกเลิก
       if (isFailedAttempt && user.role !== 'MASTER') {
         return NextResponse.json(
-          { error: 'ไม่สามารถยกเลิกใบงานได้ เนื่องจาก Supplier ส่งงานเที่ยวเปล่า (สไลด์ไม่สำเร็จ) แล้ว กรุณาอนุมัติหรือขอแก้ไข' },
-          { status: 400 }
-        );
-      }
-    }
-
-    // ─── สร้างใบสั่งซื้อ (D365 PO) ก่อนเปลี่ยนสถานะใบงานเป็น APPROVED ────────
-    // หากเปิด PO ใน D365 ไม่สำเร็จ จะไม่เปลี่ยนสถานะใบงานเป็น APPROVED (ให้คงอยู่ที่ WAITING_APPROVAL ใน Kanban)
-    let d365Po: { success: boolean; purchId?: string; message: string } | undefined;
-    const userBranchLabel = user.branchName || user.branchCode || (user.role === 'ADMIN' ? 'ส่วนกลาง' : '');
-    const userName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username;
-    const resolvedApprovedBy = approvedBy || (userBranchLabel ? `${userBranchLabel} (${userName})` : userName);
-
-    if (status === 'APPROVED') {
-      try {
-        d365Po = await sendJobToD365PurchaseOrder(id, {
-          trigger: 'AUTO_APPROVE',
-          actorId: user.id,
-          actorName: resolvedApprovedBy,
-          actorRole: user.role,
-        });
-        console.log(`[JobStatus] D365 PO result for ${job.jobNumber}:`, d365Po);
-      } catch (poErr) {
-        console.error('Trigger D365 PO creation error:', poErr);
-        d365Po = {
-          success: false,
-          message: poErr instanceof Error ? poErr.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ D365',
-        };
-      }
-
-      if (!d365Po?.success) {
-        return NextResponse.json(
           {
-            success: false,
-            error: `ไม่สามารถอนุมัติใบงานได้ เนื่องจากเปิด PO ใน D365 ไม่สำเร็จ: ${d365Po?.message || 'ไม่ทราบสาเหตุ'}`,
-            d365Po,
+            error:
+              'ไม่สามารถยกเลิกใบงานได้ เนื่องจาก Supplier ส่งงานเที่ยวเปล่า (สไลด์ไม่สำเร็จ) แล้ว กรุณาอนุมัติหรือขอแก้ไข',
           },
           { status: 400 }
         );
       }
     }
 
-    // เก็บคลังต้นทางของรถแต่ละคันก่อนอัปเดตสถานะ เพื่อส่งให้ D365 Transfer Journal
-    const preTransferWarehouses: Record<string, string | null | undefined> = {};
+    // ─── อนุมัติใบงาน (APPROVED): เปิด D365 PO แบบ Async ผ่าน Next.js after() ────────
+    // กฎสำคัญ: ใบงานยังไม่เปลี่ยนเป็น APPROVED บน Kanban จนกว่าการเปิด PO ใน D365 จะสำเร็จ
+    if (nextStatus === 'APPROVED') {
+      const resolvedApprovedBy = resolveApprovedByLabel(user, approvedBy);
 
-    // ─── Atomic Update with Transaction ──────────────
+      // กรณีใบงานมีเลข PO อยู่แล้ว (เช่น เคยกดส่งซ้ำจนสำเร็จ) → ปิดอนุมัติได้ทันทีโดยไม่ต้องเปิด PO ใหม่
+      if (job.d365PoNumber) {
+        const finalized = await finalizeJobApproval({
+          jobId: id,
+          expectedJobStatus: job.status,
+          user,
+          approvedBy: resolvedApprovedBy,
+          request,
+        });
+        const d365Po = {
+          success: true,
+          purchId: job.d365PoNumber,
+          message: `ใบงานนี้มีเลข PO แล้ว (${job.d365PoNumber})`,
+        };
+        return NextResponse.json({
+          success: true,
+          job: finalized.job,
+          d365Po,
+          d365Transfer: finalized.d365Transfer,
+        });
+      }
+
+      // จองสถานะ d365PoStatus = 'PENDING' แบบ atomic แล้วตอบ 202 ทันที จากนั้นเปิด PO + ปิดอนุมัติใน after()
+      await claimJobForApprovalPo({ jobId: id, expectedStatus: job.status });
+
+      const previousPoStatus = job.d365PoStatus ?? null;
+      const expectedJobStatus = job.status;
+      after(() =>
+        runAsyncApprovalWithPo({
+          jobId: id,
+          jobNumber: job.jobNumber,
+          expectedJobStatus,
+          previousPoStatus,
+          user,
+          approvedBy: resolvedApprovedBy,
+        })
+      );
+
+      return NextResponse.json(
+        {
+          success: true,
+          pending: true,
+          message: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
+        },
+        { status: 202 }
+      );
+    }
+
+    // ─── Non-APPROVED Atomic Update with Optimistic Lock ──────────────
     const updatedJob = await prisma.$transaction(async (tx) => {
+      const now = new Date();
       const updateData: Record<string, unknown> = {
-        status,
-        updatedAt: new Date(),
+        status: nextStatus,
+        updatedAt: now,
       };
 
-      if (status === 'WAITING_APPROVAL') {
-        updateData.completedAt = new Date();
+      if (nextStatus === 'WAITING_APPROVAL') {
+        updateData.completedAt = now;
         if (job.jobType === 'VEHICLE_SLIDE') {
           // ส่งงานสไลด์แบบปกติ (ส่งรถสำเร็จ) → ล้างข้อมูลเที่ยวเปล่าจากรอบก่อน (ถ้ามี) กันยอดค้าง
           updateData.completionType = SLIDE_COMPLETION_DELIVERED;
@@ -188,95 +185,16 @@ export async function PATCH(
           if (isFailedAttempt) updateData.actualCost = null;
         }
         if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
-          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
-          const validItems = completedItems.length > 0 
-            ? completedItems 
-            : job.carWashItems.filter(c => c.status !== 'CANCELLED');
+          const completedItems = job.carWashItems.filter(
+            (c) => c.status === 'COMPLETED' || c.status === 'APPROVED'
+          );
+          const validItems =
+            completedItems.length > 0
+              ? completedItems
+              : job.carWashItems.filter((c) => c.status !== 'CANCELLED');
           updateData.actualCost = validItems.reduce((sum, c) => sum + (c.unitPrice || 0), 0);
-        } else if (job.jobType === 'VEHICLE_SLIDE' && job.carWashItems && job.carWashItems.length > 0) {
-          await tx.carWashItem.updateMany({
-            where: { jobId: job.id, status: 'PENDING' },
-            data: { status: 'COMPLETED' },
-          });
         }
-      } else if (status === 'APPROVED') {
-        updateData.approvedAt = new Date();
-        updateData.approvedBy = resolvedApprovedBy;
-        if (isFailedAttempt) {
-          // เที่ยวเปล่า: ยอดตายตัวต่อใบงาน
-          updateData.actualCost = SLIDE_FAILED_ATTEMPT_FEE;
-        } else if (job.jobType === 'CAR_WASH' && job.carWashItems && job.carWashItems.length > 0) {
-          const completedItems = job.carWashItems.filter(c => c.status === 'COMPLETED' || c.status === 'APPROVED');
-          const validItems = completedItems.length > 0 
-            ? completedItems 
-            : job.carWashItems.filter(c => c.status !== 'CANCELLED');
-          updateData.actualCost = validItems.reduce((sum, c) => sum + (c.unitPrice || 0), 0);
-        } else if (!job.actualCost) {
-          updateData.actualCost = job.estimatedCost;
-        }
-
-        // Reset vehicle status atomically
-        if (job.jobType === 'VEHICLE_SLIDE' && isFailedAttempt) {
-          // เที่ยวเปล่า: รถยังอยู่ที่เดิม → ปลดล็อกสถานะอย่างเดียว ไม่เปลี่ยนสาขา/คลัง
-          const slideVins = job.carWashItems && job.carWashItems.length > 0
-            ? job.carWashItems.filter(c => c.status !== 'CANCELLED').map(c => c.vin)
-            : (job.vin ? [job.vin] : []);
-          if (slideVins.length > 0) {
-            await tx.vehicle.updateMany({
-              where: { vin: { in: slideVins } },
-              data: { status: 'AVAILABLE' },
-            });
-          }
-          if (job.carWashItems && job.carWashItems.length > 0) {
-            await tx.carWashItem.updateMany({
-              where: { jobId: job.id, status: { not: 'CANCELLED' } },
-              data: { status: 'APPROVED' },
-            });
-          }
-        } else if (job.jobType === 'VEHICLE_SLIDE') {
-          const slideVins = job.carWashItems && job.carWashItems.length > 0
-            ? job.carWashItems.filter(c => c.status !== 'CANCELLED').map(c => c.vin)
-            : (job.vin ? [job.vin] : []);
-
-          if (slideVins.length > 0) {
-            const existingVehicles = await tx.vehicle.findMany({
-              where: { vin: { in: slideVins } },
-              select: { vin: true, d365WarehouseId: true },
-            });
-            for (const ev of existingVehicles) {
-              preTransferWarehouses[ev.vin] = ev.d365WarehouseId;
-            }
-
-            const destWarehouse = resolveJobDestWarehouse(job);
-            // อัปเดตเฉพาะที่จอดปัจจุบัน (currentBranchId + d365WarehouseId) โดยไม่แตะ d365SiteId (สาขาเจ้าของรถ Original)
-            await tx.vehicle.updateMany({
-              where: { vin: { in: slideVins } },
-              data: {
-                status: 'AVAILABLE',
-                ...(job.destBranchId ? { currentBranchId: job.destBranchId } : {}),
-                ...(destWarehouse ? { d365WarehouseId: destWarehouse } : {}),
-              },
-            });
-          }
-          if (job.carWashItems && job.carWashItems.length > 0) {
-            await tx.carWashItem.updateMany({
-              where: { jobId: job.id, status: { not: 'CANCELLED' } },
-              data: { status: 'APPROVED' },
-            });
-          }
-        } else if (job.jobType === 'CAR_WASH' && job.carWashItems.length > 0) {
-          // อนุมัติทั้งใบ = อนุมัติทุกคันที่ Supplier ส่งงานแล้ว
-          await tx.carWashItem.updateMany({
-            where: { jobId: job.id, status: 'COMPLETED' },
-            data: { status: 'APPROVED' },
-          });
-          const vins = job.carWashItems.map(c => c.vin);
-          await tx.vehicle.updateMany({
-            where: { vin: { in: vins } },
-            data: { status: 'AVAILABLE' },
-          });
-        }
-      } else if (status === 'REJECTED') {
+      } else if (nextStatus === 'REJECTED') {
         updateData.rejectReason = rejectReason || 'ขอให้แก้ไขรายละเอียดงาน';
         if (isFailedAttempt) {
           // ตีกลับงานเที่ยวเปล่า → ล้างสถานะเที่ยวเปล่า ให้ Vendor เลือกส่งใหม่ได้ (สไลด์จริง หรือแจ้งเที่ยวเปล่าอีกครั้ง)
@@ -284,71 +202,81 @@ export async function PATCH(
           updateData.failReasonCode = null;
           updateData.failNote = null;
           updateData.actualCost = null;
-          if (job.carWashItems && job.carWashItems.length > 0) {
-            await tx.carWashItem.updateMany({
-              where: { jobId: job.id, status: { not: 'CANCELLED' } },
-              data: { status: 'REJECTED', remarks: `ตีกลับงานเที่ยวเปล่า: ${updateData.rejectReason}` },
-            });
-          }
         }
-      } else if (status === 'CANCELLED') {
-        updateData.rejectReason = rejectReason || (user.role === 'SUPPLIER' ? 'Supplier ปฏิเสธงาน' : 'ยกเลิกคำสั่งงาน');
+      } else if (nextStatus === 'CANCELLED') {
+        updateData.rejectReason =
+          rejectReason || (user.role === 'SUPPLIER' ? 'Supplier ปฏิเสธงาน' : 'ยกเลิกคำสั่งงาน');
         updateData.actualCost = 0;
+      }
 
-        // Reset vehicle status back to AVAILABLE and update all items to CANCELLED
-        const allVins = job.carWashItems && job.carWashItems.length > 0
-          ? job.carWashItems.map(c => c.vin)
-          : (job.vin ? [job.vin] : []);
+      // Optimistic Lock: ตรวจว่าสถานะปัจจุบันของใบงานยังไม่ถูกเปลี่ยนโดยคำขออื่น
+      const locked = await tx.job.updateMany({
+        where: { id, status: job.status },
+        data: updateData,
+      });
+      if (locked.count === 0) {
+        throw new ConflictError(STATUS_CONFLICT_MESSAGE);
+      }
 
-        if (allVins.length > 0) {
-          await tx.vehicle.updateMany({
-            where: { vin: { in: allVins } },
-            data: { status: 'AVAILABLE' },
+      // Side-effects ของรายการรถและสถานะรถ (ทำหลังได้ lock แถว Job แล้ว)
+      if (nextStatus === 'WAITING_APPROVAL') {
+        if (job.jobType === 'VEHICLE_SLIDE' && job.carWashItems && job.carWashItems.length > 0) {
+          await tx.carWashItem.updateMany({
+            where: { jobId: job.id, status: { in: ['PENDING', 'REJECTED'] } },
+            data: { status: 'COMPLETED' },
           });
         }
+      } else if (nextStatus === 'REJECTED') {
+        if (isFailedAttempt && job.carWashItems && job.carWashItems.length > 0) {
+          await tx.carWashItem.updateMany({
+            where: { jobId: job.id, status: { not: 'CANCELLED' } },
+            data: { status: 'REJECTED', remarks: `ตีกลับงานเที่ยวเปล่า: ${updateData.rejectReason}` },
+          });
+        }
+      } else if (nextStatus === 'CANCELLED') {
+        const allVins =
+          job.carWashItems && job.carWashItems.length > 0
+            ? job.carWashItems.map((c) => c.vin)
+            : job.vin
+              ? [job.vin]
+              : [];
+        await releaseVehiclesInTx(tx, allVins);
         if (job.carWashItems && job.carWashItems.length > 0) {
           await tx.carWashItem.updateMany({
             where: { jobId: job.id },
-            data: { 
+            data: {
               status: 'CANCELLED',
-              remarks: rejectReason ? `ยกเลิก: ${rejectReason}` : 'ยกเลิกคำสั่งงาน'
+              remarks: rejectReason ? `ยกเลิก: ${rejectReason}` : 'ยกเลิกคำสั่งงาน',
             },
           });
         }
       }
 
-      return tx.job.update({
-        where: { id },
-        data: updateData,
-      });
+      return tx.job.findUniqueOrThrow({ where: { id } });
     });
 
     // Audit Log: Job Status Change
     const actionMap: Record<string, AuditAction> = {
-      APPROVED: 'APPROVE_JOB',
       REJECTED: 'REJECT_JOB',
       CANCELLED: 'CANCEL_JOB',
       WAITING_APPROVAL: 'SUBMIT_JOB',
       IN_PROGRESS: 'UPDATE_JOB',
     };
     const descMap: Record<string, string> = {
-      APPROVED: isFailedAttempt
-        ? `อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) ใบงาน ${job.jobNumber} — ${SLIDE_FAILED_ATTEMPT_FEE} บาท`
-        : `อนุมัติใบงาน ${job.jobNumber}`,
       REJECTED: `ตีกลับใบงาน ${job.jobNumber}${rejectReason ? ` — ${rejectReason}` : ''}`,
       CANCELLED: `ยกเลิกใบงาน ${job.jobNumber}${rejectReason ? ` — ${rejectReason}` : ''}`,
       WAITING_APPROVAL: `ส่งงานใบงาน ${job.jobNumber} รอตรวจรับ`,
-      IN_PROGRESS: `เปลี่ยนสถานะใบงาน ${job.jobNumber} เป็น ${status}`,
+      IN_PROGRESS: `เปลี่ยนสถานะใบงาน ${job.jobNumber} เป็น ${nextStatus}`,
     };
     logAuditFromUser(user, {
-      action: actionMap[status] || 'UPDATE_JOB',
+      action: actionMap[nextStatus] || 'UPDATE_JOB',
       entityType: 'Job',
       entityId: id,
-      description: descMap[status] || `เปลี่ยนสถานะงาน ${job.jobNumber} เป็น ${status}`,
+      description: descMap[nextStatus] || `เปลี่ยนสถานะงาน ${job.jobNumber} เป็น ${nextStatus}`,
       metadata: {
         jobNumber: job.jobNumber,
         fromStatus: job.status,
-        toStatus: status,
+        toStatus: nextStatus,
         rejectReason,
         ...(isFailedAttempt ? { completionType: job.completionType } : {}),
       },
@@ -357,66 +285,35 @@ export async function PATCH(
 
     // Record VehicleSlideLog if VEHICLE_SLIDE
     if (job.jobType === 'VEHICLE_SLIDE') {
-      const vins = job.carWashItems && job.carWashItems.length > 0
-        ? job.carWashItems.map(c => c.vin)
-        : (job.vin ? [job.vin] : []);
+      const vins =
+        job.carWashItems && job.carWashItems.length > 0
+          ? job.carWashItems.map((c) => c.vin)
+          : job.vin
+            ? [job.vin]
+            : [];
 
-      let slideAction: 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | 'FAILED_ATTEMPT_APPROVED' | null = null;
-      if (status === 'IN_PROGRESS') slideAction = 'IN_TRANSIT';
-      else if (status === 'WAITING_APPROVAL') slideAction = 'DELIVERED';
-      else if (status === 'APPROVED') slideAction = isFailedAttempt ? 'FAILED_ATTEMPT_APPROVED' : 'APPROVED';
-      else if (status === 'CANCELLED') slideAction = 'CANCELLED';
+      let slideAction: 'IN_TRANSIT' | 'DELIVERED' | 'CANCELLED' | null = null;
+      if (nextStatus === 'IN_PROGRESS') slideAction = 'IN_TRANSIT';
+      else if (nextStatus === 'WAITING_APPROVAL') slideAction = 'DELIVERED';
+      else if (nextStatus === 'CANCELLED') slideAction = 'CANCELLED';
 
       if (slideAction && vins.length > 0) {
-        const { originName, destName } = getSlideRouteLabels(job);
-        recordVehicleSlideLog({
-          jobId: job.id,
-          jobNumber: job.jobNumber,
+        recordJobSlideMovementLog(job, {
           vins,
           action: slideAction,
-          pickupBranchId: job.pickupBranchId,
-          originName,
-          originAddress: job.customOriginAddress || job.pickupBranch?.address,
-          originLat: job.customOriginLat,
-          originLng: job.customOriginLng,
-          destBranchId: job.destBranchId,
-          destName,
-          destAddress: job.customDestAddress || job.destBranch?.address,
-          destLat: job.customDestLat,
-          destLng: job.customDestLng,
-          distance: null,
-          supplierId: job.supplierId,
-          supplierName: job.supplier?.name,
           actorId: user.id,
           actorName: user.displayName || user.username,
           actorRole: user.role,
-          remarks: rejectReason || descMap[status] || null,
+          remarks: rejectReason || descMap[nextStatus] || null,
         });
       }
     }
 
-    // ─── Trigger D365 Inventory Transfer Journal (หลังเปิด PO และอนุมัติใบงานสำเร็จ) ───
-    let d365Transfer: { success: boolean; transferredCount: number; message: string } | undefined;
-    if (status === 'APPROVED' && job.jobType === 'VEHICLE_SLIDE' && !isFailedAttempt) {
-      try {
-        d365Transfer = await sendJobToD365TransferJournal(id, {
-          actorId: user.id,
-          actorName: user.displayName || user.username,
-          actorRole: user.role,
-          preTransferWarehouses,
-        });
-        console.log(`[JobStatus] D365 Transfer result for ${job.jobNumber}:`, d365Transfer);
-      } catch (transferErr) {
-        console.error('Trigger D365 Transfer Journal error:', transferErr);
-      }
-    }
-
-    return NextResponse.json({ success: true, job: updatedJob, d365Po, d365Transfer });
+    return NextResponse.json({ success: true, job: updatedJob });
   } catch (error) {
-    console.error('PATCH /api/jobs/[id]/status error:', error);
-    return NextResponse.json(
-      { error: 'ไม่สามารถอัปเดตสถานะงานได้' },
-      { status: 500 }
-    );
+    if (!(error instanceof ConflictError)) {
+      console.error('PATCH /api/jobs/[id]/status error:', error);
+    }
+    return toErrorResponse(error, 'ไม่สามารถอัปเดตสถานะงานได้');
   }
 }

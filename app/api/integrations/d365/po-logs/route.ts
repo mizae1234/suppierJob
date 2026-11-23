@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 
@@ -6,6 +7,7 @@ import { requireAuth } from '@/lib/auth';
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(request, ['MASTER', 'ADMIN']);
   if (auth.response) return auth.response;
+  const { user } = auth;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -17,13 +19,18 @@ export async function GET(request: NextRequest) {
     const pageParam = searchParams.get('page');
     const limitParam = searchParams.get('limit');
 
-    const where: Record<string, unknown> = {};
+    const where: Prisma.D365PoLogWhereInput = {};
+
+    // ADMIN ที่ผูกกับบริษัท เห็นเฉพาะ PO Log ของใบงานในบริษัทตนเอง
+    if (user.role === 'ADMIN' && user.companyId) {
+      where.job = { companyId: user.companyId };
+    }
 
     if (status) where.status = status;
     if (companyCode) where.companyCode = companyCode;
 
     if (from || to) {
-      const createdAt: Record<string, Date> = {};
+      const createdAt: Prisma.DateTimeFilter = {};
       if (from) createdAt.gte = new Date(from);
       if (to) createdAt.lte = new Date(to + 'T23:59:59.999Z');
       where.createdAt = createdAt;

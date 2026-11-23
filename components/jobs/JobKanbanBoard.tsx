@@ -38,6 +38,7 @@ interface VehicleCard {
   index: number;     // 1-based position within the job
   total: number;     // cars in the job
   photos: JobEvidence[];
+  photoCount: number;
 }
 
 const WASH_TYPE_LABEL: Record<string, string> = {
@@ -79,12 +80,14 @@ function toVehicleCards(jobs: Job[]): VehicleCard[] {
         index: 1,
         total: 1,
         photos: job.evidences || [],
+        photoCount: job.evidenceCount ?? (job.evidences?.length || 0),
       });
       return;
     }
     items.forEach((item, idx) => {
       const column = getCarColumn(job, item);
       if (!column) return;
+      const itemPhotos = (job.evidences || []).filter(e => e.vin === item.vin);
       cards.push({
         key: item.id,
         job,
@@ -97,7 +100,8 @@ function toVehicleCards(jobs: Job[]): VehicleCard[] {
         column,
         index: idx + 1,
         total: items.length,
-        photos: (job.evidences || []).filter(e => e.vin === item.vin),
+        photos: itemPhotos,
+        photoCount: items.length === 1 ? (job.evidenceCount ?? itemPhotos.length) : itemPhotos.length,
       });
     });
   });
@@ -140,6 +144,15 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
       );
     }
     if (!isReviewer || card.column !== 'WAITING_APPROVAL') return null;
+
+    if (job.d365PoStatus === 'PENDING') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span>กำลังเปิด PO...</span>
+        </span>
+      );
+    }
 
     // Per-car review (car was submitted by supplier) — เที่ยวเปล่าต้องอนุมัติทั้งใบ จึงไม่แสดงปุ่มรายคัน
     if (item && item.status === 'COMPLETED' && onApproveItem && onRejectItem && !isFailedAttemptJob(job)) {
@@ -188,7 +201,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
       const isSlide = job.jobType === 'VEHICLE_SLIDE';
       const isFailed = isFailedAttemptJob(job);
       const isDest = !isFailed && Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
-      const isOrigin = !isFailed && Boolean(isSlide && job.destBranchId && (job.originBranchId === myBranchId || job.branchId === myBranchId));
+      const isOrigin = !isFailed && Boolean(isSlide && job.destBranchId && (job.pickupBranchId === myBranchId || job.branchId === myBranchId));
 
       return (
         <>
@@ -315,9 +328,9 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                             <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shrink-0 relative">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img src={hero.photoUrl} alt="evidence" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                              {card.photos.length > 1 && (
+                              {card.photoCount > 1 && (
                                 <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/60 text-white text-[9px] font-bold">
-                                  {card.photos.length}
+                                  {card.photoCount}
                                 </span>
                               )}
                             </div>
@@ -427,7 +440,7 @@ export const JobKanbanBoard: React.FC<JobKanbanBoardProps> = ({
                             <span className="truncate">
                               {isCarWash
                                 ? job.branchName
-                                : `${job.originBranchName || job.branchName} → ${job.destBranchName || job.customDestAddress || 'ปลายทาง'}`}
+                                : `${job.pickupBranchName || job.branchName} → ${job.destBranchName || job.customDestAddress || 'ปลายทาง'}`}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 text-[10px] text-gray-500 min-w-0">

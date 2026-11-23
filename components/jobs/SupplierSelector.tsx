@@ -299,7 +299,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
           <div className="mt-2.5 pt-2 border-t border-emerald-950/5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-gray-600">
             <span className="flex items-center gap-1.5 text-gray-700 font-medium">
               <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
-              <span>{selectedSupplier.phone || 'ไม่มีเบอร์โทร'}</span>
+              <span>{selectedSupplier.phone?.trim() || '-'}</span>
             </span>
 
             {selectedWashConfig && (
@@ -475,7 +475,7 @@ export const SupplierSelector: React.FC<SupplierSelectorProps> = ({
                         <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
                           <span className="flex items-center gap-1 shrink-0">
                             <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
-                            {sup.phone || 'ไม่มีเบอร์โทร'}
+                            {sup.phone?.trim() || '-'}
                           </span>
                           {itemWashConfig && (
                             <>

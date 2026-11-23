@@ -6,7 +6,6 @@ export interface VehicleSlideLogInput {
   vins: string[];
   action: 'CREATED' | 'PICKUP_VERIFIED' | 'IN_TRANSIT' | 'DELIVERED' | 'APPROVED' | 'CANCELLED' | 'FAILED_ATTEMPT' | 'FAILED_ATTEMPT_APPROVED';
   pickupBranchId?: string | null;
-  originBranchId?: string | null;
   originName?: string | null;
   originAddress?: string | null;
   originLat?: number | null;
@@ -33,7 +32,7 @@ export async function recordVehicleSlideLog(input: VehicleSlideLogInput) {
   try {
     if (!input.vins || input.vins.length === 0) return;
 
-    const resolvedPickupBranchId = input.pickupBranchId ?? input.originBranchId ?? null;
+    const resolvedPickupBranchId = input.pickupBranchId ?? null;
 
     const records = input.vins.map(vin => ({
       vin,
@@ -72,13 +71,12 @@ export async function recordVehicleSlideLog(input: VehicleSlideLogInput) {
  */
 export function getSlideRouteLabels(job: {
   pickupBranch?: { code?: string; name?: string; address?: string | null } | null;
-  originBranch?: { code?: string; name?: string; address?: string | null } | null;
   destBranch?: { code?: string; name?: string; address?: string | null } | null;
   customOriginAddress?: string | null;
   customDestAddress?: string | null;
   branch?: { code?: string; name?: string; address?: string | null } | null;
 }): { originName: string; destName: string } {
-  const pickupBranch = job.pickupBranch ?? job.originBranch;
+  const pickupBranch = job.pickupBranch;
   const originName = job.customOriginAddress
     || (pickupBranch ? (pickupBranch.code ? `สาขา ${pickupBranch.code}` : pickupBranch.name) : null)
     || (job.branch ? (job.branch.code ? `สาขา ${job.branch.code}` : job.branch.name) : null)

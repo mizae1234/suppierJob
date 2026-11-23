@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { logAuditFromUser } from '@/lib/audit-log';
+import { parseBody, updateBranchSchema } from '@/lib/validation';
 
 // GET: ดึงข้อมูลรายละเอียดของสาขาเดี่ยว
 export async function GET(
@@ -71,8 +72,9 @@ export async function PATCH(
 
   try {
     const { id } = await params;
-    const body = await request.json();
-    const { name, code, phone, address, latitude, longitude } = body;
+    const parsed = await parseBody(request, updateBranchSchema);
+    if (parsed.response) return parsed.response;
+    const { name, code, phone, address, latitude, longitude } = parsed.data;
 
     const branch = await prisma.branch.findUnique({
       where: { id },
@@ -94,10 +96,10 @@ export async function PATCH(
     const isBranch = user.role === 'BRANCH';
 
     // If code is changing, check uniqueness across entire system (Globally Unique)
-    if (!isBranch && code && code.trim() !== branch.code) {
+    if (!isBranch && code && code !== branch.code) {
       const existing = await prisma.branch.findFirst({
         where: {
-          code: code.trim(),
+          code,
           id: { not: branch.id },
         },
         include: {
@@ -106,23 +108,20 @@ export async function PATCH(
       });
       if (existing) {
         return NextResponse.json({
-          error: `รหัสสาขา ${code.trim()} ถูกใช้งานแล้วในระบบ (สังกัด ${existing.company.name})`,
+          error: `รหัสสาขา ${code} ถูกใช้งานแล้วในระบบ (สังกัด ${existing.company.name})`,
         }, { status: 400 });
       }
     }
 
-    const lat = latitude !== undefined && latitude !== '' && latitude !== null ? Number(latitude) : null;
-    const lng = longitude !== undefined && longitude !== '' && longitude !== null ? Number(longitude) : null;
-
     const updated = await prisma.branch.update({
       where: { id },
       data: {
-        ...(!isBranch && name?.trim() ? { name: name.trim() } : {}),
-        ...(!isBranch && code?.trim() ? { code: code.trim() } : {}),
+        ...(!isBranch && name ? { name } : {}),
+        ...(!isBranch && code ? { code } : {}),
         ...(phone !== undefined ? { phone: phone?.trim() || null } : {}),
         ...(address !== undefined ? { address: address?.trim() || null } : {}),
-        ...(lat !== null && Number.isFinite(lat) ? { latitude: lat } : lat === null ? { latitude: null } : {}),
-        ...(lng !== null && Number.isFinite(lng) ? { longitude: lng } : lng === null ? { longitude: null } : {}),
+        ...(latitude !== undefined ? { latitude } : {}),
+        ...(longitude !== undefined ? { longitude } : {}),
       },
       include: {
         company: {
