@@ -97,15 +97,9 @@ export const Sidebar: React.FC = () => {
       badge: null,
     },
     {
-      label: 'รายงานสรุป',
+      label: 'รายงาน (Report)',
       href: '/reports',
       icon: BarChart3,
-      badge: null,
-    },
-    {
-      label: 'ประวัติรายคัน (VIN)',
-      href: '/vehicle-reports',
-      icon: Car,
       badge: null,
     },
     {

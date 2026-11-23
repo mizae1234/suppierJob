@@ -3,7 +3,7 @@ import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import { CarWashItem, Job, JobStatus, Supplier, UserRole } from '@/types';
 import { DropdownOption } from '@/components/ui/CustomDropdown';
 
-export type ReportTab = 'overview' | 'wash' | 'slide';
+export type ReportTab = 'overview' | 'wash' | 'slide' | 'vehicles';
 export type CompanyFilter = 'ALL' | 'EV7' | 'GI';
 export type SlideDirectionFilter = 'ALL' | 'OUTBOUND' | 'INBOUND';
 

@@ -72,11 +72,11 @@ export interface SlideReportData {
   filters: SlideFiltersState;
 }
 
-export function useReportData() {
+export function useReportData(initialTab: ReportTab = 'overview') {
   const { jobs, jobsTruncated, suppliers, currentRole, currentBranchId, activeBranch } = useApp();
 
-  // Active tab: overview | wash | slide
-  const [activeTab, setActiveTab] = useState<ReportTab>('overview');
+  // Active tab: overview | wash | slide | vehicles
+  const [activeTab, setActiveTab] = useState<ReportTab>(initialTab);
 
   // Company filter: ALL | EV7 | GI (Only for ADMIN / MASTER)
   const [companyFilter, setCompanyFilter] = useState<CompanyFilter>('ALL');
@@ -217,12 +217,30 @@ export function useReportData() {
     },
   };
 
+  // จำนวนรถ (VIN) ที่ไม่ซ้ำในขอบเขตงานปัจจุบัน (ใช้แสดง badge แท็บสรุปยอดรายคัน)
+  const vehiclesCount = useMemo(() => {
+    const vins = new Set<string>();
+    for (const job of filteredJobs) {
+      if (job.status === 'CANCELLED') continue;
+      if (job.carWashItems && job.carWashItems.length > 0) {
+        for (const item of job.carWashItems) {
+          if (item.status !== 'CANCELLED' && item.vin) vins.add(item.vin);
+        }
+      } else if (job.jobType === 'VEHICLE_SLIDE' && job.vin) {
+        vins.add(job.vin);
+      }
+    }
+    return vins.size;
+  }, [filteredJobs]);
+
   return {
     context,
     activeTab,
     setActiveTab,
     companyFilter,
     setCompanyFilter,
+    baseJobs,
+    vehiclesCount,
     overview,
     wash,
     slide,
