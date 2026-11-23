@@ -40,8 +40,8 @@ const moreMenuItems = [
   { label: 'จัดการ Supplier', icon: Store, href: '/suppliers', color: '#6b7280', roleVisibility: ['MASTER'] },
   { label: 'จัดการผู้ใช้งาน', icon: Users, href: '/users', color: '#6b7280', roleVisibility: ['MASTER'] },
   { label: 'ใบวางบิล / Invoice', icon: Receipt, href: '/invoices', color: '#6b7280' },
-  { label: 'รายงาน', icon: BarChart3, href: '/reports', color: '#6b7280' },
-  { label: 'ประวัติการทำรายการ', icon: Car, href: '/vehicle-reports', color: '#059669' },
+  { label: 'รายงานสรุป', icon: BarChart3, href: '/reports', color: '#6b7280' },
+  { label: 'ประวัติรายคัน', icon: Car, href: '/vehicle-reports', color: '#059669' },
   { label: 'ตั้งค่าระบบ', icon: Settings, href: '/settings', color: '#6b7280' },
 ];
 

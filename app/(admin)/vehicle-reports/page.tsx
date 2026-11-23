@@ -374,8 +374,8 @@ export default function VehicleReportsPage() {
     ];
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'ประวัติการทำรายการ');
-    XLSX.writeFile(wb, `Transaction_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'ประวัติรายคัน');
+    XLSX.writeFile(wb, `Vehicle_History_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // ─── Print per-vehicle detail ───
@@ -417,7 +417,7 @@ export default function VehicleReportsPage() {
         <div>
           <h1 className="text-lg md:text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
             <Car className="w-5 h-5 md:w-6 md:h-6 text-emerald-600 shrink-0" />
-            <span>ประวัติการทำรายการ</span>
+            <span>ประวัติรายคัน (VIN)</span>
           </h1>
           <p className="text-[11px] text-gray-500 mt-0.5">
             รายงานประวัติการให้บริการแยกรายคัน แสดงงานที่ทำ ค่าบริการ สถานะ และเลข Invoice ที่เกี่ยวข้อง
@@ -661,7 +661,7 @@ export default function VehicleReportsPage() {
           {/* Table Top Bar */}
           <div className="px-4 md:px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap bg-gray-50/40">
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <span className="font-bold text-gray-900">ตารางประวัติการทำรายการแยกรายคัน</span>
+              <span className="font-bold text-gray-900">ตารางประวัติรายคัน</span>
               <span className="text-gray-300">•</span>
               <span>
                 จัดกลุ่ม <strong className="text-[#0f5238]">{totalVehicles}</strong> คัน ({filteredRecords.length} รายการ)
