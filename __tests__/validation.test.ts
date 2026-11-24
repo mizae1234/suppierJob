@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getFailedAttemptFee,
+  getFailedAttemptItemPrice,
+  SLIDE_FAILED_ATTEMPT_FEE,
+} from '@/lib/slide-failed-attempt';
+import {
   parseBody,
   createJobSchema,
   updateJobStatusSchema,
@@ -160,6 +165,36 @@ describe('validation: jobs schemas', () => {
 
     expect(verifyVehicleSchema.safeParse({ photoUrl: img, itemId: 'item-1' }).success).toBe(true);
     expect(verifyVehicleSchema.safeParse({ photoUrl: 'not-an-image' }).success).toBe(false);
+  });
+
+  it('updateJobStatusSchema & getFailedAttemptFee: รองรับการแก้ไขค่าเที่ยวเปล่าและบังคับ > 0', () => {
+    expect(updateJobStatusSchema.safeParse({ status: 'APPROVED' }).success).toBe(true);
+    expect(
+      updateJobStatusSchema.safeParse({ status: 'APPROVED', failedAttemptFee: 850 }).success
+    ).toBe(true);
+    expect(
+      updateJobStatusSchema.safeParse({ status: 'APPROVED', failedAttemptFee: '1200.5' }).success
+    ).toBe(true);
+    expect(
+      updateJobStatusSchema.safeParse({ status: 'APPROVED', failedAttemptFee: 0 }).success
+    ).toBe(false);
+    expect(
+      updateJobStatusSchema.safeParse({ status: 'APPROVED', failedAttemptFee: -100 }).success
+    ).toBe(false);
+
+    expect(getFailedAttemptFee(null)).toBe(SLIDE_FAILED_ATTEMPT_FEE);
+    expect(getFailedAttemptFee({ actualCost: null })).toBe(SLIDE_FAILED_ATTEMPT_FEE);
+    expect(getFailedAttemptFee({ actualCost: 0 })).toBe(SLIDE_FAILED_ATTEMPT_FEE);
+    expect(getFailedAttemptFee({ actualCost: 750 })).toBe(750);
+
+    const items = [
+      { id: 'c1', status: 'CANCELLED' },
+      { id: 'c2', status: 'COMPLETED' },
+      { id: 'c3', status: 'COMPLETED' },
+    ];
+    expect(getFailedAttemptItemPrice(items, 'c1', 750)).toBe(0);
+    expect(getFailedAttemptItemPrice(items, 'c2', 750)).toBe(750);
+    expect(getFailedAttemptItemPrice(items, 'c3', 750)).toBe(0);
   });
 });
 

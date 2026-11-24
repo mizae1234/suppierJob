@@ -113,7 +113,7 @@ interface AppContextType {
   // Actions
   createCarWashJob: (params: CreateCarWashParams) => Promise<Job | null>;
   createVehicleSlideJob: (params: CreateVehicleSlideParams) => Promise<Job | null>;
-  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string }) => Promise<{ success: boolean; pending?: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }>;
+  updateJobStatus: (jobId: string, status: JobStatus, options?: { rejectReason?: string; approvedBy?: string; failedAttemptFee?: number }) => Promise<{ success: boolean; pending?: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }>;
   updateCarWashItemStatus: (jobId: string, itemId: string, status: CarWashItemStatus, remarks?: string) => Promise<CarWashItemProgress | null>;
   addVehiclesToJob: (
     jobId: string,
@@ -146,6 +146,7 @@ function isSameJobSnapshot(a: Job, b: Job): boolean {
     a.id === b.id &&
     a.updatedAt === b.updatedAt &&
     a.status === b.status &&
+    a.actualCost === b.actualCost &&
     a.d365PoStatus === b.d365PoStatus &&
     a.d365PoNumber === b.d365PoNumber &&
     a.d365PoMessage === b.d365PoMessage &&
@@ -659,7 +660,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateJobStatus = useCallback(async (
     jobId: string, 
     status: JobStatus, 
-    options?: { rejectReason?: string; approvedBy?: string }
+    options?: { rejectReason?: string; approvedBy?: string; failedAttemptFee?: number }
   ): Promise<{ success: boolean; pending?: boolean; error?: string; d365Po?: { success: boolean; purchId?: string; message: string } }> => {
     try {
       const res = await fetch(`/api/jobs/${jobId}/status`, {
@@ -669,6 +670,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status,
           rejectReason: options?.rejectReason,
           approvedBy: options?.approvedBy,
+          ...(typeof options?.failedAttemptFee === 'number'
+            ? { failedAttemptFee: options.failedAttemptFee }
+            : {}),
         }),
       });
       const data = await res.json();
@@ -700,6 +704,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             j.id === jobId
               ? {
                   ...j,
+                  ...(typeof options?.failedAttemptFee === 'number'
+                    ? { actualCost: options.failedAttemptFee }
+                    : {}),
                   d365PoStatus: 'PENDING',
                   d365PoMessage: data.message || 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
                   d365PoSentAt: new Date().toISOString(),

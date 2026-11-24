@@ -4,7 +4,7 @@ import type { SessionUser } from '@/lib/session';
 import { logAuditFromUser } from '@/lib/audit-log';
 import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { sendJobToD365TransferJournal, type D365TransferStatus } from '@/lib/d365/transfer';
-import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { ConflictError } from '@/lib/errors';
 import {
   snapshotFromWarehousesInTx,
@@ -49,8 +49,9 @@ export function resolveApprovedByLabel(
 export async function claimJobForApprovalPo(params: {
   jobId: string;
   expectedStatus: string;
+  actualCost?: number;
 }): Promise<void> {
-  const { jobId, expectedStatus } = params;
+  const { jobId, expectedStatus, actualCost } = params;
   const staleCutoff = new Date(Date.now() - PO_PENDING_STALE_MS);
 
   const claimed = await prisma.job.updateMany({
@@ -68,6 +69,9 @@ export async function claimJobForApprovalPo(params: {
       d365PoStatus: 'PENDING',
       d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
       d365PoSentAt: new Date(),
+      ...(typeof actualCost === 'number' && Number.isFinite(actualCost) && actualCost > 0
+        ? { actualCost }
+        : {}),
       updatedAt: new Date(),
     },
   });
@@ -89,6 +93,8 @@ export interface FinalizeApprovalParams {
   expectedJobStatus: string;
   user: SessionUser;
   approvedBy: string;
+  /** ค่าเที่ยวเปล่าที่แก้ไขก่อนอนุมัติ (เฉพาะงานเที่ยวเปล่า) */
+  failedAttemptFee?: number;
   /** หากเป็นการอนุมัติรายคันที่ทำให้ใบงานครบทุกคัน ให้ระบุรายการคันสุดท้ายเพื่อเปลี่ยนเป็น APPROVED ใน transaction เดียวกัน */
   triggerItem?: {
     itemId: string;
@@ -132,7 +138,7 @@ export interface FinalizeApprovalResult {
 export async function finalizeJobApproval(
   params: FinalizeApprovalParams
 ): Promise<FinalizeApprovalResult> {
-  const { jobId, expectedJobStatus, user, approvedBy, triggerItem, request } = params;
+  const { jobId, expectedJobStatus, user, approvedBy, failedAttemptFee, triggerItem, request } = params;
 
   const jobSnapshot = await prisma.job.findUnique({
     where: { id: jobId },
@@ -202,7 +208,10 @@ export async function finalizeJobApproval(
     // 2) คำนวณ actualCost ตามประเภทงาน
     let actualCost: number;
     if (isFailedAttempt) {
-      actualCost = SLIDE_FAILED_ATTEMPT_FEE;
+      actualCost =
+        typeof failedAttemptFee === 'number' && Number.isFinite(failedAttemptFee) && failedAttemptFee > 0
+          ? failedAttemptFee
+          : getFailedAttemptFee(jobSnapshot);
     } else if (triggerItem) {
       actualCost = itemsAfterTrigger
         .filter((i) => i.status === 'APPROVED')
@@ -337,6 +346,8 @@ export async function finalizeJobApproval(
     return { job: updatedJob, triggerItem: null, progress: undefined };
   });
 
+  const approvedFailedFee = isFailedAttempt ? getFailedAttemptFee(txResult.job) : 0;
+
   // 5) Audit Log (นอก transaction)
   if (triggerItem && txResult.triggerItem) {
     logAuditFromUser(user, {
@@ -361,13 +372,15 @@ export async function finalizeJobApproval(
       entityType: 'Job',
       entityId: jobId,
       description: isFailedAttempt
-        ? `อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) ใบงาน ${jobSnapshot.jobNumber} — ${SLIDE_FAILED_ATTEMPT_FEE} บาท`
+        ? `อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) ใบงาน ${jobSnapshot.jobNumber} — ${approvedFailedFee.toLocaleString()} บาท`
         : `อนุมัติใบงาน ${jobSnapshot.jobNumber}`,
       metadata: {
         jobNumber: jobSnapshot.jobNumber,
         fromStatus: expectedJobStatus,
         toStatus: 'APPROVED',
-        ...(isFailedAttempt ? { completionType: jobSnapshot.completionType } : {}),
+        ...(isFailedAttempt
+          ? { completionType: jobSnapshot.completionType, actualCost: approvedFailedFee }
+          : {}),
       },
       request: request ?? null,
     });
@@ -391,7 +404,7 @@ export async function finalizeJobApproval(
       remarks: triggerItem
         ? triggerItem.remarks || 'สาขาตรวจรับรถเรียบร้อย'
         : isFailedAttempt
-          ? `อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) ใบงาน ${jobSnapshot.jobNumber} — ${SLIDE_FAILED_ATTEMPT_FEE} บาท`
+          ? `อนุมัติค่าเที่ยวเปล่า (สไลด์ไม่สำเร็จ) ใบงาน ${jobSnapshot.jobNumber} — ${approvedFailedFee.toLocaleString()} บาท`
           : `อนุมัติใบงาน ${jobSnapshot.jobNumber}`,
     });
   }
@@ -433,13 +446,14 @@ export async function runAsyncApprovalWithPo(params: {
   previousPoStatus: string | null;
   user: SessionUser;
   approvedBy: string;
+  failedAttemptFee?: number;
   triggerItem?: {
     itemId: string;
     expectedItemStatus: string;
     remarks?: string | null;
   };
 }): Promise<void> {
-  const { jobId, jobNumber, expectedJobStatus, previousPoStatus, user, approvedBy, triggerItem } = params;
+  const { jobId, jobNumber, expectedJobStatus, previousPoStatus, user, approvedBy, failedAttemptFee, triggerItem } = params;
 
   let poResult: { success: boolean; purchId?: string; message: string };
   try {
@@ -481,6 +495,7 @@ export async function runAsyncApprovalWithPo(params: {
       expectedJobStatus,
       user,
       approvedBy,
+      failedAttemptFee,
       triggerItem,
     });
   } catch (finalizeErr) {

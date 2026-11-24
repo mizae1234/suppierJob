@@ -249,7 +249,7 @@ function JobsContent() {
   };
 
   // Branch action: Approve
-  const handleApprove = async (jobId: string, customApprovedBy?: string) => {
+  const handleApprove = async (jobId: string, customApprovedBy?: string, failedAttemptFee?: number) => {
     const targetJob = jobs.find(j => j.id === jobId) || selectedJob;
     const jobLabel = targetJob?.jobNumber || '';
     const isSlide = targetJob?.jobType === 'VEHICLE_SLIDE';
@@ -268,7 +268,10 @@ function JobsContent() {
       }
     }
 
-    const res = await updateJobStatus(jobId, 'APPROVED', { approvedBy: approvedByLabel || undefined });
+    const res = await updateJobStatus(jobId, 'APPROVED', {
+      approvedBy: approvedByLabel || undefined,
+      failedAttemptFee,
+    });
     if (res && !res.success) {
       showToast(res.error || 'อนุมัติไม่สำเร็จ', 'error');
       return;
@@ -285,6 +288,7 @@ function JobsContent() {
           prev
             ? {
                 ...prev,
+                ...(typeof failedAttemptFee === 'number' ? { actualCost: failedAttemptFee } : {}),
                 d365PoStatus: 'PENDING',
                 d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
               }
@@ -303,7 +307,16 @@ function JobsContent() {
     }
 
     if (selectedJob?.id === jobId) {
-      setSelectedJob(prev => prev ? { ...prev, status: 'APPROVED', approvedAt: new Date().toISOString() } : null);
+      setSelectedJob(prev =>
+        prev
+          ? {
+              ...prev,
+              status: 'APPROVED',
+              approvedAt: new Date().toISOString(),
+              ...(typeof failedAttemptFee === 'number' ? { actualCost: failedAttemptFee } : {}),
+            }
+          : null
+      );
     }
   };
 

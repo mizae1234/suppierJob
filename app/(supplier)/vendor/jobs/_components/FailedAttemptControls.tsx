@@ -3,7 +3,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Job } from '@/types';
-import { SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
 import { canReportFailedAttempt } from '../_utils';
 
 interface FailedAttemptButtonProps {
@@ -25,8 +24,7 @@ export function FailedAttemptButton({ job, disabled, onReport }: FailedAttemptBu
     >
       <AlertTriangle className="w-3.5 h-3.5 text-orange-600" />
       <span>
-        สไลด์ไม่ได้ / เที่ยวเปล่า (฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}
-        {carCount > 1 ? ` ทั้งใบงาน ${carCount} คัน` : ''})
+        สไลด์ไม่ได้ / เที่ยวเปล่า{carCount > 1 ? ` (ทั้งใบงาน ${carCount} คัน)` : ''}
       </span>
     </button>
   );
@@ -36,7 +34,7 @@ export function FailedAttemptWaitingBanner() {
   return (
     <div className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-orange-50 text-orange-800 text-xs font-bold border border-orange-200">
       <AlertTriangle className="w-4 h-4 text-orange-600" />
-      <span>ส่งเป็นเที่ยวเปล่าแล้ว (฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}) • รอสาขาอนุมัติ</span>
+      <span>ส่งเป็นเที่ยวเปล่าแล้ว • รอสาขาอนุมัติ</span>
     </div>
   );
 }

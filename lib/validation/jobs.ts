@@ -145,6 +145,10 @@ export const updateJobStatusSchema = z.object({
   }),
   rejectReason: optionalString(1000, 'เหตุผล'),
   approvedBy: optionalString(200, 'ผู้อนุมัติ'),
+  failedAttemptFee: optionalFiniteNumber({ max: 1_000_000, label: 'ค่าเที่ยวเปล่า' }).refine(
+    (v) => v === undefined || v > 0,
+    { message: 'ค่าเที่ยวเปล่าต้องมากกว่า 0 บาท' }
+  ),
 });
 
 export type UpdateJobStatusInput = z.infer<typeof updateJobStatusSchema>;

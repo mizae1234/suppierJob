@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Invoice, Job } from '@/types';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost, getOwnerBranchCorporateInfo, getSupplierVendorCode } from '@/lib/job-utils';
-import { getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { useApp } from '@/context/AppContext';
 import {
@@ -150,7 +150,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
               ? 'ขัดเคลือบ'
               : item.washType,
           serviceDate: item.actualWashDate,
-          unitPrice: isFailedAttempt ? getFailedAttemptItemPrice(j.carWashItems, item.id) : item.unitPrice,
+          unitPrice: isFailedAttempt ? getFailedAttemptItemPrice(j.carWashItems, item.id, getFailedAttemptFee(j)) : item.unitPrice,
           status: item.status,
           branchName: j.branchName,
         });

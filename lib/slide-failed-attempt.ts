@@ -12,7 +12,7 @@
 export const SLIDE_COMPLETION_DELIVERED = 'DELIVERED';
 export const SLIDE_COMPLETION_FAILED_ATTEMPT = 'FAILED_ATTEMPT';
 
-/** ค่าเที่ยวเปล่า (บาท) — ตายตัวต่อ 1 ใบงาน */
+/** ค่าเที่ยวเปล่าเริ่มต้น (บาท) — ต่อ 1 ใบงาน (แก้ไขได้ก่อนอนุมัติ) */
 export const SLIDE_FAILED_ATTEMPT_FEE = 500;
 
 export const SLIDE_FAILED_ATTEMPT_LABEL = 'เที่ยวเปล่า (สไลด์ไม่สำเร็จ)';
@@ -26,14 +26,28 @@ export function isFailedAttemptJob(job: { completionType?: string | null } | nul
 }
 
 /**
+ * คืนยอดค่าเที่ยวเปล่าของใบงาน (ใช้ actualCost ที่บันทึก/แก้ไขไว้ หากไม่มีหรือ <= 0 จะใช้ค่าเริ่มต้น 500 บาท)
+ */
+export function getFailedAttemptFee(
+  job?: { actualCost?: number | null } | null
+): number {
+  const cost = job?.actualCost;
+  if (typeof cost === 'number' && Number.isFinite(cost) && cost > 0) {
+    return cost;
+  }
+  return SLIDE_FAILED_ATTEMPT_FEE;
+}
+
+/**
  * ราคาต่อคันเมื่อแสดงแยกรายคันในใบงานเที่ยวเปล่า:
  * คันแรกที่ไม่ถูกยกเลิกรับยอดทั้งหมด คันอื่นเป็น 0 — ยอดรวมทั้งใบจึงเท่ากับค่าเที่ยวเปล่าเสมอ
  */
 export function getFailedAttemptItemPrice<T extends { id: string; status?: string | null }>(
   items: T[],
-  itemId: string
+  itemId: string,
+  fee: number = SLIDE_FAILED_ATTEMPT_FEE
 ): number {
   const firstActive = items.find(i => i.status !== 'CANCELLED');
-  return firstActive && firstActive.id === itemId ? SLIDE_FAILED_ATTEMPT_FEE : 0;
+  return firstActive && firstActive.id === itemId ? fee : 0;
 }
 

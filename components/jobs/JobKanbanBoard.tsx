@@ -5,7 +5,7 @@ import { Job, UserRole, CarWashItem, JobEvidence, JobStatus } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost, getJobScheduleDate, getScheduleBadge, getVehicleLabel, getSlideDirection } from '@/lib/job-utils';
-import { getFailedAttemptItemPrice, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, getFailedAttemptItemPrice, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { ManualPricingBadge } from './ManualPricingNotice';
 import { useApp } from '@/context/AppContext';
 import { Sparkles, Truck, Check, RotateCcw, Eye, MapPin, Building2, Loader2 } from 'lucide-react';
@@ -96,7 +96,7 @@ function toVehicleCards(jobs: Job[]): VehicleCard[] {
         licensePlate: item.licensePlate,
         model: item.vehicleModel,
         color: item.vehicleColor,
-        price: isFailedAttemptJob(job) ? getFailedAttemptItemPrice(items, item.id) : item.unitPrice,
+        price: isFailedAttemptJob(job) ? getFailedAttemptItemPrice(items, item.id, getFailedAttemptFee(job)) : item.unitPrice,
         column,
         index: idx + 1,
         total: items.length,

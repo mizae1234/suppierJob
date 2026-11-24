@@ -5,7 +5,7 @@ import { useApp } from '@/context/AppContext';
 import { formatThaiDate } from '@/lib/date-utils';
 import { getJobTotalCost } from '@/lib/job-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
-import { getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
 import { Job } from '@/types';
 import { VehicleDetailModal, VehicleRecord } from '@/components/vehicles';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
@@ -137,7 +137,7 @@ export default function VehicleReportTab({
               : item.washType,
             serviceDate: item.actualWashDate,
             unitPrice: job.jobType === 'VEHICLE_SLIDE' && isFailedAttemptJob(job)
-              ? getFailedAttemptItemPrice(job.carWashItems, item.id)
+              ? getFailedAttemptItemPrice(job.carWashItems, item.id, getFailedAttemptFee(job))
               : item.unitPrice,
             itemStatus: item.status,
             jobStatus: job.status,

@@ -10,11 +10,12 @@ import { formatThaiDate } from '@/lib/date-utils';
 interface JobOverviewProps {
   job: Job;
   theme: ThemeColors;
+  overrideCost?: number;
 }
 
-export function JobOverview({ job, theme }: JobOverviewProps) {
+export function JobOverview({ job, theme, overrideCost }: JobOverviewProps) {
   const isJobCancelled = job.status === 'CANCELLED';
-  const effectiveCost = getJobTotalCost(job);
+  const effectiveCost = overrideCost ?? getJobTotalCost(job);
   const hasCancelledWash = Boolean(job.carWashItems?.some((i) => i.status === 'CANCELLED'));
   const originalCost = job.estimatedCost || 0;
 

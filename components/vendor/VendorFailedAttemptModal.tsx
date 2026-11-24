@@ -6,7 +6,7 @@ import { Job } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { compressImage, MAX_RAW_FILE_SIZE } from './image-utils';
 import { getVehicleLabel } from '@/lib/job-utils';
-import { SLIDE_FAILED_ATTEMPT_FEE, SLIDE_FAIL_NOTE_MIN_LENGTH, SLIDE_FAIL_NOTE_MAX_LENGTH } from '@/lib/slide-failed-attempt';
+import { SLIDE_FAIL_NOTE_MIN_LENGTH, SLIDE_FAIL_NOTE_MAX_LENGTH } from '@/lib/slide-failed-attempt';
 
 const MAX_PHOTOS = 5;
 
@@ -116,12 +116,9 @@ export function VendorFailedAttemptModal({ job, onClose, onSubmit }: VendorFaile
                   #{job.jobNumber}
                 </span>
               </div>
-              <div className="text-right shrink-0">
-                <span className="block text-[10px] text-orange-700 font-semibold">ค่าเที่ยวเปล่า</span>
-                <span className="text-base font-black font-mono text-orange-700">
-                  ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}
-                </span>
-              </div>
+              <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] font-bold shrink-0">
+                เที่ยวเปล่า
+              </span>
             </div>
             <div className="p-3 flex flex-col gap-1.5 text-[11px] text-gray-700">
               <p>
@@ -252,7 +249,7 @@ export function VendorFailedAttemptModal({ job, onClose, onSubmit }: VendorFaile
             ) : (
               <>
                 <Send className="w-4 h-4" />
-                <span>ส่งงาน ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}</span>
+                <span>ส่งงาน</span>
               </>
             )}
           </button>

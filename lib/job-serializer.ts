@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { SLIDE_COMPLETION_FAILED_ATTEMPT, SLIDE_FAILED_ATTEMPT_FEE } from './slide-failed-attempt';
+import { getFailedAttemptFee, SLIDE_COMPLETION_FAILED_ATTEMPT } from './slide-failed-attempt';
 
 /**
  * แปลงข้อมูล Job จาก Prisma → รูปแบบที่หน้าเว็บใช้ (ใช้ร่วมกันระหว่าง GET /api/jobs และ GET /api/jobs/[id])
@@ -242,8 +242,8 @@ export function serializeJob(job: SerializableJob) {
     estimatedCost: job.estimatedCost || 0,
     actualCost: (() => {
       if (job.status === 'CANCELLED') return 0;
-      // เที่ยวเปล่า: ยอดตายตัวต่อใบงาน ไม่คำนวณจากราคารายคัน
-      if (job.completionType === SLIDE_COMPLETION_FAILED_ATTEMPT) return SLIDE_FAILED_ATTEMPT_FEE;
+      // เที่ยวเปล่า: ยอดต่อใบงาน (ไม่คำนวณจากราคารายคัน)
+      if (job.completionType === SLIDE_COMPLETION_FAILED_ATTEMPT) return getFailedAttemptFee(job);
       if (job.carWashItems && job.carWashItems.length > 0) {
         const hasCancelled = job.carWashItems.some((i) => i.status === 'CANCELLED');
         if (hasCancelled) {

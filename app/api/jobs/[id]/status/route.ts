@@ -36,7 +36,7 @@ export async function PATCH(
     const { id } = await params;
     const parsed = await parseBody(request, updateJobStatusSchema);
     if (parsed.response) return parsed.response;
-    const { status, rejectReason, approvedBy } = parsed.data;
+    const { status, rejectReason, approvedBy, failedAttemptFee } = parsed.data;
 
     const job = await prisma.job.findUnique({
       where: { id },
@@ -118,6 +118,16 @@ export async function PATCH(
     // กฎสำคัญ: ใบงานยังไม่เปลี่ยนเป็น APPROVED บน Kanban จนกว่าการเปิด PO ใน D365 จะสำเร็จ
     if (nextStatus === 'APPROVED') {
       const resolvedApprovedBy = resolveApprovedByLabel(user, approvedBy);
+      const resolvedFailedFee =
+        isFailedAttempt && typeof failedAttemptFee === 'number'
+          ? Math.round(failedAttemptFee * 100) / 100
+          : undefined;
+      if (isFailedAttempt && resolvedFailedFee !== undefined && resolvedFailedFee <= 0) {
+        return NextResponse.json(
+          { error: 'ค่าเที่ยวเปล่าต้องมากกว่า 0 บาท' },
+          { status: 400 }
+        );
+      }
 
       // กรณีใบงานมีเลข PO อยู่แล้ว (เช่น เคยกดส่งซ้ำจนสำเร็จ) → ปิดอนุมัติได้ทันทีโดยไม่ต้องเปิด PO ใหม่
       if (job.d365PoNumber) {
@@ -126,6 +136,7 @@ export async function PATCH(
           expectedJobStatus: job.status,
           user,
           approvedBy: resolvedApprovedBy,
+          failedAttemptFee: resolvedFailedFee,
           request,
         });
         const d365Po = {
@@ -142,7 +153,12 @@ export async function PATCH(
       }
 
       // จองสถานะ d365PoStatus = 'PENDING' แบบ atomic แล้วตอบ 202 ทันที จากนั้นเปิด PO + ปิดอนุมัติใน after()
-      await claimJobForApprovalPo({ jobId: id, expectedStatus: job.status });
+      // กรณีเที่ยวเปล่าที่มีการแก้ไขยอด: บันทึก actualCost ไว้ตั้งแต่ขั้นตอนนี้เพื่อให้ D365 PO อ่านยอดใหม่ทันที
+      await claimJobForApprovalPo({
+        jobId: id,
+        expectedStatus: job.status,
+        actualCost: resolvedFailedFee,
+      });
 
       const previousPoStatus = job.d365PoStatus ?? null;
       const expectedJobStatus = job.status;
@@ -154,6 +170,7 @@ export async function PATCH(
           previousPoStatus,
           user,
           approvedBy: resolvedApprovedBy,
+          failedAttemptFee: resolvedFailedFee,
         })
       );
 

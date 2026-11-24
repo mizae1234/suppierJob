@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { getD365Config, getD365Token, D365Error, fetchWithTimeout } from './client';
 
 /** เวลารอ D365 ตอบการสร้าง PO (ทำเบื้องหลังหลังอนุมัติ จึงไม่บล็อกผู้ใช้ — เผื่อเวลาให้ D365 Sandbox cold-start + Confirm PO ได้สูงสุด 120 วินาที) */
@@ -342,10 +342,10 @@ export async function sendJobToD365PurchaseOrder(
         ? [job.vin.trim()]
         : [];
   const vin = allVins.join(', ');
-  // เที่ยวเปล่า (สไลด์ไม่สำเร็จ): 1 Line ยอดตายตัวต่อใบงาน ใช้ ItemNumber เดียวกับงานสไลด์
+  // เที่ยวเปล่า (สไลด์ไม่สำเร็จ): 1 Line ยอดต่อใบงาน (ค่าเริ่มต้น 500 หรือยอดที่แก้ไขก่อนอนุมัติ) ใช้ ItemNumber เดียวกับงานสไลด์
   const isFailedAttempt = isFailedAttemptJob(job);
   const price = isFailedAttempt
-    ? SLIDE_FAILED_ATTEMPT_FEE
+    ? getFailedAttemptFee(job)
     : activeItems.length > 0
       ? activeItems.reduce((sum, i) => sum + (i.unitPrice ?? 0), 0)
       : (job.actualCost ?? job.estimatedCost ?? 0);

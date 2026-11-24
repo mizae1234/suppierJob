@@ -18,7 +18,7 @@ import {
 import { Job, Vehicle } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
 import { formatThaiDateTime } from '@/lib/date-utils';
-import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { getD365WarehouseForBranch, getD365WarehouseName } from '@/lib/d365/warehouses';
 import { ManualPricingNotice } from '../ManualPricingNotice';
 
@@ -28,6 +28,10 @@ interface SlideRouteCardProps {
   theme: ThemeColors;
   copiedText: string | null;
   onCopyText: (text: string) => void;
+  canEditFailedFee?: boolean;
+  failedFeeValue?: string;
+  parsedFailedFee?: number | null;
+  onFailedFeeChange?: (value: string) => void;
 }
 
 export function SlideRouteCard({
@@ -36,6 +40,10 @@ export function SlideRouteCard({
   theme,
   copiedText,
   onCopyText,
+  canEditFailedFee = false,
+  failedFeeValue,
+  parsedFailedFee,
+  onFailedFeeChange,
 }: SlideRouteCardProps) {
   if (job.jobType !== 'VEHICLE_SLIDE') return null;
 
@@ -101,28 +109,69 @@ export function SlideRouteCard({
   return (
     <div className="space-y-4">
       {/* ── เที่ยวเปล่า (สไลด์ไม่สำเร็จ) ── */}
-      {isFailedAttemptJob(job) && (
-        <div className="p-4 rounded-2xl border border-orange-200 bg-orange-50 text-xs text-orange-950 space-y-2">
-          <div className="flex items-start justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2 font-bold text-orange-900">
-              <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
-              <span>เที่ยวเปล่า — Supplier มาถึงหน้างานแต่สไลด์รถไม่สำเร็จ</span>
+      {isFailedAttemptJob(job) && (() => {
+        const savedFee = getFailedAttemptFee(job);
+        const activeFee = canEditFailedFee && parsedFailedFee != null ? parsedFailedFee : savedFee;
+        const isInvalidInput = canEditFailedFee && parsedFailedFee === null;
+        return (
+          <div className="p-4 rounded-2xl border border-orange-200 bg-orange-50 text-xs text-orange-950 space-y-2">
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 font-bold text-orange-900">
+                <AlertTriangle className="w-4 h-4 text-orange-600 shrink-0" />
+                <span>เที่ยวเปล่า — Supplier มาถึงหน้างานแต่สไลด์รถไม่สำเร็จ</span>
+              </div>
+              {canEditFailedFee && onFailedFeeChange ? (
+                <div className="flex flex-col items-end gap-1">
+                  <label
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white border shadow-2xs focus-within:ring-2 ${
+                      isInvalidInput
+                        ? 'border-red-400 focus-within:ring-red-300'
+                        : 'border-orange-300 focus-within:ring-orange-400'
+                    }`}
+                  >
+                    <span className="text-[11px] font-bold text-orange-700">฿</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      inputMode="decimal"
+                      value={failedFeeValue ?? String(savedFee)}
+                      onChange={(e) => onFailedFeeChange(e.target.value)}
+                      aria-label="ค่าเที่ยวเปล่า (บาท)"
+                      className="w-24 bg-transparent font-mono font-black text-sm text-orange-800 text-right focus:outline-none"
+                    />
+                    <span className="text-[11px] font-semibold text-orange-700/80 whitespace-nowrap">
+                      / ใบงาน
+                    </span>
+                  </label>
+                  {isInvalidInput ? (
+                    <span className="text-[10px] font-semibold text-red-600">
+                      กรุณาระบุค่าเที่ยวเปล่ามากกว่า 0 บาท
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-orange-700/75">
+                      แก้ไขยอดได้ก่อนอนุมัติ
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-white border border-orange-300 font-mono font-black text-orange-700">
+                  ฿{savedFee.toLocaleString()} / ใบงาน
+                </span>
+              )}
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-white border border-orange-300 font-mono font-black text-orange-700">
-              ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()} / ใบงาน
-            </span>
+            <p className="whitespace-pre-line">
+              <span className="text-orange-700/80 mr-1">หมายเหตุจาก Supplier:</span>
+              <b>{job.failNote || '-'}</b>
+            </p>
+            <p className="text-[11px] text-orange-800/80">
+              {isApproved
+                ? `อนุมัติแล้ว — เปิด PO ${savedFee.toLocaleString()} บาท โดยรถยังอยู่ที่เดิม (ไม่ย้ายสาขา)`
+                : `เมื่ออนุมัติ: เปิด PO ${activeFee.toLocaleString()} บาท • รถยังอยู่ที่เดิม (ไม่ย้ายสาขา / ไม่โอนคลังใน D365)`}
+            </p>
           </div>
-          <p className="whitespace-pre-line">
-            <span className="text-orange-700/80 mr-1">หมายเหตุจาก Supplier:</span>
-            <b>{job.failNote || '-'}</b>
-          </p>
-          <p className="text-[11px] text-orange-800/80">
-            {isApproved
-              ? `อนุมัติแล้ว — เปิด PO ${SLIDE_FAILED_ATTEMPT_FEE} บาท โดยรถยังอยู่ที่เดิม (ไม่ย้ายสาขา)`
-              : `เมื่ออนุมัติ: เปิด PO ${SLIDE_FAILED_ATTEMPT_FEE} บาท • รถยังอยู่ที่เดิม (ไม่ย้ายสาขา / ไม่โอนคลังใน D365)`}
-          </p>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── ค่าบริการกรอกเอง ── */}
       <ManualPricingNotice job={job} />
@@ -265,7 +314,10 @@ export function SlideRouteCard({
                   </>
                 ) : (
                   <span className="text-sm font-bold font-mono" style={{ color: theme.textPrimary }}>
-                    ฿{(job.actualCost ?? job.estimatedCost ?? 0).toLocaleString()}
+                    ฿{(isFailedAttemptJob(job)
+                      ? (canEditFailedFee && parsedFailedFee != null ? parsedFailedFee : getFailedAttemptFee(job))
+                      : (job.actualCost ?? job.estimatedCost ?? 0)
+                    ).toLocaleString()}
                   </span>
                 )}
               </div>

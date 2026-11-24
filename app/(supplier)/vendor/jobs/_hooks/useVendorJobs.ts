@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { getVehicleLabel, classifySupplierItem, classifySupplierSlide } from '@/lib/job-utils';
 import { WorkModalTarget } from '@/components/vendor';
-import { getFailedAttemptItemPrice, isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, getFailedAttemptItemPrice, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { Job } from '@/types';
 import { SupplierItemCard, TabCounts, TabKey, VALID_TABS, VendorJobCardActions } from '../_types';
 import { itemCardToTarget, slideJobToTarget } from '../_utils';
@@ -88,7 +88,7 @@ export function useVendorJobs() {
             licensePlate: item.licensePlate || vehicleObj?.licensePlate,
             washType: item.washType,
             unitPrice: job.jobType === 'VEHICLE_SLIDE' && isFailedAttemptJob(job)
-              ? getFailedAttemptItemPrice(job.carWashItems!, item.id)
+              ? getFailedAttemptItemPrice(job.carWashItems!, item.id, getFailedAttemptFee(job))
               : item.unitPrice,
             itemStatus: item.status,
             itemRemarks: item.remarks,
@@ -303,7 +303,7 @@ export function useVendorJobs() {
         showToast(result.error || 'ไม่สามารถส่งงานเที่ยวเปล่าได้ กรุณาลองใหม่', 'error');
         throw new Error(result.error || 'failed-attempt error');
       }
-      showToast(`ส่งงานเที่ยวเปล่า ${target.jobNumber} (฿${SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}) เรียบร้อยแล้ว — อยู่ระหว่างรอสาขาอนุมัติ`, 'success');
+      showToast(`ส่งงานเที่ยวเปล่า ${target.jobNumber} เรียบร้อยแล้ว — อยู่ระหว่างรอสาขาอนุมัติ`, 'success');
       await refreshJob(target.id);
       setActiveTab('waiting');
     } finally {

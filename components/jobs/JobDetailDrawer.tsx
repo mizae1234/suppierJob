@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
 import { useTheme } from '@/hooks/useTheme';
 import { Job } from '@/types';
+import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { CancelJobConfirmModal } from './CancelJobConfirmModal';
 import { WorkOrderPrintDocument } from './WorkOrderPrintDocument';
 import { useJobDrawerActions } from './drawer/useJobDrawerActions';
@@ -27,7 +28,7 @@ export interface JobDetailDrawerProps {
   hasNextJob?: boolean;
   currentJobIndex?: number;
   totalJobs?: number;
-  onApprove: (jobId: string, customApprovedBy?: string) => Promise<void>;
+  onApprove: (jobId: string, customApprovedBy?: string, failedAttemptFee?: number) => Promise<void>;
   onReject: (job: Job) => void;
   onAcceptJob: (jobId: string) => Promise<void>;
   onCompleteJob: (job: Job) => void;
@@ -88,9 +89,30 @@ export function JobDetailDrawer({
     canModifyBeforeSupplierStarts: permissions.canModifyBeforeSupplierStarts,
   });
 
+  const [failedFeeDraft, setFailedFeeDraft] = useState<{ jobId: string; value: string } | null>(
+    null
+  );
+
   if (!job || !activeJob) return null;
 
   const myBranchId = activeBranch?.id || currentBranchId;
+  const isFailedAttempt = isFailedAttemptJob(activeJob);
+  const canEditFailedFee =
+    isFailedAttempt &&
+    currentRole !== 'SUPPLIER' &&
+    activeJob.status === 'WAITING_APPROVAL' &&
+    activeJob.d365PoStatus !== 'PENDING';
+  const failedFeeRaw =
+    failedFeeDraft?.jobId === activeJob.id
+      ? failedFeeDraft.value
+      : String(getFailedAttemptFee(activeJob));
+  const parsedFailedFee = (() => {
+    const trimmed = failedFeeRaw.trim().replace(/,/g, '');
+    if (!trimmed) return null;
+    const num = Number(trimmed);
+    if (!Number.isFinite(num) || num <= 0 || num > 1_000_000) return null;
+    return Math.round(num * 100) / 100;
+  })();
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
@@ -125,7 +147,11 @@ export function JobDetailDrawer({
           {/* Scrollable Drawer Body */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs">
             {/* ─── Compact Job Overview ─── */}
-            <JobOverview job={activeJob} theme={theme} />
+            <JobOverview
+              job={activeJob}
+              theme={theme}
+              overrideCost={canEditFailedFee && parsedFailedFee !== null ? parsedFailedFee : undefined}
+            />
 
             {/* ─── D365 F&O PO + Transfer Journal Status Cards ─── */}
             <D365Panel
@@ -160,6 +186,10 @@ export function JobDetailDrawer({
               theme={theme}
               copiedText={copiedText}
               onCopyText={handleCopyText}
+              canEditFailedFee={canEditFailedFee}
+              failedFeeValue={failedFeeRaw}
+              parsedFailedFee={parsedFailedFee}
+              onFailedFeeChange={(value) => setFailedFeeDraft({ jobId: activeJob.id, value })}
             />
 
             {/* ─── Photo Evidences Gallery ─── */}
@@ -187,6 +217,7 @@ export function JobDetailDrawer({
             activeBranchName={activeBranch?.name}
             canUserCancelOrModifyJob={permissions.canUserCancelOrModifyJob}
             isCancellingJob={isCancellingJob}
+            failedAttemptFee={canEditFailedFee ? parsedFailedFee : undefined}
             onCancelJob={handleOpenCancelEntireJob}
             onAcceptJob={onAcceptJob}
             onCompleteJob={onCompleteJob}

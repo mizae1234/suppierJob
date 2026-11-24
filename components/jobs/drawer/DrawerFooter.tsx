@@ -4,7 +4,7 @@ import React from 'react';
 import { Check, Loader2, Printer, Upload, XCircle } from 'lucide-react';
 import { Job, UserRole } from '@/types';
 import { ThemeColors } from '@/hooks/useTheme';
-import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from '@/lib/slide-failed-attempt';
+import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 
 interface DrawerFooterProps {
   job: Job;
@@ -14,10 +14,11 @@ interface DrawerFooterProps {
   activeBranchName: string | undefined;
   canUserCancelOrModifyJob: boolean;
   isCancellingJob: boolean;
+  failedAttemptFee?: number | null;
   onCancelJob: () => void;
   onAcceptJob: (jobId: string) => Promise<void>;
   onCompleteJob: (job: Job) => void;
-  onApprove: (jobId: string, customApprovedBy?: string) => Promise<void>;
+  onApprove: (jobId: string, customApprovedBy?: string, failedAttemptFee?: number) => Promise<void>;
   onReject: (job: Job) => void;
   onOpenSubstituteModal: () => void;
   onClose: () => void;
@@ -31,6 +32,7 @@ export function DrawerFooter({
   activeBranchName,
   canUserCancelOrModifyJob,
   isCancellingJob,
+  failedAttemptFee,
   onCancelJob,
   onAcceptJob,
   onCompleteJob,
@@ -100,7 +102,7 @@ export function DrawerFooter({
           </button>
         )}
 
-        {(currentRole === 'BRANCH' || currentRole === 'ADMIN') &&
+        {(currentRole === 'BRANCH' || currentRole === 'ADMIN' || currentRole === 'MASTER') &&
           job.status === 'WAITING_APPROVAL' &&
           (() => {
             if (job.d365PoStatus === 'PENDING') {
@@ -113,6 +115,8 @@ export function DrawerFooter({
             }
             const isSlide = job.jobType === 'VEHICLE_SLIDE';
             const isFailed = isFailedAttemptJob(job);
+            const resolvedFailedFee =
+              failedAttemptFee !== undefined ? failedAttemptFee : getFailedAttemptFee(job);
             const isDest =
               !isFailed && Boolean(isSlide && job.destBranchId && job.destBranchId === myBranchId);
             const isOrigin =
@@ -128,17 +132,24 @@ export function DrawerFooter({
                 {isFailed ? (
                   <button
                     type="button"
-                    onClick={() =>
+                    disabled={resolvedFailedFee === null}
+                    onClick={() => {
+                      if (resolvedFailedFee === null) return;
                       onApprove(
                         job.id,
-                        `อนุมัติค่าเที่ยวเปล่าโดย ${activeBranchName || job.pickupBranchName || job.branchName || 'สาขา'}`
-                      )
-                    }
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-xs transition-colors"
+                        `อนุมัติค่าเที่ยวเปล่าโดย ${activeBranchName || job.pickupBranchName || job.branchName || 'สาขา'}`,
+                        resolvedFailedFee
+                      );
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="อนุมัติค่าเที่ยวเปล่า — รถไม่ถูกย้ายสาขา"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>อนุมัติค่าเที่ยวเปล่า ฿{SLIDE_FAILED_ATTEMPT_FEE.toLocaleString()}</span>
+                    <span>
+                      {resolvedFailedFee !== null
+                        ? `อนุมัติค่าเที่ยวเปล่า ฿${resolvedFailedFee.toLocaleString()}`
+                        : 'กรุณาระบุค่าเที่ยวเปล่า'}
+                    </span>
                   </button>
                 ) : isDest ? (
                   <button

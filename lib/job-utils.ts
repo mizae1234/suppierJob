@@ -1,5 +1,5 @@
 import { Branch, Company, Job, JobStatus, JobType, Supplier, Vehicle } from '@/types';
-import { isFailedAttemptJob, SLIDE_FAILED_ATTEMPT_FEE } from './slide-failed-attempt';
+import { getFailedAttemptFee, isFailedAttemptJob } from './slide-failed-attempt';
 
 /**
  * Short label for identifying a car in the UI.
@@ -236,8 +236,8 @@ export function getJobVehicleDisplay(job: Job) {
 export function getJobTotalCost(job: Job): number {
   if (job.status === 'CANCELLED') return 0;
 
-  // เที่ยวเปล่า (สไลด์ไม่สำเร็จ): ยอดตายตัวต่อใบงาน ไม่คำนวณจากราคารายคัน
-  if (isFailedAttemptJob(job)) return SLIDE_FAILED_ATTEMPT_FEE;
+  // เที่ยวเปล่า (สไลด์ไม่สำเร็จ): ยอดต่อใบงาน (ไม่คำนวณจากราคารายคัน)
+  if (isFailedAttemptJob(job)) return getFailedAttemptFee(job);
 
   if (job.carWashItems && job.carWashItems.length > 0) {
     const validItems = job.carWashItems.filter(i => i.status !== 'CANCELLED');
