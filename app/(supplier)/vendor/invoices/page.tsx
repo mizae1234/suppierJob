@@ -23,7 +23,17 @@ import {
   Calendar,
   Building2,
   Layers,
+  Info,
 } from 'lucide-react';
+
+/**
+ * ข้อความแจ้งเงื่อนไขและรอบการวางบิล (ปรับแก้ข้อความ/วันที่ตัดรอบได้จากจุดเดียวที่นี่)
+ */
+const BILLING_CYCLE_NOTICE = {
+  title: 'เงื่อนไขและรอบการวางบิล',
+  cycleText:
+    'รอบการวางบิลและวันตัดรอบเป็นไปตามกำหนดการของฝ่ายบัญชี (หากต้องการสอบถามวันตัดรอบหรือกำหนดชำระเงิน กรุณาติดต่อผู้ประสานงานสาขาหรือฝ่ายบัญชี)',
+};
 
 interface BillingGroup {
   key: string;
@@ -440,6 +450,33 @@ export default function SupplierInvoicesPage() {
           </div>
         )}
       </div>
+
+      {/* Billing Cycle & Guidelines Notice */}
+      {(() => {
+        const currentSupplierObj = !isAll
+          ? activeSupplier || suppliers.find((s) => s.id === supplierId)
+          : undefined;
+        const paymentTermsLabel = currentSupplierObj?.paymentTerms?.trim();
+        return (
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-[#f4f9f5] border border-emerald-950/10 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100/80 text-[#0f5238] flex items-center justify-center shrink-0 mt-0.5">
+              <Info className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-1 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-bold text-[#0f5238]">{BILLING_CYCLE_NOTICE.title}</p>
+                {paymentTermsLabel && (
+                  <span className="px-2 py-0.5 rounded-full bg-white border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
+                    เงื่อนไขชำระเงิน: {paymentTermsLabel}
+                  </span>
+                )}
+              </div>
+              <p className="text-gray-700 leading-relaxed">{BILLING_CYCLE_NOTICE.cycleText}</p>
+              <p className="text-gray-500 text-[11px] leading-relaxed">{BILLING_CYCLE_NOTICE.ruleText}</p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Date Range Filter Bar */}
       {(approvedJobs.length > 0 || myInvoices.length > 0) && (
