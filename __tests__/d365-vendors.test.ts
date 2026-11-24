@@ -18,11 +18,14 @@ import {
   isVendorUsable,
   normalizeCompany,
   normalizeVendorCode,
+  normalizeD365Address,
+  buildSupplierProfileUpdate,
   getVendorsFromD365,
   findVendorInCompany,
   GET_VENDORS_SERVICE_PATH,
   type D365VendorRecord,
 } from '@/lib/d365/vendors';
+import { parsePaymentTermsDays } from '@/lib/d365/po';
 
 describe('d365/vendors', () => {
   beforeEach(() => {
@@ -155,6 +158,66 @@ describe('d365/vendors', () => {
       mockD365PostService.mockResolvedValueOnce({ success: true, data: [] });
       const missing = await findVendorInCompany('GI01', 'V000000');
       expect(missing).toBeNull();
+    });
+  });
+
+  describe('normalizeD365Address & buildSupplierProfileUpdate', () => {
+    it('จัดรูปแบบที่อยู่จาก D365 โดยแทนที่ขึ้นบรรทัดใหม่ด้วยช่องว่างเดียว', () => {
+      expect(normalizeD365Address('237 ซอยพระยามนธาตุฯ\r\n  แขวงบางบอน\nเขตบางบอน 10150')).toBe(
+        '237 ซอยพระยามนธาตุฯ แขวงบางบอน เขตบางบอน 10150'
+      );
+      expect(normalizeD365Address('   ')).toBeUndefined();
+    });
+
+    it('เลือกข้อมูลจากบริษัท GI ก่อน อัปเดต address/taxId และไม่เขียนทับเบอร์ที่กรอกเอง', () => {
+      const update = buildSupplierProfileUpdate(
+        { address: 'เดิม', taxId: null, phone: '083-223-2849', email: null },
+        [
+          {
+            company: 'GI01',
+            vendorCode: 'V001',
+            vendorName: 'Test',
+            partyNumber: 'P1',
+            address: 'ที่อยู่ GI01',
+            taxRegistrationNumber: '1111111111111',
+            phone: '02-000-0000',
+            email: 'a@example.com',
+            isBlocked: false,
+            isActive: true,
+          },
+          {
+            company: 'GI',
+            vendorCode: 'V002',
+            vendorName: 'Test',
+            partyNumber: 'P1',
+            address: 'ที่อยู่ GI หลัก',
+            taxRegistrationNumber: '0105564043587',
+            paymentTerms: '30D',
+            paymentMethod: 'Transfer',
+            phone: '02-111-1111',
+            isBlocked: false,
+            isActive: true,
+          },
+        ]
+      );
+
+      expect(update).toEqual({
+        address: 'ที่อยู่ GI หลัก',
+        taxId: '0105564043587',
+        paymentTerms: '30D',
+        paymentMethod: 'Transfer',
+        email: 'a@example.com',
+      });
+    });
+
+    it('แปลง paymentTerms เป็นจำนวนวันเครดิตสำหรับคำนวณ DueDate ได้ถูกต้อง', () => {
+      expect(parsePaymentTermsDays('Cash')).toBe(0);
+      expect(parsePaymentTermsDays('CASH')).toBe(0);
+      expect(parsePaymentTermsDays('15D')).toBe(15);
+      expect(parsePaymentTermsDays('30D')).toBe(30);
+      expect(parsePaymentTermsDays('60D')).toBe(60);
+      expect(parsePaymentTermsDays(null)).toBe(30);
+      expect(parsePaymentTermsDays('')).toBe(30);
     });
   });
 });

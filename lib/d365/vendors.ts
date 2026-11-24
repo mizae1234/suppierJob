@@ -65,6 +65,13 @@ export const normalizeVendorCode = (code: string) => code.trim().toUpperCase();
 
 const trimOrUndef = (v?: string | null) => (v && v.trim() ? v.trim() : undefined);
 
+/** จัดรูปแบบที่อยู่จาก D365 ให้เป็นบรรทัดเดียวสะอาดตา (แทนที่ \r\n ด้วยช่องว่าง) */
+export function normalizeD365Address(v?: string | null): string | undefined {
+  if (!v) return undefined;
+  const cleaned = v.replace(/\r?\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return cleaned || undefined;
+}
+
 function mapVendor(v: RawVendor, fallbackCompany: string): D365VendorRecord {
   return {
     company: normalizeCompany(v.company || fallbackCompany),
@@ -77,13 +84,83 @@ function mapVendor(v: RawVendor, fallbackCompany: string): D365VendorRecord {
     paymentTerms: trimOrUndef(v.paymentTerms),
     paymentMethod: trimOrUndef(v.paymentMethod),
     taxRegistrationNumber: trimOrUndef(v.taxRegistrationNumber),
-    address: trimOrUndef(v.address),
+    address: normalizeD365Address(v.address),
     phone: trimOrUndef(v.phone),
     email: trimOrUndef(v.email),
     isBlocked: v.isBlocked === true,
     isActive: v.isActive !== false,
     modifiedDateTime: trimOrUndef(v.modifiedDateTime),
   };
+}
+
+/**
+ * สร้าง object สำหรับอัปเดตข้อมูลโปรไฟล์ของ Supplier (address, taxId, paymentTerms, paymentMethod, phone, email) จากข้อมูล D365
+ * - ให้ความสำคัญกับข้อมูลของบริษัทหลัก `GI` ก่อน แล้วค่อย fallback ไปยังสาขาอื่น
+ * - `address`, `taxId`, `paymentTerms`, `paymentMethod`: อัปเดตให้ตรงกับ D365 เมื่อ D365 มีค่า
+ * - `phone` และ `email`: เติมให้เฉพาะกรณีที่ในระบบเรายังว่างอยู่ (ไม่ทับเบอร์ที่กรอกไว้เอง)
+ */
+export function buildSupplierProfileUpdate(
+  current: {
+    address?: string | null;
+    taxId?: string | null;
+    paymentTerms?: string | null;
+    paymentMethod?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  },
+  vendors: D365VendorRecord[]
+): {
+  address?: string;
+  taxId?: string;
+  paymentTerms?: string;
+  paymentMethod?: string;
+  phone?: string;
+  email?: string;
+} {
+  const usable = vendors.filter(isVendorUsable);
+  if (usable.length === 0) return {};
+
+  // เรียงให้บริษัทหลัก GI มาก่อน
+  const ordered = [...usable].sort((a, b) => {
+    if (a.company === 'GI' && b.company !== 'GI') return -1;
+    if (b.company === 'GI' && a.company !== 'GI') return 1;
+    return a.company.localeCompare(b.company);
+  });
+
+  const d365Address = ordered.find((v) => v.address)?.address;
+  const d365TaxId = ordered.find((v) => v.taxRegistrationNumber)?.taxRegistrationNumber;
+  const d365PaymentTerms = ordered.find((v) => v.paymentTerms)?.paymentTerms;
+  const d365PaymentMethod = ordered.find((v) => v.paymentMethod)?.paymentMethod;
+  const d365Phone = ordered.find((v) => v.phone)?.phone;
+  const d365Email = ordered.find((v) => v.email)?.email;
+
+  const update: {
+    address?: string;
+    taxId?: string;
+    paymentTerms?: string;
+    paymentMethod?: string;
+    phone?: string;
+    email?: string;
+  } = {};
+  if (d365Address && d365Address !== (current.address || '').trim()) {
+    update.address = d365Address;
+  }
+  if (d365TaxId && d365TaxId !== (current.taxId || '').trim()) {
+    update.taxId = d365TaxId;
+  }
+  if (d365PaymentTerms && d365PaymentTerms !== (current.paymentTerms || '').trim()) {
+    update.paymentTerms = d365PaymentTerms;
+  }
+  if (d365PaymentMethod && d365PaymentMethod !== (current.paymentMethod || '').trim()) {
+    update.paymentMethod = d365PaymentMethod;
+  }
+  if (!current.phone?.trim() && d365Phone) {
+    update.phone = d365Phone;
+  }
+  if (!current.email?.trim() && d365Email) {
+    update.email = d365Email;
+  }
+  return update;
 }
 
 /** Vendor ที่ใช้เปิด PO ได้ (ไม่ถูก Block และยัง Active) */
@@ -246,13 +323,24 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
 
   // 3) upsert ตามสาขาในระบบ (หากสาขาไหนไม่เจอด้วย PartyNumber แต่มีชื่อ vendorName เดียวกันใน D365 ให้ดึงมาเติม)
   const primaryOrgName = vendors.find((v) => v.vendorName)?.vendorName || supplier.vendorCodes.find((vc) => vc.vendorName)?.vendorName || '';
+  const matchedVendors: D365VendorRecord[] = [...vendors];
   if (primaryOrgName && branches.some((b) => !byCompany.has(normalizeCompany(b.code)))) {
     const byName = allVendors.filter((v) => v.vendorName === primaryOrgName && isVendorUsable(v));
     for (const v of byName) {
       if (!byCompany.has(v.company)) {
         byCompany.set(v.company, [v]);
+        matchedVendors.push(v);
       }
     }
+  }
+
+  // อัปเดตข้อมูลโปรไฟล์ Supplier (address, taxId และเติม phone/email ถ้ายังว่าง) จาก D365
+  const profileUpdate = buildSupplierProfileUpdate(supplier, matchedVendors);
+  if (Object.keys(profileUpdate).length > 0) {
+    await prisma.supplier.update({
+      where: { id: supplierId },
+      data: profileUpdate,
+    });
   }
   const existingByBranch = new Map(supplier.vendorCodes.map((vc) => [vc.branchId, vc]));
   const now = new Date();

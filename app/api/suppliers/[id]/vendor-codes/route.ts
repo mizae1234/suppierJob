@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
-import { findVendorInCompany, normalizeVendorCode, isVendorUsable } from '@/lib/d365/vendors';
+import { findVendorInCompany, normalizeVendorCode, isVendorUsable, buildSupplierProfileUpdate } from '@/lib/d365/vendors';
 import type { SessionUser } from '@/lib/session';
 import { parseBody, upsertVendorCodeSchema } from '@/lib/validation';
 
@@ -61,7 +61,19 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const vendorCode = normalizeVendorCode(parsed.data.vendorCode);
 
     const [supplier, branch] = await Promise.all([
-      prisma.supplier.findUnique({ where: { id }, select: { id: true, d365PartyNumber: true } }),
+      prisma.supplier.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          d365PartyNumber: true,
+          address: true,
+          taxId: true,
+          paymentTerms: true,
+          paymentMethod: true,
+          phone: true,
+          email: true,
+        },
+      }),
       prisma.branch.findUnique({ where: { id: branchId }, select: { id: true, code: true, companyId: true } }),
     ]);
     if (!supplier) return NextResponse.json({ error: 'ไม่พบ Supplier' }, { status: 404 });
@@ -89,8 +101,22 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (supplier.d365PartyNumber && vendor.partyNumber && supplier.d365PartyNumber !== vendor.partyNumber) {
       warning = `รหัสนี้เป็นของ "${vendor.vendorName}" ซึ่งไม่ใช่ Party เดียวกับรหัสสาขาอื่นของ Supplier นี้ — กรุณาตรวจสอบ`;
     }
+    const supplierUpdate: {
+      d365PartyNumber?: string;
+      address?: string;
+      taxId?: string;
+      paymentTerms?: string;
+      paymentMethod?: string;
+      phone?: string;
+      email?: string;
+    } = {
+      ...buildSupplierProfileUpdate(supplier, [vendor]),
+    };
     if (!supplier.d365PartyNumber && vendor.partyNumber) {
-      await prisma.supplier.update({ where: { id }, data: { d365PartyNumber: vendor.partyNumber } });
+      supplierUpdate.d365PartyNumber = vendor.partyNumber;
+    }
+    if (Object.keys(supplierUpdate).length > 0) {
+      await prisma.supplier.update({ where: { id }, data: supplierUpdate });
     }
 
     const data = {

@@ -147,6 +147,21 @@ export function getD365ItemSalesTaxGroup(jobType: string, vatType?: string | nul
   return 'UNDUE-P';
 }
 
+/**
+ * แปลงรหัสเงื่อนไขการชำระเงิน (paymentTerms) จาก D365 เป็นจำนวนวันเครดิตสำหรับคำนวณ DueDate
+ * - "Cash" / "0D" → 0 วัน
+ * - "15D", "30D", "60D" → 15, 30, 60 วัน
+ * - ไม่มีค่า / รูปแบบไม่รู้จัก → ค่าเริ่มต้น 30 วัน
+ */
+export function parsePaymentTermsDays(paymentTerms?: string | null): number {
+  const raw = (paymentTerms || '').trim();
+  if (!raw) return 30;
+  if (/^cash$/i.test(raw)) return 0;
+  const dayMatch = raw.match(/^(\d+)\s*d$/i);
+  if (dayMatch) return Number(dayMatch[1]);
+  return 30;
+}
+
 export interface D365PurchaseOrderLine {
   DiscountAmount?: number;
   DiscountPercent?: number;
@@ -411,12 +426,13 @@ export async function sendJobToD365PurchaseOrder(
     return { success: false, message: errorMsg };
   }
 
-  // คำนวณวันที่
+  // คำนวณวันที่และเงื่อนไขการชำระเงินตาม paymentTerms ของ Supplier ใน D365
   const deliveryDateObj = job.completedAt || job.deliveryDateTime || job.createdAt || new Date();
   const deliveryDateStr = deliveryDateObj.toISOString().split('T')[0] + 'T00:00:00Z';
-  
-  // Due date = 30 วันถัดไป
-  const dueDateObj = new Date(deliveryDateObj.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const paymentTerms = job.supplier?.paymentTerms?.trim() || '';
+  const creditDays = parsePaymentTermsDays(paymentTerms);
+  const dueDateObj = new Date(deliveryDateObj.getTime() + creditDays * 24 * 60 * 60 * 1000);
   const dueDateStr = dueDateObj.toISOString().split('T')[0] + 'T00:00:00Z';
 
   // เลือกรหัสสินค้าบริการ (Service Item) ตามประเภทงาน
@@ -542,7 +558,7 @@ export async function sendJobToD365PurchaseOrder(
     DueDate: dueDateStr,
     ValueDate: deliveryDateStr,
     FloorPlanId: '',
-    PaymentType: '', // เว้นว่างเพื่อให้ D365 ดึง Terms of payment (15D, 30D, Cash) และ Method of payment (Transfer) ตาม Vendor อัตโนมัติ
+    PaymentType: paymentTerms, // ส่งเงื่อนไขการชำระเงินตาม D365 (เช่น Cash, 15D, 30D, 60D) หรือเว้นว่างถ้ายังไม่มี
     PoDMS: job.jobNumber, // D365 บังคับต้องมีค่า (ห้ามว่าง) — ใช้เลขที่ใบงานเดียวกับ PoGiCore
     PoGiCore: job.jobNumber,
     SiteId: d365Company,

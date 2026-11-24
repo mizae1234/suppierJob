@@ -82,6 +82,8 @@ export interface Supplier {
   showroomLabel?: string;
   rateItems?: SupplierRateItem[];
   d365PartyNumber?: string | null;
+  paymentTerms?: string | null;
+  paymentMethod?: string | null;
   vendorCodes?: SupplierVendorCodeInfo[]; // รหัส Vendor D365 แยกตามสาขา
 }
 

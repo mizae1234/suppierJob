@@ -41,9 +41,16 @@ const datasourceUrl = buildDatasourceUrl(process.env.DATABASE_URL);
 function isCurrentSchemaUpToDate(client?: PrismaClient): boolean {
   if (!client) return false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const jobFields = (client as any)._runtimeDataModel?.models?.Job?.fields as Array<{ name: string }> | undefined;
+  const models = (client as any)._runtimeDataModel?.models;
+  const jobFields = models?.Job?.fields as Array<{ name: string }> | undefined;
+  const supplierFields = models?.Supplier?.fields as Array<{ name: string }> | undefined;
   if (!Array.isArray(jobFields)) return true;
-  return jobFields.some((f) => f.name === 'destWarehouseId') && jobFields.some((f) => f.name === 'pickupBranchId') && jobFields.some((f) => f.name === 'd365TransferStatus');
+  const jobOk =
+    jobFields.some((f) => f.name === 'destWarehouseId') &&
+    jobFields.some((f) => f.name === 'pickupBranchId') &&
+    jobFields.some((f) => f.name === 'd365TransferStatus');
+  const supplierOk = !Array.isArray(supplierFields) || supplierFields.some((f) => f.name === 'paymentTerms');
+  return jobOk && supplierOk;
 }
 
 function createFreshPrismaClient(): PrismaClient {

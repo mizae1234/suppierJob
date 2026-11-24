@@ -80,6 +80,8 @@ export async function GET(request: NextRequest) {
         showroomLabel: s.showroomLabel,
         rateItems: s.rateItems || [],
         d365PartyNumber: s.d365PartyNumber ?? null,
+        paymentTerms: s.paymentTerms ?? null,
+        paymentMethod: s.paymentMethod ?? null,
         vendorCodes: (s.vendorCodes || [])
           .map((vc: any) => ({
             branchId: vc.branchId,

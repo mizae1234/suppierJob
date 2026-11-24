@@ -86,6 +86,8 @@ model Supplier {
   vatRate       Float              @default(0.0)      // 0.07, 0.0
   showroomLabel String?            // สาขาโชว์รูมประจำ เช่น "ศาลายา", "เลียบด่วน รามอินทรา, วิภาวดี"
   d365PartyNumber String?          // เลข Party กลาง (Global Address Book) ใน D365 ใช้ดึงรหัส Vendor ทุกสาขา
+  paymentTerms  String?            // เงื่อนไขการชำระเงินจาก D365 เช่น Cash, 15D, 30D, 60D
+  paymentMethod String?            // วิธีชำระเงินจาก D365 เช่น Transfer
   isActive      Boolean            @default(true)
   users         User[]
   jobs          Job[]
