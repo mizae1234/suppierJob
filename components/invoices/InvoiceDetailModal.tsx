@@ -108,7 +108,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
   };
 
   const orderingBranchName =
-    ownerBranchInfo.nameTh || primaryBranch?.name || primaryJob?.branchName || 'สาขาผู้สั่งงาน';
+    ownerBranchInfo.nameTh || primaryBranch?.name || primaryJob?.branchName || 'สาขาเจ้าของรถ';
   const orderingBranchCode = ownerBranchInfo.branchCode || primaryBranch?.code || '';
   const orderingBranchAddress =
     ownerBranchInfo.address ||
@@ -354,7 +354,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
               <div className="space-y-0.5 min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-bold text-gray-700 uppercase tracking-wider text-[10.5px] sm:text-[11px] leading-snug">
-                    ลูกค้า / สาขาผู้ว่าจ้างและทำเรื่องเบิกจ่าย (CUSTOMER / ORDERING & PAYING BRANCH):
+                    ลูกค้า / สาขาเจ้าของรถผู้รับผิดชอบค่าใช้จ่าย (CUSTOMER / VEHICLE OWNER & PAYING BRANCH):
                   </p>
                   {/* Compact branch badge on mobile */}
                   <div className="sm:hidden print:hidden shrink-0 border border-gray-400 px-2 py-0.5 bg-white text-center rounded-xs">
@@ -399,7 +399,7 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
               </div>
 
               <div className="hidden sm:block print:block shrink-0 self-center border border-gray-400 px-3 py-1.5 bg-white text-center">
-                <span className="block text-[10px] text-gray-500 font-semibold uppercase whitespace-nowrap">สาขาผู้สั่งงาน</span>
+                <span className="block text-[10px] text-gray-500 font-semibold uppercase whitespace-nowrap">สาขาเจ้าของรถ</span>
                 <span className="font-mono font-black text-sm text-emerald-800">{orderingBranchCode || invoice.companyCode}</span>
                 <span className="block text-[9px] text-gray-400 uppercase font-mono">{invoice.companyCode}</span>
               </div>
@@ -620,9 +620,9 @@ export function InvoiceDetailModal({ invoice, jobs, onClose }: InvoiceDetailModa
             {/* Customer (Ordering Branch) Box */}
             <div className="border border-gray-400 p-3.5 flex flex-col justify-between min-h-[150px] sm:h-40 print:h-40 text-center bg-gray-50/30">
               <div>
-                <p className="font-bold text-gray-900 text-xs">ผู้รับวางบิล / ผู้ตรวจสอบความถูกต้อง (สาขาผู้สั่งงาน)</p>
+                <p className="font-bold text-gray-900 text-xs">ผู้รับวางบิล / ผู้ตรวจสอบความถูกต้อง (สาขาเจ้าของรถ)</p>
                 <p className="text-[10px] text-gray-500">
-                  (Received & Verified By Ordering Branch: {orderingBranchCode || orderingBranchName})
+                  (Received & Verified By Owner Branch: {orderingBranchCode || orderingBranchName})
                 </p>
                 <p className="text-[10px] text-gray-600 mt-1 italic leading-tight">
                   ได้รับเอกสารใบวางบิลและตรวจสอบความถูกต้องของงานสาขาเรียบร้อยแล้ว
