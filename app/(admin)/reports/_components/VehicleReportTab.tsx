@@ -89,6 +89,17 @@ const formatCompactLocation = (raw: string): string => {
   return shortenBranchSegment(raw);
 };
 
+/** นับยอดค่าบริการสุทธิจริงเฉพาะรายการที่มีเลข PO จาก D365 แล้ว และไม่ได้ถูกยกเลิกหรือตีกลับ */
+function isCountableRecord(r: VehicleRecord): boolean {
+  return (
+    Boolean(r.d365PoNumber?.trim()) &&
+    r.itemStatus !== 'CANCELLED' &&
+    r.itemStatus !== 'REJECTED' &&
+    r.jobStatus !== 'CANCELLED' &&
+    r.jobStatus !== 'REJECTED'
+  );
+}
+
 interface VehicleReportTabProps {
   jobs: Job[];
   companyFilter: CompanyFilter;
@@ -194,6 +205,7 @@ export default function VehicleReportTab({
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [supplierFilter, setSupplierFilter] = useState<string>('ALL');
   const [invoiceFilter, setInvoiceFilter] = useState<string>('ALL');
+  const [poFilter, setPoFilter] = useState<'ALL' | 'WITH_PO' | 'NO_PO'>('ALL');
   const [datePreset, setDatePreset] = useState<'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH' | 'CUSTOM'>('ALL');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
@@ -330,6 +342,9 @@ export default function VehicleReportTab({
         if (invoiceFilter === 'NO_INVOICE' && r.invoiceNumber) return false;
         if (invoiceFilter !== 'NO_INVOICE' && r.invoiceNumber !== invoiceFilter) return false;
       }
+      // PO filter
+      if (poFilter === 'WITH_PO' && !isCountableRecord(r)) return false;
+      if (poFilter === 'NO_PO' && isCountableRecord(r)) return false;
       // Date range (YYYY-MM-DD)
       if (dateFrom || dateTo) {
         const recordDate = (r.serviceDate || '').slice(0, 10);
@@ -338,7 +353,7 @@ export default function VehicleReportTab({
       }
       return true;
     });
-  }, [allRecords, searchQuery, companyFilter, serviceFilter, statusFilter, supplierFilter, invoiceFilter, dateFrom, dateTo]);
+  }, [allRecords, searchQuery, companyFilter, serviceFilter, statusFilter, supplierFilter, invoiceFilter, poFilter, dateFrom, dateTo]);
 
   // ─── Group by VIN for summary ───
   const vehicleGroups = useMemo(() => {
@@ -352,8 +367,15 @@ export default function VehicleReportTab({
     return Array.from(map.entries()).sort((a, b) => b[1].length - a[1].length);
   }, [filteredRecords]);
 
-  // ─── Summary stats ───
-  const totalCost = filteredRecords.reduce((sum, r) => r.itemStatus !== 'CANCELLED' ? sum + r.unitPrice : sum, 0);
+  // ─── Summary stats (นับยอดสุทธิเฉพาะรายการที่มีเลข PO จาก D365 แล้ว) ───
+  const countableRecords = filteredRecords.filter(isCountableRecord);
+  const totalCost = countableRecords.reduce((sum, r) => sum + r.unitPrice, 0);
+  const countableVehiclesCount = new Set(countableRecords.map(r => r.vin)).size;
+  const unbilledNoPoRecords = filteredRecords.filter(
+    r => r.itemStatus !== 'CANCELLED' && !isCountableRecord(r)
+  );
+  const unbilledNoPoCount = unbilledNoPoRecords.length;
+  const unbilledNoPoEstimated = unbilledNoPoRecords.reduce((sum, r) => sum + r.unitPrice, 0);
   const totalVehicles = vehicleGroups.length;
   const invoicedCount = filteredRecords.filter(r => r.invoiceNumber).length;
   const cancelledCount = filteredRecords.filter(r => r.itemStatus === 'CANCELLED').length;
@@ -362,28 +384,37 @@ export default function VehicleReportTab({
   const handleExportExcel = useCallback(async () => {
     const XLSX = await import('xlsx');
 
-    const rows = filteredRecords.map((r, index) => ({
-      'ลำดับ': index + 1,
-      'VIN (เลขตัวถัง)': r.vin,
-      'ทะเบียนรถ': r.licensePlate || '-',
-      'รุ่นรถ': r.vehicleModel || '-',
-      'สี': r.vehicleColor || '-',
-      'บริษัท': r.companyCode,
-      'เลขใบสั่งงาน': r.jobNumber,
-      'เลข PO (D365)': r.d365PoNumber || '-',
-      'ประเภทงาน': r.jobType === 'VEHICLE_SLIDE' ? 'รถสไลด์' : 'ล้างรถ',
-      'บริการ': getServiceLabel(r.serviceType),
-      'วันที่ทำรายการ': formatThaiDate(r.serviceDate),
-      'สาขา / เส้นทาง': r.branchName,
-      'Supplier': r.supplierName,
-      'สถานะ': STATUS_STYLES[r.itemStatus]?.label || r.itemStatus,
-      'เลข Invoice': r.invoiceNumber || '-',
-      'วิธีคิดค่าบริการ': r.jobType === 'VEHICLE_SLIDE' ? (r.pricingMode === 'MANUAL' ? 'กรอกเอง' : 'คำนวณอัตโนมัติ') : '-',
-      'ราคาตามสัญญา (บาท)': r.pricingMode === 'MANUAL' ? (r.contractCost ?? '-') : '-',
-      'ราคา (บาท)': r.unitPrice,
-      'หมายเหตุการกรอกราคาเอง': r.pricingMode === 'MANUAL' ? (r.manualPriceNote || '') : '',
-      'หมายเหตุ': r.remarks || '',
-    }));
+    const rows = filteredRecords.map((r, index) => {
+      const countable = isCountableRecord(r);
+      return {
+        'ลำดับ': index + 1,
+        'VIN (เลขตัวถัง)': r.vin,
+        'ทะเบียนรถ': r.licensePlate || '-',
+        'รุ่นรถ': r.vehicleModel || '-',
+        'สี': r.vehicleColor || '-',
+        'บริษัท': r.companyCode,
+        'เลขใบสั่งงาน': r.jobNumber,
+        'เลข PO (D365)': r.d365PoNumber || '-',
+        'ประเภทงาน': r.jobType === 'VEHICLE_SLIDE' ? 'รถสไลด์' : 'ล้างรถ',
+        'บริการ': getServiceLabel(r.serviceType),
+        'วันที่ทำรายการ': formatThaiDate(r.serviceDate),
+        'สาขา / เส้นทาง': r.branchName,
+        'Supplier': r.supplierName,
+        'สถานะ': STATUS_STYLES[r.itemStatus]?.label || r.itemStatus,
+        'การนับยอด': r.itemStatus === 'CANCELLED'
+          ? 'ยกเลิก (ไม่นับยอด)'
+          : countable
+            ? 'นับยอด (มี PO)'
+            : 'ยังไม่นับยอด (ยังไม่มี PO)',
+        'เลข Invoice': r.invoiceNumber || '-',
+        'วิธีคิดค่าบริการ': r.jobType === 'VEHICLE_SLIDE' ? (r.pricingMode === 'MANUAL' ? 'กรอกเอง' : 'คำนวณอัตโนมัติ') : '-',
+        'ราคาตามสัญญา (บาท)': r.pricingMode === 'MANUAL' ? (r.contractCost ?? '-') : '-',
+        'ราคาตามใบงาน (บาท)': r.unitPrice,
+        'ยอดสุทธิที่มี PO (บาท)': countable ? r.unitPrice : 0,
+        'หมายเหตุการกรอกราคาเอง': r.pricingMode === 'MANUAL' ? (r.manualPriceNote || '') : '',
+        'หมายเหตุ': r.remarks || '',
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
@@ -401,10 +432,12 @@ export default function VehicleReportTab({
       { wch: 35 },  // สาขา / เส้นทาง
       { wch: 32 },  // Supplier
       { wch: 14 },  // สถานะ
+      { wch: 24 },  // การนับยอด
       { wch: 18 },  // เลข Invoice
       { wch: 16 },  // วิธีคิดค่าบริการ
       { wch: 18 },  // ราคาตามสัญญา (บาท)
-      { wch: 14 },  // ราคา (บาท)
+      { wch: 18 },  // ราคาตามใบงาน (บาท)
+      { wch: 20 },  // ยอดสุทธิที่มี PO (บาท)
       { wch: 32 },  // หมายเหตุการกรอกราคาเอง
       { wch: 24 },  // หมายเหตุ
     ];
@@ -499,11 +532,15 @@ export default function VehicleReportTab({
           <p className="text-xl md:text-2xl font-bold text-emerald-700">{invoicedCount} <span className="text-xs font-medium text-gray-400">รายการ</span></p>
         </div>
         <div className="p-3 md:p-4 rounded-2xl bg-gradient-to-br from-[#0f5238] to-[#1a7a56] text-white shadow-lg">
-          <span className="text-[10px] font-medium text-white/70 uppercase">ค่าบริการรวม</span>
+          <span className="text-[10px] font-medium text-white/75 uppercase">ค่าบริการสุทธิ (มี PO)</span>
           <p className="text-xl md:text-2xl font-bold mt-0.5">฿{totalCost.toLocaleString()}</p>
-          {cancelledCount > 0 && (
+          {unbilledNoPoCount > 0 ? (
+            <p className="text-[10px] text-white/75 mt-0.5">
+              ไม่รวมยังไม่เปิด PO {unbilledNoPoCount} รายการ (฿{unbilledNoPoEstimated.toLocaleString()})
+            </p>
+          ) : cancelledCount > 0 ? (
             <p className="text-[10px] text-white/60 mt-0.5">ยกเลิก {cancelledCount} รายการ (ไม่รวมในยอด)</p>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -697,6 +734,28 @@ export default function VehicleReportTab({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Quick PO Filter toggle */}
+              <div className="flex items-center p-0.5 rounded-xl bg-gray-100 border border-gray-200/70">
+                {([
+                  { key: 'ALL', label: 'ทั้งหมด' },
+                  { key: 'WITH_PO', label: 'มี PO แล้ว' },
+                  { key: 'NO_PO', label: 'ยังไม่เปิด PO' },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setPoFilter(opt.key)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                      poFilter === opt.key
+                        ? 'bg-white text-[#0f5238] shadow-2xs'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+
               {/* View mode toggle */}
               <div className="flex items-center p-0.5 rounded-xl bg-gray-100 border border-gray-200/70">
                 <button
@@ -753,7 +812,7 @@ export default function VehicleReportTab({
               {vehicleGroups.map(([vin, records], groupIdx) => {
                 const first = records[0];
                 const groupCost = records
-                  .filter(r => r.itemStatus !== 'CANCELLED')
+                  .filter(isCountableRecord)
                   .reduce((s, r) => s + r.unitPrice, 0);
                 const poCount = records.filter(r => Boolean(r.d365PoNumber)).length;
                 const hasManualPrice = records.some(r => r.pricingMode === 'MANUAL');
@@ -880,6 +939,7 @@ export default function VehicleReportTab({
                             {records.map((r) => {
                               const st = STATUS_STYLES[r.itemStatus] || STATUS_STYLES.PENDING;
                               const isCancelled = r.itemStatus === 'CANCELLED';
+                              const isCountable = isCountableRecord(r);
                               const isFailed = r.serviceType === 'SLIDE_FAILED_ATTEMPT';
                               const isManual = r.pricingMode === 'MANUAL';
                               const compactLoc = formatCompactLocation(r.branchName);
@@ -964,16 +1024,27 @@ export default function VehicleReportTab({
                                   <td className="py-2.5 px-3.5 text-right whitespace-nowrap align-top">
                                     <span
                                       className={`font-mono font-bold text-xs sm:text-sm ${
-                                        isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'
+                                        isCancelled
+                                          ? 'text-gray-400 line-through'
+                                          : !isCountable
+                                            ? 'text-gray-400'
+                                            : 'text-gray-900'
                                       }`}
                                       title={
-                                        isManual && r.contractCost
-                                          ? `ราคาตามสัญญา ฿${r.contractCost.toLocaleString()} • หมายเหตุ: ${r.manualPriceNote || '-'}`
-                                          : undefined
+                                        !isCountable && !isCancelled
+                                          ? 'ยังไม่เปิด PO ใน D365 — ไม่นับรวมในยอดสุทธิ'
+                                          : isManual && r.contractCost
+                                            ? `ราคาตามสัญญา ฿${r.contractCost.toLocaleString()} • หมายเหตุ: ${r.manualPriceNote || '-'}`
+                                            : undefined
                                       }
                                     >
                                       ฿{r.unitPrice.toLocaleString()}
                                     </span>
+                                    {!isCountable && !isCancelled && (
+                                      <p className="text-[10px] text-amber-700 font-medium mt-0.5">
+                                        ยังไม่นับยอด
+                                      </p>
+                                    )}
                                     {isManual && r.contractCost && r.contractCost !== r.unitPrice && (
                                       <p className="text-[10px] text-amber-700 font-mono mt-0.5">
                                         สัญญา ฿{r.contractCost.toLocaleString()}
@@ -1011,6 +1082,7 @@ export default function VehicleReportTab({
                     {filteredRecords.map((r) => {
                       const st = STATUS_STYLES[r.itemStatus] || STATUS_STYLES.PENDING;
                       const isCancelled = r.itemStatus === 'CANCELLED';
+                      const isCountable = isCountableRecord(r);
                       const isFailed = r.serviceType === 'SLIDE_FAILED_ATTEMPT';
                       const isManual = r.pricingMode === 'MANUAL';
                       const compactLoc = formatCompactLocation(r.branchName);
@@ -1111,11 +1183,25 @@ export default function VehicleReportTab({
                           <td className="py-2.5 px-3.5 text-right whitespace-nowrap align-top">
                             <span
                               className={`font-mono font-bold text-xs sm:text-sm ${
-                                isCancelled ? 'text-gray-400 line-through' : 'text-gray-900'
+                                isCancelled
+                                  ? 'text-gray-400 line-through'
+                                  : !isCountable
+                                    ? 'text-gray-400'
+                                    : 'text-gray-900'
                               }`}
+                              title={
+                                !isCountable && !isCancelled
+                                  ? 'ยังไม่เปิด PO ใน D365 — ไม่นับรวมในยอดสุทธิ'
+                                  : undefined
+                              }
                             >
                               ฿{r.unitPrice.toLocaleString()}
                             </span>
+                            {!isCountable && !isCancelled && (
+                              <p className="text-[10px] text-amber-700 font-medium mt-0.5">
+                                ยังไม่นับยอด
+                              </p>
+                            )}
                             {isManual && r.contractCost && r.contractCost !== r.unitPrice && (
                               <p className="text-[10px] text-amber-700 font-mono mt-0.5">
                                 สัญญา ฿{r.contractCost.toLocaleString()}
@@ -1133,9 +1219,16 @@ export default function VehicleReportTab({
 
           {/* ═══ Grand Total Bar (Always Visible at Bottom) ═══ */}
           <div className="px-4 sm:px-5 py-3.5 rounded-2xl bg-[#f4f9f5] border border-emerald-200/80 flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-xs font-bold text-gray-700">
-              รวมค่าบริการสุทธิทั้งหมด ({totalVehicles} คัน • {filteredRecords.filter(r => r.itemStatus !== 'CANCELLED').length} รายการ)
-            </span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-bold text-gray-800">
+                รวมค่าบริการสุทธิที่มี PO ({countableVehiclesCount} คัน • {countableRecords.length} รายการ)
+              </span>
+              {unbilledNoPoCount > 0 && (
+                <span className="text-[11px] text-amber-700 font-medium">
+                  ไม่นับรวมรายการที่ยังไม่เปิด PO {unbilledNoPoCount} รายการ (ประมาณการ ฿{unbilledNoPoEstimated.toLocaleString()})
+                </span>
+              )}
+            </div>
             <span className="font-mono font-black text-base sm:text-lg text-[#0f5238]">
               ฿{totalCost.toLocaleString()}
             </span>

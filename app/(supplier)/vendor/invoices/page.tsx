@@ -472,7 +472,6 @@ export default function SupplierInvoicesPage() {
                 )}
               </div>
               <p className="text-gray-700 leading-relaxed">{BILLING_CYCLE_NOTICE.cycleText}</p>
-              <p className="text-gray-500 text-[11px] leading-relaxed">{BILLING_CYCLE_NOTICE.ruleText}</p>
             </div>
           </div>
         );

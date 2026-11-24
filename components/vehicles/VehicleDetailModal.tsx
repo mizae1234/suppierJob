@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { formatThaiDate, formatThaiDateTime } from '@/lib/date-utils';
+import { formatThaiDate } from '@/lib/date-utils';
 import { thaiBahtText } from '@/lib/billing-utils';
 import { getWashServiceDisplay } from '@/lib/car-wash-rates';
 import { SLIDE_FAILED_ATTEMPT_LABEL } from '@/lib/slide-failed-attempt';
@@ -42,6 +42,8 @@ export interface VehicleDetailModalProps {
   copiedText: string | null;
 }
 
+const subscribeNoop = () => () => {};
+
 export function VehicleDetailModal({
   vin,
   records,
@@ -49,12 +51,8 @@ export function VehicleDetailModal({
   onCopy,
   copiedText,
 }: VehicleDetailModalProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
   const { vehicles, branches, companies, jobs } = useApp();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Filter out any cancelled records (คันที่ยกเลิกไม่ต้องเอาเข้ามา)
   const activeRecords = records.filter(
@@ -64,7 +62,16 @@ export function VehicleDetailModal({
   const first = activeRecords[0] || records[0];
   if (!first) return null;
 
-  const totalCost = activeRecords.reduce((s, r) => s + r.unitPrice, 0);
+  // นับยอดสุทธิเฉพาะรายการที่เปิด PO ใน D365 แล้ว (ไม่รวมตีกลับ/รอดำเนินการ/ยังไม่มี PO)
+  const isCountableRecord = (r: VehicleRecord) =>
+    Boolean(r.d365PoNumber?.trim()) &&
+    r.itemStatus !== 'CANCELLED' &&
+    r.itemStatus !== 'REJECTED' &&
+    r.jobStatus !== 'CANCELLED' &&
+    r.jobStatus !== 'REJECTED';
+
+  const countableRecords = activeRecords.filter(isCountableRecord);
+  const totalCost = countableRecords.reduce((s, r) => s + r.unitPrice, 0);
   const invoiceNums = [...new Set(activeRecords.map(r => r.invoiceNumber).filter(Boolean))] as string[];
 
   // Corporate details for official document (ใช้สาขาที่เป็นเจ้าของรถต้นสังกัด ออริจินอล)
@@ -238,8 +245,15 @@ export function VehicleDetailModal({
                             {st.label}
                           </span>
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-950">
-                          ฿{r.unitPrice.toLocaleString()}
+                        <td className="py-2.5 px-3 text-right font-mono font-bold">
+                          <span className={isCountableRecord(r) ? 'text-gray-950' : 'text-gray-400'}>
+                            ฿{r.unitPrice.toLocaleString()}
+                          </span>
+                          {!isCountableRecord(r) && (
+                            <span className="block text-[9px] font-sans font-medium text-amber-700">
+                              ยังไม่นับยอด
+                            </span>
+                          )}
                         </td>
                         <td className="py-2.5 px-3">
                           {r.invoiceNumber ? (
@@ -255,7 +269,7 @@ export function VehicleDetailModal({
                 <tfoot>
                   <tr className="border-t-2 border-gray-300 bg-gray-50 font-bold">
                     <td colSpan={8} className="py-2.5 px-3 text-right text-gray-700">
-                      ยอดรวมทั้งสิ้น ({activeRecords.length} รายการ):
+                      ยอดรวมสุทธิที่มี PO ({countableRecords.length} รายการ):
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-sm text-[#0f5238]">
                       ฿{totalCost.toLocaleString()}
@@ -270,7 +284,7 @@ export function VehicleDetailModal({
             <div className="p-3 rounded-xl border border-dashed border-gray-300 text-[11px] text-gray-600 bg-gray-50/50">
               <p className="font-bold text-gray-700 mb-0.5">หมายเหตุ:</p>
               <p>
-                รายงานนี้แสดงเฉพาะประวัติการให้บริการที่ปฏิบัติงานจริงของรถ VIN: {vin} ไม่รวมรายการที่ถูกยกเลิก
+                รายงานนี้แสดงประวัติการให้บริการของรถ VIN: {vin} โดยนับยอดรวมสุทธิเฉพาะรายการที่เปิด PO ใน D365 เรียบร้อยแล้ว (ไม่รวมรายการที่ยกเลิก ตีกลับ หรือยังไม่มี PO)
               </p>
             </div>
           </div>
@@ -468,8 +482,11 @@ export function VehicleDetailModal({
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="py-1.5 px-2 text-right font-mono font-bold text-gray-950">
+                        <td className={`py-1.5 px-2 text-right font-mono font-bold ${isCountableRecord(r) ? 'text-gray-950' : 'text-gray-400'}`}>
                           {r.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {!isCountableRecord(r) && (
+                            <div className="text-[8px] font-sans font-normal text-gray-500">(ยังไม่นับยอด)</div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -490,7 +507,7 @@ export function VehicleDetailModal({
                   </div>
                 </div>
                 <div className="text-[9px] text-gray-500 mt-2 space-y-0.5 leading-snug">
-                  <p>* สรุปยอดรวมค่าบริการทั้งหมดที่เกิดขึ้นจริงสำหรับรถคันนี้ (ไม่นับรวมรายการที่ถูกยกเลิก)</p>
+                  <p>* สรุปยอดรวมค่าบริการสุทธิเฉพาะรายการที่เปิด PO ใน D365 เรียบร้อยแล้ว (ไม่นับรวมรายการที่ยกเลิก ตีกลับ หรือยังไม่มี PO)</p>
                   <p>* รายงานนี้ใช้สำหรับตรวจสอบประวัติค่าบริการ ตรวจรับงาน และประกอบการกระทบยอดบัญชี</p>
                 </div>
               </div>
