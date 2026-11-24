@@ -148,15 +148,61 @@ export function getD365ItemSalesTaxGroup(jobType: string, vatType?: string | nul
 }
 
 /**
+ * ค่า PaymentType ที่รองรับตาม Spec API: Purchase order ของ D365
+ * - 7D, 15D, 30D, 45D, 60D, 90D = เครดิตตามจำนวนวัน
+ * - Cash = เงินสด (0 วัน)
+ * - IMMEDIATE = จ่ายทันที (0 วัน)
+ */
+export const D365_PAYMENT_TYPES = [
+  '7D',
+  '15D',
+  '30D',
+  '45D',
+  '60D',
+  '90D',
+  'Cash',
+  'IMMEDIATE',
+] as const;
+
+export type D365PaymentType = (typeof D365_PAYMENT_TYPES)[number];
+
+const D365_PAYMENT_TYPE_BY_UPPER: Record<string, D365PaymentType> = Object.fromEntries(
+  D365_PAYMENT_TYPES.map((code) => [code.toUpperCase(), code])
+);
+
+/**
+ * แปลงรหัส paymentTerms ให้เป็นรูปแบบมาตรฐานตาม Spec D365 (7D, 15D, 30D, 45D, 60D, 90D, Cash, IMMEDIATE)
+ * หากไม่อยู่ในรายการที่รองรับหรือเป็นค่าว่าง จะคืนค่าว่าง ""
+ */
+export function normalizeD365PaymentType(paymentTerms?: string | null): D365PaymentType | '' {
+  const compact = (paymentTerms || '').trim().replace(/\s+/g, '').toUpperCase();
+  if (!compact) return '';
+  return D365_PAYMENT_TYPE_BY_UPPER[compact] ?? '';
+}
+
+/**
+ * คืนค่า PaymentType สำหรับส่งใน payload createPurchaseOrder ไปยัง D365
+ * - ค่าเริ่มต้น (D365_SEND_PAYMENT_TYPE !== 'true'): ส่ง "" เพื่อให้ D365 ดึง Terms of payment จาก Vendor Master อัตโนมัติ
+ * - เมื่อตั้งค่า D365_SEND_PAYMENT_TYPE="true" (หลังฝั่ง D365 เปิดรองรับตาม Spec แล้ว): ส่งค่ามาตรฐานตาม D365_PAYMENT_TYPES
+ */
+export function resolveD365PoPaymentType(
+  paymentTerms?: string | null,
+  sendPaymentType: boolean = process.env.D365_SEND_PAYMENT_TYPE === 'true'
+): string {
+  if (!sendPaymentType) return '';
+  return normalizeD365PaymentType(paymentTerms);
+}
+
+/**
  * แปลงรหัสเงื่อนไขการชำระเงิน (paymentTerms) จาก D365 เป็นจำนวนวันเครดิตสำหรับคำนวณ DueDate
- * - "Cash" / "0D" → 0 วัน
- * - "15D", "30D", "60D" → 15, 30, 60 วัน
+ * - "Cash" / "IMMEDIATE" / "0D" → 0 วัน
+ * - "7D", "15D", "30D", "45D", "60D", "90D" → 7, 15, 30, 45, 60, 90 วัน
  * - ไม่มีค่า / รูปแบบไม่รู้จัก → ค่าเริ่มต้น 30 วัน
  */
 export function parsePaymentTermsDays(paymentTerms?: string | null): number {
   const raw = (paymentTerms || '').trim();
   if (!raw) return 30;
-  if (/^cash$/i.test(raw)) return 0;
+  if (/^(cash|immediate)$/i.test(raw)) return 0;
   const dayMatch = raw.match(/^(\d+)\s*d$/i);
   if (dayMatch) return Number(dayMatch[1]);
   return 30;
@@ -558,7 +604,7 @@ export async function sendJobToD365PurchaseOrder(
     DueDate: dueDateStr,
     ValueDate: deliveryDateStr,
     FloorPlanId: '',
-    PaymentType: paymentTerms, // ส่งเงื่อนไขการชำระเงินตาม D365 (เช่น Cash, 15D, 30D, 60D) หรือเว้นว่างถ้ายังไม่มี
+    PaymentType: resolveD365PoPaymentType(paymentTerms), // ตอนนี้ส่ง "" (D365_SEND_PAYMENT_TYPE=false) — เมื่อ D365 เปิดรองรับตาม Spec แล้วตั้ง D365_SEND_PAYMENT_TYPE=true เพื่อส่ง 7D/15D/30D/45D/60D/90D/Cash/IMMEDIATE
     PoDMS: job.jobNumber, // D365 บังคับต้องมีค่า (ห้ามว่าง) — ใช้เลขที่ใบงานเดียวกับ PoGiCore
     PoGiCore: job.jobNumber,
     SiteId: d365Company,

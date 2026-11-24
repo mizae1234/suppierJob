@@ -25,7 +25,11 @@ import {
   GET_VENDORS_SERVICE_PATH,
   type D365VendorRecord,
 } from '@/lib/d365/vendors';
-import { parsePaymentTermsDays } from '@/lib/d365/po';
+import {
+  normalizeD365PaymentType,
+  parsePaymentTermsDays,
+  resolveD365PoPaymentType,
+} from '@/lib/d365/po';
 
 describe('d365/vendors', () => {
   beforeEach(() => {
@@ -213,11 +217,40 @@ describe('d365/vendors', () => {
     it('แปลง paymentTerms เป็นจำนวนวันเครดิตสำหรับคำนวณ DueDate ได้ถูกต้อง', () => {
       expect(parsePaymentTermsDays('Cash')).toBe(0);
       expect(parsePaymentTermsDays('CASH')).toBe(0);
+      expect(parsePaymentTermsDays('IMMEDIATE')).toBe(0);
+      expect(parsePaymentTermsDays('immediate')).toBe(0);
+      expect(parsePaymentTermsDays('7D')).toBe(7);
       expect(parsePaymentTermsDays('15D')).toBe(15);
       expect(parsePaymentTermsDays('30D')).toBe(30);
+      expect(parsePaymentTermsDays('45D')).toBe(45);
       expect(parsePaymentTermsDays('60D')).toBe(60);
+      expect(parsePaymentTermsDays('90D')).toBe(90);
       expect(parsePaymentTermsDays(null)).toBe(30);
       expect(parsePaymentTermsDays('')).toBe(30);
+    });
+
+    it('จัดรูปแบบและควบคุมการส่ง PaymentType ตาม Spec D365 (ปิดไว้เป็นค่าว่างจนกว่าจะเปิด flag)', () => {
+      expect(normalizeD365PaymentType('7d')).toBe('7D');
+      expect(normalizeD365PaymentType('15D')).toBe('15D');
+      expect(normalizeD365PaymentType('30 d')).toBe('30D');
+      expect(normalizeD365PaymentType('45D')).toBe('45D');
+      expect(normalizeD365PaymentType('60D')).toBe('60D');
+      expect(normalizeD365PaymentType('90D')).toBe('90D');
+      expect(normalizeD365PaymentType('CASH')).toBe('Cash');
+      expect(normalizeD365PaymentType('immediate')).toBe('IMMEDIATE');
+      expect(normalizeD365PaymentType('UNKNOWN')).toBe('');
+      expect(normalizeD365PaymentType(null)).toBe('');
+
+      // ค่าเริ่มต้น (ยังไม่เปิด flag) → ส่งค่าว่าง ""
+      expect(resolveD365PoPaymentType('30D', false)).toBe('');
+      expect(resolveD365PoPaymentType('Cash', false)).toBe('');
+
+      // เมื่อเปิด flag (D365_SEND_PAYMENT_TYPE=true) → ส่งค่ามาตรฐานตาม Spec
+      expect(resolveD365PoPaymentType('30D', true)).toBe('30D');
+      expect(resolveD365PoPaymentType('cash', true)).toBe('Cash');
+      expect(resolveD365PoPaymentType('immediate', true)).toBe('IMMEDIATE');
+      expect(resolveD365PoPaymentType('90D', true)).toBe('90D');
+      expect(resolveD365PoPaymentType('OTHER', true)).toBe('');
     });
   });
 });
