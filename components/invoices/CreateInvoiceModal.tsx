@@ -22,7 +22,7 @@ export interface CreateInvoiceModalProps {
     dueDate: string;
     notes?: string;
   }) => Promise<{ success: boolean; invoice?: Invoice; error?: string }>;
-  onSuccess: (invoice: Invoice) => void;
+  onSuccess: (invoice: Invoice, allInvoices?: Invoice[]) => void;
 }
 
 export function CreateInvoiceModal({
@@ -179,7 +179,7 @@ export function CreateInvoiceModal({
       }
 
       if (created.length > 0 && failed.length === 0) {
-        onSuccess(created[0]);
+        onSuccess(created[0], created);
         onClose();
       } else if (failed.length > 0) {
         setErrorMessage(failed.join(' | '));

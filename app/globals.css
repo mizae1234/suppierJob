@@ -206,6 +206,11 @@
     break-inside: avoid !important;
   }
 
+  .print-page-break {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
   .print-wo-info-grid dt {
     font-size: 8pt !important;
     color: #888 !important;

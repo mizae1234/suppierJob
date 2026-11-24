@@ -116,7 +116,8 @@ export default function SupplierInvoicesPage() {
 
   const [isCreating, setIsCreating] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [previewInvoices, setPreviewInvoices] = useState<Invoice[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [datePreset, setDatePreset] = useState<DatePreset>('ALL');
   const [dateFrom, setDateFrom] = useState('');
@@ -319,6 +320,32 @@ export default function SupplierInvoicesPage() {
     }
   };
 
+  const toggleInvoiceSelect = (invId: string) => {
+    setSelectedInvoiceIds((prev) =>
+      prev.includes(invId) ? prev.filter((id) => id !== invId) : [...prev, invId]
+    );
+  };
+
+  const allFilteredInvoicesSelected =
+    filteredInvoices.length > 0 &&
+    filteredInvoices.every((inv) => selectedInvoiceIds.includes(inv.id));
+
+  const toggleSelectAllFilteredInvoices = () => {
+    const ids = filteredInvoices.map((inv) => inv.id);
+    if (allFilteredInvoicesSelected) {
+      setSelectedInvoiceIds((prev) => prev.filter((id) => !ids.includes(id)));
+    } else {
+      setSelectedInvoiceIds((prev) => Array.from(new Set([...prev, ...ids])));
+    }
+  };
+
+  const handleBatchPrintSelectedInvoices = () => {
+    const selected = filteredInvoices.filter((inv) => selectedInvoiceIds.includes(inv.id));
+    if (selected.length > 0) {
+      setPreviewInvoices(selected);
+    }
+  };
+
   const { showToast } = useToast();
 
   const handleCreateInvoice = async () => {
@@ -356,19 +383,19 @@ export default function SupplierInvoicesPage() {
         } else {
           const numbers = createdInvoices.map((i) => i.invoiceNumber).join(', ');
           showToast(
-            `ออกใบวางบิลแยกตามสาขาเจ้าของรถสำเร็จ ${createdInvoices.length} ใบ (${numbers})`,
+            `ออกใบวางบิลแยกตามสาขาเจ้าของรถสำเร็จ ${createdInvoices.length} ใบ (${numbers}) — พิมพ์รวมชุดได้ทันที`,
             'success',
             6000
           );
         }
-        setSelectedInvoice(createdInvoices[0]);
+        setPreviewInvoices(createdInvoices);
       } else if (createdInvoices.length > 0 && failedMessages.length > 0) {
         showToast(
           `ออกใบวางบิลสำเร็จ ${createdInvoices.length} ใบ แต่ไม่สำเร็จบางสาขา: ${failedMessages.join(' | ')}`,
           'warning',
           7000
         );
-        setSelectedInvoice(createdInvoices[0]);
+        setPreviewInvoices(createdInvoices);
       } else {
         showToast(failedMessages[0] || 'เกิดข้อผิดพลาดในการสร้างใบวางบิล', 'error');
       }
@@ -739,9 +766,13 @@ export default function SupplierInvoicesPage() {
       )}
 
       {/* Existing Invoices */}
-      {myInvoices.length > 0 && (
+      {myInvoices.length > 0 && (() => {
+        const selectedFilteredCount = filteredInvoices.filter((inv) =>
+          selectedInvoiceIds.includes(inv.id)
+        ).length;
+        return (
         <div className="p-4 sm:p-5 rounded-2xl bg-white border border-gray-100 shadow-xs">
-          <div className="flex items-center justify-between mb-3.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-3.5">
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
               <FileText className="w-4 h-4 text-gray-500" />
               <span>ใบวางบิลที่ออกแล้ว</span>
@@ -749,6 +780,34 @@ export default function SupplierInvoicesPage() {
                 {hasActiveFilter ? `${filteredInvoices.length} / ${myInvoices.length}` : myInvoices.length}
               </span>
             </h3>
+
+            {filteredInvoices.length > 0 && (
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {filteredInvoices.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggleSelectAllFilteredInvoices}
+                    className="text-xs font-semibold hover:underline cursor-pointer"
+                    style={{ color: theme.primary }}
+                  >
+                    {allFilteredInvoicesSelected
+                      ? 'ยกเลิกที่เลือกทั้งหมด'
+                      : `เลือกทั้งหมด (${filteredInvoices.length})`}
+                  </button>
+                )}
+                {selectedFilteredCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBatchPrintSelectedInvoices}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-white text-xs font-bold shadow-xs transition-all cursor-pointer hover:opacity-90 active:scale-[0.98]"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    <Printer className="w-3.5 h-3.5 shrink-0" />
+                    <span>พิมพ์รวมที่เลือก ({selectedFilteredCount} ใบ)</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {filteredInvoices.length === 0 ? (
@@ -771,6 +830,7 @@ export default function SupplierInvoicesPage() {
                 const supplierObj = suppliers.find(s => s.id === inv.supplierId);
                 const isPaid = inv.status === 'PAID';
                 const isSubmitted = inv.status === 'SUBMITTED';
+                const isInvoiceChecked = selectedInvoiceIds.includes(inv.id);
                 const linkedJobs = (inv.jobIds || [])
                   .map((id) => jobsById.get(id))
                   .filter((j): j is Job => Boolean(j));
@@ -786,56 +846,80 @@ export default function SupplierInvoicesPage() {
                 return (
                   <div
                     key={inv.id}
-                    className="p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-white hover:bg-gray-50/70 border border-gray-100 hover:border-gray-200 transition-all shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border transition-all shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      isInvoiceChecked
+                        ? 'border-[#0f5238]/40 bg-[#f4f9f5]/70'
+                        : 'bg-white hover:bg-gray-50/70 border-gray-100 hover:border-gray-200'
+                    }`}
                   >
-                    {/* Top/Left Section: Invoice Header, Badges, Details */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between sm:justify-start gap-2 mb-1.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2 py-0.5 rounded-md font-bold text-[10px] font-mono text-white shadow-2xs bg-emerald-700">
-                            {ownerInfo?.branchCode || inv.companyCode}
-                          </span>
-                          <p className="text-xs sm:text-sm font-bold text-gray-900 font-mono tracking-tight">
-                            {inv.invoiceNumber}
-                          </p>
-                          {linkedPos.length > 0 && (
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
-                              PO: {linkedPos.slice(0, 2).join(', ')}{linkedPos.length > 2 ? ` +${linkedPos.length - 2}` : ''}
+                    {/* Top/Left Section: Checkbox + Invoice Header, Badges, Details */}
+                    <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => toggleInvoiceSelect(inv.id)}
+                        aria-label={`เลือกใบวางบิล ${inv.invoiceNumber} เพื่อพิมพ์รวม`}
+                        className={`mt-0.5 sm:mt-0 w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+                          isInvoiceChecked
+                            ? 'text-white'
+                            : 'border-gray-300 bg-white hover:border-gray-400'
+                        }`}
+                        style={
+                          isInvoiceChecked
+                            ? { backgroundColor: theme.primary, borderColor: theme.primary }
+                            : {}
+                        }
+                      >
+                        {isInvoiceChecked && <CheckCircle2 className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between sm:justify-start gap-2 mb-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-md font-bold text-[10px] font-mono text-white shadow-2xs bg-emerald-700">
+                              {ownerInfo?.branchCode || inv.companyCode}
                             </span>
-                          )}
+                            <p className="text-xs sm:text-sm font-bold text-gray-900 font-mono tracking-tight">
+                              {inv.invoiceNumber}
+                            </p>
+                            {linkedPos.length > 0 && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
+                                PO: {linkedPos.slice(0, 2).join(', ')}{linkedPos.length > 2 ? ` +${linkedPos.length - 2}` : ''}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Status Badge (mobile view - top right) */}
+                          <span
+                            className={`sm:hidden px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                              isPaid
+                                ? 'bg-emerald-100 text-[#0f5238]'
+                                : isSubmitted
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {isSubmitted ? 'รอชำระ' : isPaid ? 'ชำระแล้ว' : inv.status}
+                          </span>
                         </div>
 
-                        {/* Status Badge (mobile view - top right) */}
-                        <span
-                          className={`sm:hidden px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                            isPaid
-                              ? 'bg-emerald-100 text-[#0f5238]'
-                              : isSubmitted
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          {isSubmitted ? 'รอชำระ' : isPaid ? 'ชำระแล้ว' : inv.status}
-                        </span>
-                      </div>
-
-                      {/* Metadata line: Job count & Supplier */}
-                      <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
-                        <span className="font-medium text-gray-700">{inv.jobIds?.length || 0} งาน</span>
-                        {inv.invoiceDate && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span>{formatThaiDate(inv.invoiceDate)}</span>
-                          </>
-                        )}
-                        {isAll && inv.supplierId && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md font-medium truncate max-w-[200px]">
-                              {supplierObj?.name || 'Supplier'}
-                            </span>
-                          </>
-                        )}
+                        {/* Metadata line: Job count & Supplier */}
+                        <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
+                          <span className="font-medium text-gray-700">{inv.jobIds?.length || 0} งาน</span>
+                          {inv.invoiceDate && (
+                            <>
+                              <span className="text-gray-300">•</span>
+                              <span>{formatThaiDate(inv.invoiceDate)}</span>
+                            </>
+                          )}
+                          {isAll && inv.supplierId && (
+                            <>
+                              <span className="text-gray-300">•</span>
+                              <span className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md font-medium truncate max-w-[200px]">
+                                {supplierObj?.name || 'Supplier'}
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -858,7 +942,7 @@ export default function SupplierInvoicesPage() {
 
                       <button
                         type="button"
-                        onClick={() => setSelectedInvoice(inv)}
+                        onClick={() => setPreviewInvoices([inv])}
                         className="flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:py-2 rounded-xl bg-gray-50 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 active:scale-[0.98] text-xs font-semibold transition-all cursor-pointer shadow-2xs border border-gray-200 shrink-0 whitespace-nowrap"
                         title="ดูใบวางบิล / พิมพ์"
                       >
@@ -872,13 +956,14 @@ export default function SupplierInvoicesPage() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
-      {/* Invoice Document Modal / Print Preview */}
+      {/* Invoice Document Modal / Print Preview (Single or Batch) */}
       <InvoiceDetailModal
-        invoice={selectedInvoice}
+        invoices={previewInvoices}
         jobs={jobs}
-        onClose={() => setSelectedInvoice(null)}
+        onClose={() => setPreviewInvoices([])}
       />
     </div>
   );
