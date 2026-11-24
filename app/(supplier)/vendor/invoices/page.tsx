@@ -20,7 +20,32 @@ import {
   Printer,
   Search,
   X,
+  Calendar,
 } from 'lucide-react';
+
+type DatePreset = 'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH' | 'CUSTOM';
+
+function toLocalYMD(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function isInDateRange(
+  rawDate: string | Date | null | undefined,
+  dateFrom: string,
+  dateTo: string
+): boolean {
+  if (!dateFrom && !dateTo) return true;
+  if (!rawDate) return false;
+  const parsed = rawDate instanceof Date ? rawDate : new Date(rawDate);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const ymd = toLocalYMD(parsed);
+  if (dateFrom && ymd < dateFrom) return false;
+  if (dateTo && ymd > dateTo) return false;
+  return true;
+}
 
 function parseSearchTerms(raw: string): string[] {
   return raw
@@ -69,9 +94,42 @@ export default function SupplierInvoicesPage() {
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [datePreset, setDatePreset] = useState<DatePreset>('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const handleSelectDatePreset = (preset: 'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH') => {
+    setDatePreset(preset);
+    if (preset === 'ALL') {
+      setDateFrom('');
+      setDateTo('');
+      return;
+    }
+    const now = new Date();
+    const todayStr = toLocalYMD(now);
+    if (preset === 'TODAY') {
+      setDateFrom(todayStr);
+      setDateTo(todayStr);
+    } else if (preset === 'PAST_7') {
+      const start = new Date(now);
+      start.setDate(now.getDate() - 6);
+      setDateFrom(toLocalYMD(start));
+      setDateTo(todayStr);
+    } else if (preset === 'THIS_MONTH') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      setDateFrom(toLocalYMD(start));
+      setDateTo(todayStr);
+    }
+  };
 
   const searchTerms = useMemo(() => parseSearchTerms(searchQuery), [searchQuery]);
-  const hasSearch = searchTerms.length > 0;
+  const hasDateFilter = Boolean(dateFrom || dateTo);
+  const hasActiveFilter = searchTerms.length > 0 || hasDateFilter;
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    handleSelectDatePreset('ALL');
+  };
 
   const jobsById = useMemo(() => {
     const map = new Map<string, Job>();
@@ -91,9 +149,17 @@ export default function SupplierInvoicesPage() {
   }, [jobs, supplierId, isAll, currentBranchId]);
 
   const filteredApprovedJobs = useMemo(() => {
-    if (!hasSearch) return approvedJobs;
-    return approvedJobs.filter((job) => jobMatchesTerms(job, searchTerms));
-  }, [approvedJobs, hasSearch, searchTerms]);
+    if (!hasActiveFilter) return approvedJobs;
+    return approvedJobs.filter((job) => {
+      if (hasDateFilter && !isInDateRange(job.approvedAt || job.completedAt || job.createdAt, dateFrom, dateTo)) {
+        return false;
+      }
+      if (searchTerms.length > 0 && !jobMatchesTerms(job, searchTerms)) {
+        return false;
+      }
+      return true;
+    });
+  }, [approvedJobs, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms]);
 
   // Invoices for this supplier (or all for Master)
   const myInvoices = useMemo(() => {
@@ -104,8 +170,12 @@ export default function SupplierInvoicesPage() {
   }, [invoices, supplierId, isAll]);
 
   const filteredInvoices = useMemo(() => {
-    if (!hasSearch) return myInvoices;
+    if (!hasActiveFilter) return myInvoices;
     return myInvoices.filter((inv) => {
+      if (hasDateFilter && !isInDateRange(inv.invoiceDate || inv.createdAt, dateFrom, dateTo)) {
+        return false;
+      }
+      if (searchTerms.length === 0) return true;
       const supplierObj = suppliers.find((s) => s.id === inv.supplierId);
       const invHaystack = [
         inv.invoiceNumber,
@@ -123,7 +193,7 @@ export default function SupplierInvoicesPage() {
         .filter((j): j is Job => Boolean(j));
       return linkedJobs.some((job) => jobMatchesTerms(job, searchTerms));
     });
-  }, [myInvoices, hasSearch, searchTerms, suppliers, jobsById]);
+  }, [myInvoices, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms, suppliers, jobsById]);
 
   const selectedTotal = useMemo(() => {
     return approvedJobs
@@ -220,6 +290,85 @@ export default function SupplierInvoicesPage() {
         )}
       </div>
 
+      {/* Date Range Filter Bar */}
+      {(approvedJobs.length > 0 || myInvoices.length > 0) && (
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-2xl bg-white border border-gray-100 shadow-xs">
+          {/* Quick Date Presets */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 mr-1">
+              <Calendar className="w-3.5 h-3.5 text-[#0f5238]" />
+              <span>ช่วงวันที่:</span>
+            </span>
+            {([
+              { key: 'ALL', label: 'ทั้งหมด' },
+              { key: 'TODAY', label: 'วันนี้' },
+              { key: 'PAST_7', label: '7 วันล่าสุด' },
+              { key: 'THIS_MONTH', label: 'เดือนนี้' },
+            ] as const).map((preset) => (
+              <button
+                key={preset.key}
+                type="button"
+                onClick={() => handleSelectDatePreset(preset.key)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  datePreset === preset.key
+                    ? 'bg-[#0f5238] text-white shadow-2xs'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom Date Inputs (From - To) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-medium text-gray-500 whitespace-nowrap">ตั้งแต่วันที่</label>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDateFrom(val);
+                  setDatePreset(!val && !dateTo ? 'ALL' : 'CUSTOM');
+                }}
+                className="h-8 px-2.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:ring-2 focus:ring-[#0f5238]/20 focus:border-[#0f5238] outline-none bg-gray-50/50"
+              />
+            </div>
+
+            <span className="text-xs text-gray-400">ถึง</span>
+
+            <div className="flex items-center gap-1.5">
+              <label className="text-[11px] font-medium text-gray-500 whitespace-nowrap">วันที่</label>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDateTo(val);
+                  setDatePreset(!dateFrom && !val ? 'ALL' : 'CUSTOM');
+                }}
+                className="h-8 px-2.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:ring-2 focus:ring-[#0f5238]/20 focus:border-[#0f5238] outline-none bg-gray-50/50"
+              />
+            </div>
+
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => handleSelectDatePreset('ALL')}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-semibold transition-colors cursor-pointer"
+                title="ล้างตัวกรองวันที่"
+              >
+                <X className="w-3 h-3" />
+                <span>ล้างวันที่</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Create Invoice Section */}
       {approvedJobs.length > 0 && (
         <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs">
@@ -242,7 +391,7 @@ export default function SupplierInvoicesPage() {
                 </button>
               )}
               <span className="text-xs text-gray-500">
-                {hasSearch
+                {hasActiveFilter
                   ? `แสดง ${filteredApprovedJobs.length} / ${approvedJobs.length} งานพร้อมออกบิล`
                   : `${approvedJobs.length} งานพร้อมออกบิล`}
               </span>
@@ -254,15 +403,15 @@ export default function SupplierInvoicesPage() {
           {filteredApprovedJobs.length === 0 ? (
             <div className="py-8 px-4 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 mb-4">
               <p className="text-xs font-medium text-gray-500">
-                ไม่พบงานพร้อมออกบิลที่ตรงกับ &ldquo;{searchQuery.trim()}&rdquo;
+                ไม่พบงานพร้อมออกบิลที่ตรงกับเงื่อนไขที่กรอง
               </p>
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={clearAllFilters}
                 className="mt-2 text-xs font-semibold hover:underline cursor-pointer"
                 style={{ color: theme.primary }}
               >
-                ล้างคำค้นหา
+                ล้างตัวกรองทั้งหมด
               </button>
             </div>
           ) : (
@@ -273,6 +422,7 @@ export default function SupplierInvoicesPage() {
                 const activeItems = (job.carWashItems || []).filter((i) => i.status !== 'CANCELLED');
                 const firstVin = activeItems[0]?.vin || job.vin || '';
                 const extraCarCount = activeItems.length > 1 ? activeItems.length - 1 : 0;
+                const displayDate = job.approvedAt || job.completedAt || job.createdAt;
                 return (
                   <button
                     key={job.id}
@@ -309,6 +459,12 @@ export default function SupplierInvoicesPage() {
                       </div>
                       <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                         <span>{job.companyCode} • {job.branchName}</span>
+                        {displayDate && (
+                          <>
+                            <span className="text-gray-300">•</span>
+                            <span>{formatThaiDate(displayDate)}</span>
+                          </>
+                        )}
                         {firstVin && (
                           <>
                             <span className="text-gray-300">•</span>
@@ -373,7 +529,7 @@ export default function SupplierInvoicesPage() {
               <FileText className="w-4 h-4 text-gray-500" />
               <span>ใบวางบิลที่ออกแล้ว</span>
               <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600">
-                {hasSearch ? `${filteredInvoices.length} / ${myInvoices.length}` : myInvoices.length}
+                {hasActiveFilter ? `${filteredInvoices.length} / ${myInvoices.length}` : myInvoices.length}
               </span>
             </h3>
           </div>
@@ -381,15 +537,15 @@ export default function SupplierInvoicesPage() {
           {filteredInvoices.length === 0 ? (
             <div className="py-8 px-4 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60">
               <p className="text-xs font-medium text-gray-500">
-                ไม่พบใบวางบิลที่ตรงกับ &ldquo;{searchQuery.trim()}&rdquo;
+                ไม่พบใบวางบิลที่ตรงกับเงื่อนไขที่กรอง
               </p>
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
+                onClick={clearAllFilters}
                 className="mt-2 text-xs font-semibold hover:underline cursor-pointer"
                 style={{ color: theme.primary }}
               >
-                ล้างคำค้นหา
+                ล้างตัวกรองทั้งหมด
               </button>
             </div>
           ) : (
