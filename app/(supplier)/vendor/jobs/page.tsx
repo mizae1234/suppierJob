@@ -125,7 +125,7 @@ function SupplierJobsPageContent() {
 
       {/* Vehicle Verification Modal (step 1) */}
       <VendorVerifyVehicleModal
-        key={modals.verifyTarget ? `${modals.verifyTarget.jobId}:${modals.verifyTarget.itemId || ''}` : 'none'}
+        key={modals.verifyTarget ? `verify:${modals.verifyTarget.jobId}:${modals.verifyTarget.itemId || ''}` : 'verify-none'}
         target={modals.verifyTarget}
         onClose={modals.closeVerifyModal}
         onVerified={modals.onVehicleVerified}
@@ -140,7 +140,7 @@ function SupplierJobsPageContent() {
 
       {/* Failed Attempt (เที่ยวเปล่า) Modal */}
       <VendorFailedAttemptModal
-        key={modals.failedAttemptJob?.id || 'none'}
+        key={modals.failedAttemptJob?.id ? `failed:${modals.failedAttemptJob.id}` : 'failed-none'}
         job={modals.failedAttemptJob}
         onClose={modals.closeFailedAttemptModal}
         onSubmit={modals.onSubmitFailedAttempt}
