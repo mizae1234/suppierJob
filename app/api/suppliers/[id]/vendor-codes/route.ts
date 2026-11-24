@@ -32,6 +32,8 @@ async function listVendorCodes(supplierId: string) {
       branchName: b.name,
       vendorCode: vc?.vendorCode ?? null,
       vendorName: vc?.vendorName ?? null,
+      paymentTerms: vc?.paymentTerms ?? null,
+      paymentMethod: vc?.paymentMethod ?? null,
       source: vc?.source ?? null,
       verifiedAt: vc?.verifiedAt ?? null,
     };
@@ -122,6 +124,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const data = {
       vendorCode: vendor.vendorCode,
       vendorName: vendor.vendorName || null,
+      paymentTerms: vendor.paymentTerms ?? null,
+      paymentMethod: vendor.paymentMethod ?? null,
       source: 'MANUAL',
       verifiedAt: new Date(),
     };

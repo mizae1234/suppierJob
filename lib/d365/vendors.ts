@@ -375,6 +375,8 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
           branchId: branch.id,
           vendorCode: vendor.vendorCode,
           vendorName: vendor.vendorName || null,
+          paymentTerms: vendor.paymentTerms ?? null,
+          paymentMethod: vendor.paymentMethod ?? null,
           source: 'D365_SYNC',
           verifiedAt: now,
         },
@@ -383,7 +385,12 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
     } else if (normalizeVendorCode(existing.vendorCode) === vendor.vendorCode) {
       await prisma.supplierVendorCode.update({
         where: { id: existing.id },
-        data: { vendorName: vendor.vendorName || existing.vendorName, verifiedAt: now },
+        data: {
+          vendorName: vendor.vendorName || existing.vendorName,
+          paymentTerms: vendor.paymentTerms ?? existing.paymentTerms,
+          paymentMethod: vendor.paymentMethod ?? existing.paymentMethod,
+          verifiedAt: now,
+        },
       });
       result.unchanged.push({ branchCode: branch.code, vendorCode: vendor.vendorCode });
     } else if (existing.source === 'MANUAL') {
@@ -396,7 +403,13 @@ export async function syncSupplierVendorCodes(supplierId: string): Promise<Vendo
     } else {
       await prisma.supplierVendorCode.update({
         where: { id: existing.id },
-        data: { vendorCode: vendor.vendorCode, vendorName: vendor.vendorName || null, verifiedAt: now },
+        data: {
+          vendorCode: vendor.vendorCode,
+          vendorName: vendor.vendorName || null,
+          paymentTerms: vendor.paymentTerms ?? null,
+          paymentMethod: vendor.paymentMethod ?? null,
+          verifiedAt: now,
+        },
       });
       result.updated.push({ branchCode: branch.code, from: existing.vendorCode, to: vendor.vendorCode });
     }

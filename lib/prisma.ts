@@ -44,13 +44,15 @@ function isCurrentSchemaUpToDate(client?: PrismaClient): boolean {
   const models = (client as any)._runtimeDataModel?.models;
   const jobFields = models?.Job?.fields as Array<{ name: string }> | undefined;
   const supplierFields = models?.Supplier?.fields as Array<{ name: string }> | undefined;
+  const vendorCodeFields = models?.SupplierVendorCode?.fields as Array<{ name: string }> | undefined;
   if (!Array.isArray(jobFields)) return true;
   const jobOk =
     jobFields.some((f) => f.name === 'destWarehouseId') &&
     jobFields.some((f) => f.name === 'pickupBranchId') &&
     jobFields.some((f) => f.name === 'd365TransferStatus');
   const supplierOk = !Array.isArray(supplierFields) || supplierFields.some((f) => f.name === 'paymentTerms');
-  return jobOk && supplierOk;
+  const vendorCodeOk = !Array.isArray(vendorCodeFields) || vendorCodeFields.some((f) => f.name === 'paymentTerms');
+  return jobOk && supplierOk && vendorCodeOk;
 }
 
 function createFreshPrismaClient(): PrismaClient {

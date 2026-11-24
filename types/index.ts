@@ -94,6 +94,8 @@ export interface SupplierVendorCodeInfo {
   branchName?: string;
   vendorCode: string;
   vendorName?: string | null;
+  paymentTerms?: string | null;
+  paymentMethod?: string | null;
   source?: string | null;
   verifiedAt?: string | null;
 }

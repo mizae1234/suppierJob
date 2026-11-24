@@ -89,6 +89,8 @@ export async function GET(request: NextRequest) {
             branchName: vc.branch?.name,
             vendorCode: vc.vendorCode,
             vendorName: vc.vendorName,
+            paymentTerms: vc.paymentTerms ?? null,
+            paymentMethod: vc.paymentMethod ?? null,
             source: vc.source,
             verifiedAt: vc.verifiedAt,
           }))

@@ -426,11 +426,11 @@ export async function sendJobToD365PurchaseOrder(
     return { success: false, message: errorMsg };
   }
 
-  // คำนวณวันที่และเงื่อนไขการชำระเงินตาม paymentTerms ของ Supplier ใน D365
+  // คำนวณวันที่และเงื่อนไขการชำระเงิน: ใช้ paymentTerms ของสาขาที่เปิด PO ก่อน แล้วค่อย fallback ไปค่ากลางของ Supplier
   const deliveryDateObj = job.completedAt || job.deliveryDateTime || job.createdAt || new Date();
   const deliveryDateStr = deliveryDateObj.toISOString().split('T')[0] + 'T00:00:00Z';
 
-  const paymentTerms = job.supplier?.paymentTerms?.trim() || '';
+  const paymentTerms = (branchVendor?.paymentTerms || job.supplier?.paymentTerms || '').trim();
   const creditDays = parsePaymentTermsDays(paymentTerms);
   const dueDateObj = new Date(deliveryDateObj.getTime() + creditDays * 24 * 60 * 60 * 1000);
   const dueDateStr = dueDateObj.toISOString().split('T')[0] + 'T00:00:00Z';

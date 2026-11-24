@@ -123,9 +123,11 @@ model SupplierVendorCode {
   supplier    Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   branchId    String
   branch      Branch    @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  vendorCode  String    // VendorAccountNumber เช่น V000357
-  vendorName  String?   // ชื่อ Vendor ใน D365 (ไว้ตรวจว่าตรงเจ้า)
-  source      String    @default("MANUAL") // MANUAL, D365_SYNC
+  vendorCode    String    // VendorAccountNumber เช่น V000357
+  vendorName    String?   // ชื่อ Vendor ใน D365 (ไว้ตรวจว่าตรงเจ้า)
+  paymentTerms  String?   // เงื่อนไขการชำระเงินเฉพาะบริษัท/สาขานี้จาก D365 เช่น Cash, 15D, 30D
+  paymentMethod String?   // วิธีชำระเงินเฉพาะบริษัท/สาขานี้จาก D365 เช่น Transfer
+  source        String    @default("MANUAL") // MANUAL, D365_SYNC
   verifiedAt  DateTime? // เวลาที่ยืนยันกับ D365 ล่าสุด
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
