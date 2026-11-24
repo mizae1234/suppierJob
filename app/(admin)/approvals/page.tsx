@@ -588,7 +588,7 @@ function ApprovalsContent() {
                                     {approvingJobId === job.id || job.d365PoStatus === 'PENDING'
                                       ? 'กำลังบันทึก...'
                                       : parsedFee !== null
-                                        ? `อนุมัติค่าเที่ยวเปล่า ฿${parsedFee.toLocaleString()}`
+                                        ? 'อนุมัติค่าเที่ยวเปล่า'
                                         : 'กรุณาระบุค่าเที่ยวเปล่า'}
                                   </span>
                                 </button>

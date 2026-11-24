@@ -147,7 +147,7 @@ export function DrawerFooter({
                     <Check className="w-3.5 h-3.5" />
                     <span>
                       {resolvedFailedFee !== null
-                        ? `อนุมัติค่าเที่ยวเปล่า ฿${resolvedFailedFee.toLocaleString()}`
+                        ? 'อนุมัติค่าเที่ยวเปล่า'
                         : 'กรุณาระบุค่าเที่ยวเปล่า'}
                     </span>
                   </button>
