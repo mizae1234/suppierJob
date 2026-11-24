@@ -5,10 +5,10 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { useTheme } from '@/hooks/useTheme';
-import { getJobTotalCost } from '@/lib/job-utils';
+import { getJobTotalCost, getOwnerBranchCorporateInfo } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import { formatThaiDate } from '@/lib/date-utils';
-import { Invoice, Job } from '@/types';
+import { CompanyCode, Invoice, Job } from '@/types';
 import { InvoiceDetailModal } from '@/components/invoices';
 import {
   Receipt,
@@ -21,7 +21,20 @@ import {
   Search,
   X,
   Calendar,
+  Building2,
+  Layers,
 } from 'lucide-react';
+
+interface BillingGroup {
+  key: string;
+  supplierId: string;
+  supplierName: string;
+  companyCode: CompanyCode;
+  ownerBranchCode: string;
+  ownerNameTh: string;
+  jobs: Job[];
+  subtotal: number;
+}
 
 type DatePreset = 'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH' | 'CUSTOM';
 
@@ -79,7 +92,18 @@ function jobMatchesTerms(job: Job, terms: string[]): boolean {
 }
 
 export default function SupplierInvoicesPage() {
-  const { jobs, invoices, createInvoice, activeSupplier, currentSupplierId, currentBranchId, suppliers } = useApp();
+  const {
+    jobs,
+    invoices,
+    vehicles,
+    branches,
+    companies,
+    createInvoice,
+    activeSupplier,
+    currentSupplierId,
+    currentBranchId,
+    suppliers,
+  } = useApp();
   const { user } = useAuth();
   const theme = useTheme();
 
@@ -148,18 +172,77 @@ export default function SupplierInvoicesPage() {
     return list;
   }, [jobs, supplierId, isAll, currentBranchId]);
 
+  const getJobOwnerInfo = React.useCallback(
+    (job: Job) =>
+      getOwnerBranchCorporateInfo({
+        job,
+        vehicles,
+        branches,
+        companies,
+        companyCode: job.companyCode,
+      }),
+    [vehicles, branches, companies]
+  );
+
+  const buildBillingGroups = React.useCallback(
+    (list: Job[]): BillingGroup[] => {
+      const map = new Map<string, BillingGroup>();
+      for (const job of list) {
+        const owner = getJobOwnerInfo(job);
+        const ownerBranchCode = owner.branchCode || job.companyCode || 'GI';
+        const key = `${job.supplierId}::${job.companyCode}::${ownerBranchCode}`;
+        const existing = map.get(key);
+        const cost = getJobTotalCost(job);
+        if (existing) {
+          existing.jobs.push(job);
+          existing.subtotal += cost;
+        } else {
+          map.set(key, {
+            key,
+            supplierId: job.supplierId,
+            supplierName: job.supplierName,
+            companyCode: job.companyCode,
+            ownerBranchCode,
+            ownerNameTh: owner.nameTh,
+            jobs: [job],
+            subtotal: cost,
+          });
+        }
+      }
+      return Array.from(map.values()).sort((a, b) =>
+        a.ownerBranchCode.localeCompare(b.ownerBranchCode, 'en', { numeric: true })
+      );
+    },
+    [getJobOwnerInfo]
+  );
+
   const filteredApprovedJobs = useMemo(() => {
     if (!hasActiveFilter) return approvedJobs;
     return approvedJobs.filter((job) => {
       if (hasDateFilter && !isInDateRange(job.approvedAt || job.completedAt || job.createdAt, dateFrom, dateTo)) {
         return false;
       }
-      if (searchTerms.length > 0 && !jobMatchesTerms(job, searchTerms)) {
-        return false;
+      if (searchTerms.length > 0) {
+        const owner = getJobOwnerInfo(job);
+        const ownerHaystack = `${owner.branchCode} ${owner.nameTh}`.toLowerCase();
+        const matchesOwner = searchTerms.some((term) => ownerHaystack.includes(term));
+        if (!matchesOwner && !jobMatchesTerms(job, searchTerms)) {
+          return false;
+        }
       }
       return true;
     });
-  }, [approvedJobs, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms]);
+  }, [approvedJobs, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms, getJobOwnerInfo]);
+
+  const billingGroups = useMemo(
+    () => buildBillingGroups(filteredApprovedJobs),
+    [buildBillingGroups, filteredApprovedJobs]
+  );
+
+  const selectedBillingGroups = useMemo(() => {
+    const selectedJobs = approvedJobs.filter((j) => selectedJobIds.includes(j.id));
+    return buildBillingGroups(selectedJobs);
+  }, [approvedJobs, selectedJobIds, buildBillingGroups]);
 
   // Invoices for this supplier (or all for Master)
   const myInvoices = useMemo(() => {
@@ -177,23 +260,27 @@ export default function SupplierInvoicesPage() {
       }
       if (searchTerms.length === 0) return true;
       const supplierObj = suppliers.find((s) => s.id === inv.supplierId);
+      const linkedJobs = (inv.jobIds || [])
+        .map((id) => jobsById.get(id))
+        .filter((j): j is Job => Boolean(j));
+      const firstLinked = linkedJobs[0];
+      const ownerInfo = firstLinked ? getJobOwnerInfo(firstLinked) : null;
       const invHaystack = [
         inv.invoiceNumber,
         inv.companyCode,
         inv.supplierName || '',
         supplierObj?.name || '',
+        ownerInfo?.branchCode || '',
+        ownerInfo?.nameTh || '',
       ]
         .join(' ')
         .toLowerCase();
       if (searchTerms.some((term) => invHaystack.includes(term))) {
         return true;
       }
-      const linkedJobs = (inv.jobIds || [])
-        .map((id) => jobsById.get(id))
-        .filter((j): j is Job => Boolean(j));
       return linkedJobs.some((job) => jobMatchesTerms(job, searchTerms));
     });
-  }, [myInvoices, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms, suppliers, jobsById]);
+  }, [myInvoices, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms, suppliers, jobsById, getJobOwnerInfo]);
 
   const selectedTotal = useMemo(() => {
     return approvedJobs
@@ -207,6 +294,16 @@ export default function SupplierInvoicesPage() {
         ? prev.filter(id => id !== jobId)
         : [...prev, jobId]
     );
+  };
+
+  const toggleGroupJobs = (groupJobs: Job[]) => {
+    const groupIds = groupJobs.map((j) => j.id);
+    const allInGroupSelected = groupIds.every((id) => selectedJobIds.includes(id));
+    if (allInGroupSelected) {
+      setSelectedJobIds((prev) => prev.filter((id) => !groupIds.includes(id)));
+    } else {
+      setSelectedJobIds((prev) => Array.from(new Set([...prev, ...groupIds])));
+    }
   };
 
   const allFilteredSelected =
@@ -225,28 +322,55 @@ export default function SupplierInvoicesPage() {
   const { showToast } = useToast();
 
   const handleCreateInvoice = async () => {
-    if (selectedJobIds.length === 0) return;
+    if (selectedBillingGroups.length === 0) return;
     setIsCreating(true);
     try {
-      // Derive companyCode from first selected job
-      const firstJob = approvedJobs.find(j => selectedJobIds.includes(j.id));
-      const companyCode = firstJob?.companyCode || 'EV7';
-      const actualSupplierId = firstJob?.supplierId || supplierId || suppliers[0]?.id;
-      // Default due date: 30 days from now
       const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const createdInvoices: Invoice[] = [];
+      const succeededJobIds = new Set<string>();
+      const failedMessages: string[] = [];
 
-      const result = await createInvoice({
-        supplierId: actualSupplierId,
-        companyCode: companyCode as 'EV7' | 'GI',
-        jobIds: selectedJobIds,
-        dueDate,
-      });
-      if (result.success && result.invoice) {
-        setSelectedJobIds([]);
-        showToast('ออกใบวางบิลสำเร็จเรียบร้อย!', 'success');
-        setSelectedInvoice(result.invoice as unknown as Invoice);
+      for (const group of selectedBillingGroups) {
+        const actualSupplierId = group.supplierId || supplierId || suppliers[0]?.id;
+        const result = await createInvoice({
+          supplierId: actualSupplierId,
+          companyCode: group.companyCode,
+          jobIds: group.jobs.map((j) => j.id),
+          dueDate,
+        });
+        if (result.success && result.invoice) {
+          createdInvoices.push(result.invoice as unknown as Invoice);
+          for (const j of group.jobs) succeededJobIds.add(j.id);
+        } else {
+          failedMessages.push(`${group.ownerBranchCode}: ${result.error || 'สร้างใบวางบิลไม่สำเร็จ'}`);
+        }
+      }
+
+      if (succeededJobIds.size > 0) {
+        setSelectedJobIds((prev) => prev.filter((id) => !succeededJobIds.has(id)));
+      }
+
+      if (createdInvoices.length > 0 && failedMessages.length === 0) {
+        if (createdInvoices.length === 1) {
+          showToast(`ออกใบวางบิล ${createdInvoices[0].invoiceNumber} เรียบร้อยแล้ว`, 'success');
+        } else {
+          const numbers = createdInvoices.map((i) => i.invoiceNumber).join(', ');
+          showToast(
+            `ออกใบวางบิลแยกตามสาขาเจ้าของรถสำเร็จ ${createdInvoices.length} ใบ (${numbers})`,
+            'success',
+            6000
+          );
+        }
+        setSelectedInvoice(createdInvoices[0]);
+      } else if (createdInvoices.length > 0 && failedMessages.length > 0) {
+        showToast(
+          `ออกใบวางบิลสำเร็จ ${createdInvoices.length} ใบ แต่ไม่สำเร็จบางสาขา: ${failedMessages.join(' | ')}`,
+          'warning',
+          7000
+        );
+        setSelectedInvoice(createdInvoices[0]);
       } else {
-        showToast(result.error || 'เกิดข้อผิดพลาดในการสร้างใบวางบิล', 'error');
+        showToast(failedMessages[0] || 'เกิดข้อผิดพลาดในการสร้างใบวางบิล', 'error');
       }
     } catch (err) {
       console.error(err);
@@ -398,7 +522,9 @@ export default function SupplierInvoicesPage() {
             </div>
           </div>
 
-          <p className="text-xs text-gray-500 mb-3">เลือกงานที่ต้องการรวมในใบวางบิล:</p>
+          <p className="text-xs text-gray-500 mb-3">
+            เลือกงานที่ต้องการรวมในใบวางบิล (จัดกลุ่มแยกตามสาขาเจ้าของรถผู้รับผิดชอบค่าใช้จ่าย หากเลือกหลายสาขา ระบบจะแยกออกใบวางบิลให้อัตโนมัติ):
+          </p>
 
           {filteredApprovedJobs.length === 0 ? (
             <div className="py-8 px-4 text-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 mb-4">
@@ -415,71 +541,144 @@ export default function SupplierInvoicesPage() {
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 mb-4">
-              {filteredApprovedJobs.map(job => {
-                const isSelected = selectedJobIds.includes(job.id);
-                const cost = getJobTotalCost(job);
-                const activeItems = (job.carWashItems || []).filter((i) => i.status !== 'CANCELLED');
-                const firstVin = activeItems[0]?.vin || job.vin || '';
-                const extraCarCount = activeItems.length > 1 ? activeItems.length - 1 : 0;
-                const displayDate = job.approvedAt || job.completedAt || job.createdAt;
+            <div className="flex flex-col gap-3.5 mb-4">
+              {billingGroups.map((group) => {
+                const groupSelectedCount = group.jobs.filter((j) =>
+                  selectedJobIds.includes(j.id)
+                ).length;
+                const allGroupSelected =
+                  group.jobs.length > 0 && groupSelectedCount === group.jobs.length;
                 return (
-                  <button
-                    key={job.id}
-                    type="button"
-                    onClick={() => toggleJob(job.id)}
-                    className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'border-current bg-current/5'
-                        : 'border-gray-100 hover:border-gray-200'
-                    }`}
-                    style={isSelected ? { borderColor: theme.primary, backgroundColor: theme.bgSoft } : {}}
+                  <div
+                    key={group.key}
+                    className="rounded-xl border border-gray-200/80 bg-gray-50/40 overflow-hidden"
                   >
-                    <div
-                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
-                        isSelected ? 'text-white' : 'border-gray-300'
-                      }`}
-                      style={isSelected ? { backgroundColor: theme.primary, borderColor: theme.primary } : {}}
-                    >
-                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {job.jobType === 'CAR_WASH'
-                          ? <Sparkles className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                          : <Truck className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                        }
-                        <span className="text-xs font-bold font-mono text-gray-900">{job.jobNumber}</span>
-                        {job.d365PoNumber && (
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
-                            PO: {job.d365PoNumber}
-                          </span>
-                        )}
+                    {/* Group Header: Owner Branch / Paying Legal Entity */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap px-3.5 py-2.5 bg-[#f4f9f5] border-b border-gray-200/70">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-bold text-white bg-[#0f5238] shrink-0">
+                          <Building2 className="w-3 h-3" />
+                          {group.ownerBranchCode}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">
+                            {group.ownerNameTh}
+                          </p>
+                          {isAll && (
+                            <p className="text-[10px] text-gray-500 truncate">
+                              Supplier: {group.supplierName}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span>{job.companyCode} • {job.branchName}</span>
-                        {displayDate && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span>{formatThaiDate(displayDate)}</span>
-                          </>
-                        )}
-                        {firstVin && (
-                          <>
-                            <span className="text-gray-300">•</span>
-                            <span className="font-mono text-gray-600">
-                              {firstVin}{extraCarCount > 0 ? ` (+${extraCarCount} คัน)` : ''}
-                            </span>
-                          </>
-                        )}
-                      </p>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[11px] text-gray-500">
+                          {group.jobs.length} งาน •{' '}
+                          <span className="font-mono font-bold text-gray-700">
+                            {formatCurrency(group.subtotal)}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupJobs(group.jobs)}
+                          className="text-[11px] font-bold hover:underline cursor-pointer"
+                          style={{ color: theme.primary }}
+                        >
+                          {allGroupSelected ? 'ยกเลิกกลุ่มนี้' : 'เลือกกลุ่มนี้'}
+                        </button>
+                      </div>
                     </div>
 
-                    <span className="text-xs font-bold font-mono shrink-0" style={{ color: theme.primary }}>
-                      {formatCurrency(cost)}
-                    </span>
-                  </button>
+                    {/* Jobs in this Owner Branch group */}
+                    <div className="p-2.5 flex flex-col gap-2 bg-white">
+                      {group.jobs.map((job) => {
+                        const isSelected = selectedJobIds.includes(job.id);
+                        const cost = getJobTotalCost(job);
+                        const activeItems = (job.carWashItems || []).filter(
+                          (i) => i.status !== 'CANCELLED'
+                        );
+                        const firstVin = activeItems[0]?.vin || job.vin || '';
+                        const extraCarCount = activeItems.length > 1 ? activeItems.length - 1 : 0;
+                        const displayDate = job.approvedAt || job.completedAt || job.createdAt;
+                        return (
+                          <button
+                            key={job.id}
+                            type="button"
+                            onClick={() => toggleJob(job.id)}
+                            className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-current bg-current/5'
+                                : 'border-gray-100 hover:border-gray-200'
+                            }`}
+                            style={
+                              isSelected
+                                ? { borderColor: theme.primary, backgroundColor: theme.bgSoft }
+                                : {}
+                            }
+                          >
+                            <div
+                              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
+                                isSelected ? 'text-white' : 'border-gray-300'
+                              }`}
+                              style={
+                                isSelected
+                                  ? { backgroundColor: theme.primary, borderColor: theme.primary }
+                                  : {}
+                              }
+                            >
+                              {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {job.jobType === 'CAR_WASH' ? (
+                                  <Sparkles className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                ) : (
+                                  <Truck className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                )}
+                                <span className="text-xs font-bold font-mono text-gray-900">
+                                  {job.jobNumber}
+                                </span>
+                                {job.d365PoNumber && (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
+                                    PO: {job.d365PoNumber}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>
+                                  {job.companyCode} • {job.branchName}
+                                </span>
+                                {displayDate && (
+                                  <>
+                                    <span className="text-gray-300">•</span>
+                                    <span>{formatThaiDate(displayDate)}</span>
+                                  </>
+                                )}
+                                {firstVin && (
+                                  <>
+                                    <span className="text-gray-300">•</span>
+                                    <span className="font-mono text-gray-600">
+                                      {firstVin}
+                                      {extraCarCount > 0 ? ` (+${extraCarCount} คัน)` : ''}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                            </div>
+
+                            <span
+                              className="text-xs font-bold font-mono shrink-0"
+                              style={{ color: theme.primary }}
+                            >
+                              {formatCurrency(cost)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -487,18 +686,34 @@ export default function SupplierInvoicesPage() {
 
           {/* Submit Invoice */}
           {selectedJobIds.length > 0 && (
-            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-              <div>
-                <p className="text-xs text-gray-500">เลือก {selectedJobIds.length} งาน</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
+              <div className="space-y-1">
+                <p className="text-xs text-gray-500">
+                  เลือก {selectedJobIds.length} งาน
+                  {selectedBillingGroups.length === 1 && (
+                    <span className="text-gray-600 font-medium">
+                      {' '}• สาขาเจ้าของรถ {selectedBillingGroups[0].ownerBranchCode}
+                    </span>
+                  )}
+                </p>
                 <p className="text-lg font-bold font-mono" style={{ color: theme.primary }}>
                   {formatCurrency(selectedTotal)}
                 </p>
+                {selectedBillingGroups.length > 1 && (
+                  <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-[#0f5238]">
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      ระบบจะแยกออกเป็น {selectedBillingGroups.length} ใบวางบิลอัตโนมัติตามสาขาเจ้าของรถ (
+                      {selectedBillingGroups.map((g) => g.ownerBranchCode).join(', ')})
+                    </span>
+                  </p>
+                )}
               </div>
               <button
                 type="button"
                 onClick={handleCreateInvoice}
                 disabled={isCreating}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm"
+                className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold disabled:opacity-50 transition-all cursor-pointer hover:opacity-90 active:scale-[0.99] shadow-sm shrink-0"
                 style={{ backgroundColor: theme.primary }}
               >
                 {isCreating ? (
@@ -506,7 +721,9 @@ export default function SupplierInvoicesPage() {
                 ) : (
                   <Receipt className="w-4 h-4" />
                 )}
-                ออกใบวางบิล
+                {selectedBillingGroups.length > 1
+                  ? `ออก ${selectedBillingGroups.length} ใบวางบิล`
+                  : 'ออกใบวางบิล'}
               </button>
             </div>
           )}
@@ -554,10 +771,14 @@ export default function SupplierInvoicesPage() {
                 const supplierObj = suppliers.find(s => s.id === inv.supplierId);
                 const isPaid = inv.status === 'PAID';
                 const isSubmitted = inv.status === 'SUBMITTED';
+                const linkedJobs = (inv.jobIds || [])
+                  .map((id) => jobsById.get(id))
+                  .filter((j): j is Job => Boolean(j));
+                const ownerInfo = linkedJobs[0] ? getJobOwnerInfo(linkedJobs[0]) : null;
                 const linkedPos = Array.from(
                   new Set(
-                    (inv.jobIds || [])
-                      .map((id) => jobsById.get(id)?.d365PoNumber)
+                    linkedJobs
+                      .map((j) => j.d365PoNumber)
                       .filter((po): po is string => Boolean(po))
                   )
                 );
@@ -572,7 +793,7 @@ export default function SupplierInvoicesPage() {
                       <div className="flex items-center justify-between sm:justify-start gap-2 mb-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2 py-0.5 rounded-md font-bold text-[10px] font-mono text-white shadow-2xs bg-emerald-700">
-                            {inv.companyCode}
+                            {ownerInfo?.branchCode || inv.companyCode}
                           </span>
                           <p className="text-xs sm:text-sm font-bold text-gray-900 font-mono tracking-tight">
                             {inv.invoiceNumber}

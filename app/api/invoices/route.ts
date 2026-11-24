@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomInt } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
@@ -11,6 +12,48 @@ class InvoiceValidationError extends Error {
     super(message);
     this.name = 'InvoiceValidationError';
   }
+}
+
+/**
+ * หารหัสสาขาเจ้าของรถ (นิติบุคคลผู้เปิด PO ใน D365) ของใบงาน เพื่อห้ามรวมงานข้ามนิติบุคคลในใบวางบิลเดียวกัน
+ * ลำดับความสำคัญตรงกับ lib/d365/po.ts และ getOwnerBranchCorporateInfo:
+ * 1) d365SiteId ของรถในใบงาน
+ * 2) pickupBranch (กรณีงานรถสไลด์)
+ * 3) currentBranch ของรถ → job.branch → fallback จาก company.code
+ */
+function resolveJobOwnerBranchCode(job: {
+  jobType: string;
+  carWashItems?: Array<{
+    status: string;
+    vehicle?: { d365SiteId?: string | null; currentBranch?: { code?: string | null } | null } | null;
+  }>;
+  vehicle?: { d365SiteId?: string | null; currentBranch?: { code?: string | null } | null } | null;
+  pickupBranch?: { code?: string | null } | null;
+  branch?: { code?: string | null } | null;
+  company?: { code?: string | null } | null;
+}): string {
+  const activeItems = (job.carWashItems || []).filter((i) => i.status !== 'CANCELLED');
+  const firstActive = activeItems[0] || job.carWashItems?.[0];
+
+  const d365OwnerCode = (
+    activeItems.find((i) => i.vehicle?.d365SiteId?.trim())?.vehicle?.d365SiteId ||
+    job.vehicle?.d365SiteId ||
+    ''
+  )
+    .trim()
+    .toUpperCase();
+  if (d365OwnerCode) return d365OwnerCode;
+
+  const fallback = (
+    (job.jobType === 'VEHICLE_SLIDE' ? job.pickupBranch?.code : '') ||
+    firstActive?.vehicle?.currentBranch?.code ||
+    job.vehicle?.currentBranch?.code ||
+    job.branch?.code ||
+    (job.company?.code === 'EV7' ? 'GI06' : 'GI')
+  )
+    .trim()
+    .toUpperCase();
+  return fallback || 'GI';
 }
 
 // GET: ดึงรายการ Invoices (ป้องกันข้อมูลรั่วไหลตาม Role)
@@ -128,15 +171,35 @@ export async function POST(request: NextRequest) {
     }
 
     const dateSeq = new Date().toISOString().slice(2, 7).replace('-', '');
-    const uniqueSuffix = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+    const uniqueSuffix = `${Date.now().toString().slice(-4)}${randomInt(100, 1000)}`;
     const invoiceNumber = `INV-${company.code}-${dateSeq}-${uniqueSuffix}`;
 
     // Execute atomic validation and creation within a single transaction
     const invoice = await prisma.$transaction(async (tx) => {
-      // 1. Fetch target jobs inside transaction
+      // 1. Fetch target jobs inside transaction (รวมข้อมูลเจ้าของรถเพื่อตรวจไม่ให้รวมข้ามนิติบุคคล)
       const targetJobs = await tx.job.findMany({
         where: { id: { in: jobIds } },
-        include: { carWashItems: true },
+        include: {
+          carWashItems: {
+            include: {
+              vehicle: {
+                select: {
+                  d365SiteId: true,
+                  currentBranch: { select: { code: true } },
+                },
+              },
+            },
+          },
+          vehicle: {
+            select: {
+              d365SiteId: true,
+              currentBranch: { select: { code: true } },
+            },
+          },
+          pickupBranch: { select: { code: true } },
+          branch: { select: { code: true } },
+          company: { select: { code: true } },
+        },
       });
 
       if (targetJobs.length !== jobIds.length) {
@@ -161,6 +224,16 @@ export async function POST(request: NextRequest) {
       const alreadyInvoiced = targetJobs.filter(j => j.invoiceId || j.status === 'INVOICED');
       if (alreadyInvoiced.length > 0) {
         throw new InvoiceValidationError('มีบางรายการงานที่ถูกวางบิลไปแล้ว กรุณารีเฟรชหน้ารายการ');
+      }
+
+      // ป้องกันการรวมงานข้ามสาขาเจ้าของรถ (คนละนิติบุคคล / Legal Entity ใน D365) ไว้ในใบวางบิลใบเดียวกัน
+      const ownerBranchCodes = Array.from(
+        new Set(targetJobs.map((j) => resolveJobOwnerBranchCode(j)))
+      );
+      if (ownerBranchCodes.length > 1) {
+        throw new InvoiceValidationError(
+          `ไม่สามารถรวมงานข้ามสาขาเจ้าของรถในใบวางบิลเดียวกันได้ (${ownerBranchCodes.join(', ')}) กรุณาแยกออกบิลตามสาขาเจ้าของรถ`
+        );
       }
 
       // Calculate amounts (exclude cancelled items)
