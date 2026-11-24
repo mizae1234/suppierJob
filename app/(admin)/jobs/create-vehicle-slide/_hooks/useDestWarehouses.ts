@@ -75,14 +75,13 @@ export function useDestWarehouses({
     return [...base, ...extra];
   }, [destBranch?.code, destBranchId, d365WarehousesByCompany, vehicles]);
 
-  // เลือกได้เฉพาะคลังที่อยู่ในรายการ (dropdown) — ค่าเริ่มต้น = คลังหลักของสาขา หรือคลังแรกในรายการ
+  // เลือกได้เฉพาะคลังที่อยู่ในรายการ (dropdown) — ค่าเริ่มต้นว่าง ให้ผู้สั่งงานเลือกเอง
   const destWarehouseId = useMemo(() => {
     const ids = d365WarehouseCatalog.map((w) => w.warehouseId);
     const picked = destWarehouseInput && destWarehouseInput.branchId === destBranchId ? destWarehouseInput.value : '';
     if (picked && ids.includes(picked)) return picked;
-    if (defaultDestWarehouse && ids.includes(defaultDestWarehouse)) return defaultDestWarehouse;
-    return ids[0] || '';
-  }, [d365WarehouseCatalog, destWarehouseInput, destBranchId, defaultDestWarehouse]);
+    return '';
+  }, [d365WarehouseCatalog, destWarehouseInput, destBranchId]);
 
   const handleSelectDestWarehouse = useCallback(
     (wh: string) => {

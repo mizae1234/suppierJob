@@ -43,20 +43,20 @@ export default function DestWarehouseSelect({
           !destBranchId
             ? 'กรุณาเลือกสาขาปลายทางก่อน'
             : options.length > 0
-              ? 'เลือกคลังปลายทาง'
+              ? 'กรุณาเลือกคลังปลายทาง'
               : 'ไม่พบคลัง D365 ของสาขานี้'
         }
         icon={Warehouse}
         disabled={options.length === 0}
         dropdownWidth="w-full"
-        buttonClassName={`bg-white font-mono ${!destWarehouseId ? 'border-red-300' : ''}`}
+        buttonClassName={`bg-white font-mono ${options.length === 0 && destBranchId ? 'border-red-300' : ''}`}
       />
       {options.length === 0 && destBranchId && (
         <p className="text-[10px] text-red-500">
           ไม่พบรายการคลัง D365 ของสาขาปลายทางนี้ กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มการแมปคลัง
         </p>
       )}
-      {originWarehouseSummary.length > 0 && (
+      {originWarehouseSummary.length > 0 && destWarehouseId && (
         <p className="text-[10px] text-gray-500 leading-relaxed">
           โอนคลังใน D365 เมื่อสาขาอนุมัติ:{' '}
           {originWarehouseSummary.map(([wh, count], idx) => (
@@ -66,7 +66,7 @@ export default function DestWarehouseSelect({
             </span>
           ))}
           {' → '}
-          <b className="font-mono text-[#0f5238]">{destWarehouseId || '-'}</b>
+          <b className="font-mono text-[#0f5238]">{destWarehouseId}</b>
           {selectedDestWarehouseName && (
             <span className="text-gray-600"> ({selectedDestWarehouseName})</span>
           )}
