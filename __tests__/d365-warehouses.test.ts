@@ -7,6 +7,7 @@ import {
   isValidWarehouseId,
   getD365WarehouseForBranch,
 } from '@/lib/d365/warehouses';
+import { normalizeD365WarehouseRows } from '@/lib/d365/warehouse-sync';
 
 describe('d365/warehouses', () => {
   describe('resolveJobDestWarehouse', () => {
@@ -100,6 +101,25 @@ describe('d365/warehouses', () => {
       expect(isValidWarehouseId('A'.repeat(21))).toBe(false);
       expect(isValidWarehouseId('62008 space')).toBe(false);
       expect(getD365WarehouseForBranch('gi01')).toBe('62008');
+    });
+  });
+
+  describe('normalizeD365WarehouseRows', () => {
+    it('deduplicates, trims, uppercases dataAreaId, and falls back warehouseName to warehouseId', () => {
+      const normalized = normalizeD365WarehouseRows(
+        [
+          { WarehouseId: ' 62900 ', WarehouseName: ' GI WAREHOUSE ', dataAreaId: 'gi01' },
+          { WarehouseId: '62900', WarehouseName: 'GI WAREHOUSE UPDATED', dataAreaId: 'GI01' },
+          { WarehouseId: '62008', WarehouseName: '   ', dataAreaId: 'gi01' },
+          { WarehouseId: '', WarehouseName: 'Empty ID', dataAreaId: 'GI01' },
+        ],
+        'gi01'
+      );
+
+      expect(normalized).toEqual([
+        { warehouseId: '62008', warehouseName: '62008', dataAreaId: 'GI01' },
+        { warehouseId: '62900', warehouseName: 'GI WAREHOUSE UPDATED', dataAreaId: 'GI01' },
+      ]);
     });
   });
 });

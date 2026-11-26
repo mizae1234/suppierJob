@@ -46,6 +46,7 @@ function isCurrentSchemaUpToDate(client?: PrismaClient): boolean {
   const invoiceFields = models?.Invoice?.fields as Array<{ name: string }> | undefined;
   const supplierFields = models?.Supplier?.fields as Array<{ name: string }> | undefined;
   const vendorCodeFields = models?.SupplierVendorCode?.fields as Array<{ name: string }> | undefined;
+  const warehouseModel = models?.D365Warehouse;
   if (!Array.isArray(jobFields)) return true;
   const jobOk =
     jobFields.some((f) => f.name === 'destWarehouseId') &&
@@ -57,7 +58,8 @@ function isCurrentSchemaUpToDate(client?: PrismaClient): boolean {
   const invoiceOk = !Array.isArray(invoiceFields) || invoiceFields.some((f) => f.name === 'vendorInvoiceNumber');
   const supplierOk = !Array.isArray(supplierFields) || supplierFields.some((f) => f.name === 'paymentTerms');
   const vendorCodeOk = !Array.isArray(vendorCodeFields) || vendorCodeFields.some((f) => f.name === 'paymentTerms');
-  return jobOk && invoiceOk && supplierOk && vendorCodeOk;
+  const warehouseOk = Boolean(warehouseModel);
+  return jobOk && invoiceOk && supplierOk && vendorCodeOk && warehouseOk;
 }
 
 function createFreshPrismaClient(): PrismaClient {

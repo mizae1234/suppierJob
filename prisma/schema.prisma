@@ -64,6 +64,7 @@ model Branch {
   pickupJobs  Job[]     @relation("PickupBranchJobs")
   destJobs    Job[]     @relation("DestBranchJobs")
   supplierVendorCodes SupplierVendorCode[]
+  d365Warehouses      D365Warehouse[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -500,4 +501,25 @@ model D365PoLog {
   @@index([vendorAccount])
   @@index([purchId])
   @@index([createdAt])
+}
+
+// ตาราง Master คลังสินค้า (Warehouses) จาก D365 F&O (GET /data/Warehouses)
+model D365Warehouse {
+  id            String   @id @default(uuid())
+  warehouseId   String   // WarehouseId เช่น "62900", "62008", "63004"
+  warehouseName String   // WarehouseName เช่น "GI WAREHOUSE"
+  dataAreaId    String   // Legal Entity / Company Code ใน D365 เช่น "GI", "GI01" - "GI12"
+  branchId      String?  // FK → Branch.id (เชื่อมโยงกับสาขาตาม dataAreaId หากมี)
+  branch        Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isPrimary     Boolean  @default(false) // คลังหลักประจำสาขานั้น
+  isActive      Boolean  @default(true)  // true = ยังมีอยู่ใน D365 รอบ sync ล่าสุด
+  lastSyncedAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([dataAreaId, warehouseId])
+  @@index([dataAreaId])
+  @@index([warehouseId])
+  @@index([branchId])
+  @@index([isActive])
 }
