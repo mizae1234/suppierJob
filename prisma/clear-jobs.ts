@@ -5,36 +5,50 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🧹 Clearing all jobs and related records from database...\n');
 
-  // 1. Unlink invoices from jobs first
-  await prisma.job.updateMany({
-    data: { invoiceId: null },
+  const result = await prisma.$transaction(async (tx) => {
+    // 1. Unlink invoices from jobs first
+    await tx.job.updateMany({
+      data: { invoiceId: null },
+    });
+
+    // 2. Delete child logs & items
+    const deletedPoLogs = await tx.d365PoLog.deleteMany({});
+    const deletedSlideLogs = await tx.vehicleSlideLog.deleteMany({});
+    const deletedEvidences = await tx.jobEvidence.deleteMany({});
+    const deletedActivities = await tx.jobActivity.deleteMany({});
+    const deletedItems = await tx.carWashItem.deleteMany({});
+
+    // 3. Delete Jobs & Invoices
+    const deletedJobs = await tx.job.deleteMany({});
+    const deletedInvoices = await tx.invoice.deleteMany({});
+
+    // 4. Reset only job-locked vehicles (IN_TRANSIT / IN_WASH) back to AVAILABLE
+    //    (preserve OUT_OF_STOCK status synced from D365)
+    const resetVehicles = await tx.vehicle.updateMany({
+      where: { status: { in: ['IN_TRANSIT', 'IN_WASH'] } },
+      data: { status: 'AVAILABLE' },
+    });
+
+    return {
+      deletedPoLogs: deletedPoLogs.count,
+      deletedSlideLogs: deletedSlideLogs.count,
+      deletedEvidences: deletedEvidences.count,
+      deletedActivities: deletedActivities.count,
+      deletedItems: deletedItems.count,
+      deletedJobs: deletedJobs.count,
+      deletedInvoices: deletedInvoices.count,
+      resetVehicles: resetVehicles.count,
+    };
   });
 
-  // 2. Delete Invoices
-  const deletedInvoices = await prisma.invoice.deleteMany({});
-  console.log(`✅ Deleted ${deletedInvoices.count} invoice(s)`);
-
-  // 3. Delete Evidences
-  const deletedEvidences = await prisma.jobEvidence.deleteMany({});
-  console.log(`✅ Deleted ${deletedEvidences.count} evidence(s)`);
-
-  // 4. Delete Activities
-  const deletedActivities = await prisma.jobActivity.deleteMany({});
-  console.log(`✅ Deleted ${deletedActivities.count} activity log(s)`);
-
-  // 5. Delete Car Wash Items
-  const deletedItems = await prisma.carWashItem.deleteMany({});
-  console.log(`✅ Deleted ${deletedItems.count} car wash item(s)`);
-
-  // 6. Delete Jobs
-  const deletedJobs = await prisma.job.deleteMany({});
-  console.log(`✅ Deleted ${deletedJobs.count} job(s)`);
-
-  // 7. Reset all vehicles to AVAILABLE status
-  const resetVehicles = await prisma.vehicle.updateMany({
-    data: { status: 'AVAILABLE' },
-  });
-  console.log(`✅ Reset status of all ${resetVehicles.count} vehicle(s) to 'AVAILABLE'`);
+  console.log(`✅ Deleted ${result.deletedJobs} job(s)`);
+  console.log(`✅ Deleted ${result.deletedItems} car wash / slide item(s)`);
+  console.log(`✅ Deleted ${result.deletedInvoices} invoice(s)`);
+  console.log(`✅ Deleted ${result.deletedEvidences} evidence(s)`);
+  console.log(`✅ Deleted ${result.deletedActivities} activity log(s)`);
+  console.log(`✅ Deleted ${result.deletedSlideLogs} vehicle slide log(s)`);
+  console.log(`✅ Deleted ${result.deletedPoLogs} D365 PO log(s)`);
+  console.log(`✅ Reset ${result.resetVehicles} locked vehicle(s) (IN_TRANSIT/IN_WASH) back to 'AVAILABLE'`);
 
   console.log('\n🎉 System is completely clear and clean! Ready for fresh job creation.');
 }
