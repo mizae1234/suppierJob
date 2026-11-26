@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/useTheme';
 import { getJobTotalCost, getOwnerBranchCorporateInfo } from '@/lib/job-utils';
 import { formatCurrency } from '@/lib/billing-utils';
 import { formatThaiDate } from '@/lib/date-utils';
+import { getInvoiceUpdateStatusMeta, isJobInvoiceUpdated } from '@/lib/invoice-workflow';
 import { CompanyCode, Invoice, Job } from '@/types';
 import { InvoiceDetailModal } from '@/components/invoices';
 import {
@@ -24,6 +25,8 @@ import {
   Building2,
   Layers,
   Info,
+  Lock,
+  Clock,
 } from 'lucide-react';
 
 /**
@@ -81,6 +84,8 @@ function jobMatchesTerms(job: Job, terms: string[]): boolean {
   if (terms.length === 0) return true;
   const fields: string[] = [
     job.jobNumber,
+    job.initialInvoiceNumber || '',
+    job.vendorInvoiceNumber || '',
     job.d365PoNumber || '',
     job.companyCode,
     job.branchName,
@@ -109,6 +114,7 @@ export default function SupplierInvoicesPage() {
     branches,
     companies,
     createInvoice,
+    updateJobInvoiceNumber,
     activeSupplier,
     currentSupplierId,
     currentBranchId,
@@ -132,6 +138,9 @@ export default function SupplierInvoicesPage() {
   const [datePreset, setDatePreset] = useState<DatePreset>('ALL');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'ALL' | 'PENDING_UPDATE' | 'UPDATED'>('ALL');
+  const [vendorInvoiceDrafts, setVendorInvoiceDrafts] = useState<Record<string, string>>({});
+  const [savingInvoiceJobId, setSavingInvoiceJobId] = useState<string | null>(null);
 
   const handleSelectDatePreset = (preset: 'ALL' | 'TODAY' | 'PAST_7' | 'THIS_MONTH') => {
     setDatePreset(preset);
@@ -159,10 +168,11 @@ export default function SupplierInvoicesPage() {
 
   const searchTerms = useMemo(() => parseSearchTerms(searchQuery), [searchQuery]);
   const hasDateFilter = Boolean(dateFrom || dateTo);
-  const hasActiveFilter = searchTerms.length > 0 || hasDateFilter;
+  const hasActiveFilter = searchTerms.length > 0 || hasDateFilter || invoiceStatusFilter !== 'ALL';
 
   const clearAllFilters = () => {
     setSearchQuery('');
+    setInvoiceStatusFilter('ALL');
     handleSelectDatePreset('ALL');
   };
 
@@ -227,9 +237,24 @@ export default function SupplierInvoicesPage() {
     [getJobOwnerInfo]
   );
 
+  const pendingUpdateCount = useMemo(
+    () => approvedJobs.filter((j) => !isJobInvoiceUpdated(j)).length,
+    [approvedJobs]
+  );
+
+  const updatedInvoiceCount = useMemo(
+    () => approvedJobs.filter((j) => isJobInvoiceUpdated(j)).length,
+    [approvedJobs]
+  );
+
   const filteredApprovedJobs = useMemo(() => {
-    if (!hasActiveFilter) return approvedJobs;
     return approvedJobs.filter((job) => {
+      if (invoiceStatusFilter === 'PENDING_UPDATE' && isJobInvoiceUpdated(job)) {
+        return false;
+      }
+      if (invoiceStatusFilter === 'UPDATED' && !isJobInvoiceUpdated(job)) {
+        return false;
+      }
       if (hasDateFilter && !isInDateRange(job.approvedAt || job.completedAt || job.createdAt, dateFrom, dateTo)) {
         return false;
       }
@@ -243,7 +268,12 @@ export default function SupplierInvoicesPage() {
       }
       return true;
     });
-  }, [approvedJobs, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms, getJobOwnerInfo]);
+  }, [approvedJobs, invoiceStatusFilter, hasDateFilter, dateFrom, dateTo, searchTerms, getJobOwnerInfo]);
+
+  const billableFilteredJobs = useMemo(
+    () => filteredApprovedJobs.filter((j) => isJobInvoiceUpdated(j)),
+    [filteredApprovedJobs]
+  );
 
   const billingGroups = useMemo(
     () => buildBillingGroups(filteredApprovedJobs),
@@ -251,7 +281,9 @@ export default function SupplierInvoicesPage() {
   );
 
   const selectedBillingGroups = useMemo(() => {
-    const selectedJobs = approvedJobs.filter((j) => selectedJobIds.includes(j.id));
+    const selectedJobs = approvedJobs.filter(
+      (j) => selectedJobIds.includes(j.id) && isJobInvoiceUpdated(j)
+    );
     return buildBillingGroups(selectedJobs);
   }, [approvedJobs, selectedJobIds, buildBillingGroups]);
 
@@ -278,6 +310,7 @@ export default function SupplierInvoicesPage() {
       const ownerInfo = firstLinked ? getJobOwnerInfo(firstLinked) : null;
       const invHaystack = [
         inv.invoiceNumber,
+        inv.vendorInvoiceNumber || '',
         inv.companyCode,
         inv.supplierName || '',
         supplierObj?.name || '',
@@ -293,40 +326,87 @@ export default function SupplierInvoicesPage() {
     });
   }, [myInvoices, hasActiveFilter, hasDateFilter, dateFrom, dateTo, searchTerms, suppliers, jobsById, getJobOwnerInfo]);
 
+  const selectedValidJobIds = useMemo(
+    () =>
+      approvedJobs
+        .filter((j) => selectedJobIds.includes(j.id) && isJobInvoiceUpdated(j))
+        .map((j) => j.id),
+    [approvedJobs, selectedJobIds]
+  );
+
   const selectedTotal = useMemo(() => {
     return approvedJobs
-      .filter(j => selectedJobIds.includes(j.id))
+      .filter(j => selectedValidJobIds.includes(j.id))
       .reduce((sum, j) => sum + getJobTotalCost(j), 0);
-  }, [approvedJobs, selectedJobIds]);
+  }, [approvedJobs, selectedValidJobIds]);
 
-  const toggleJob = (jobId: string) => {
+  const { showToast } = useToast();
+
+  const toggleJob = (job: Job) => {
+    if (!isJobInvoiceUpdated(job)) {
+      showToast(
+        `กรุณากรอกและอัปเดตเลข Invoice ของใบงาน ${job.jobNumber} ก่อนเลือกออกใบวางบิล`,
+        'warning',
+        4500
+      );
+      return;
+    }
     setSelectedJobIds(prev =>
-      prev.includes(jobId)
-        ? prev.filter(id => id !== jobId)
-        : [...prev, jobId]
+      prev.includes(job.id)
+        ? prev.filter(id => id !== job.id)
+        : [...prev, job.id]
     );
   };
 
   const toggleGroupJobs = (groupJobs: Job[]) => {
-    const groupIds = groupJobs.map((j) => j.id);
-    const allInGroupSelected = groupIds.every((id) => selectedJobIds.includes(id));
+    const billableIds = groupJobs.filter((j) => isJobInvoiceUpdated(j)).map((j) => j.id);
+    if (billableIds.length === 0) {
+      showToast('ยังไม่มีงานในกลุ่มนี้ที่อัปเดตเลข Invoice แล้ว กรุณาอัปเดตเลข Invoice ก่อน', 'warning', 4500);
+      return;
+    }
+    const allInGroupSelected = billableIds.every((id) => selectedJobIds.includes(id));
     if (allInGroupSelected) {
-      setSelectedJobIds((prev) => prev.filter((id) => !groupIds.includes(id)));
+      setSelectedJobIds((prev) => prev.filter((id) => !billableIds.includes(id)));
     } else {
-      setSelectedJobIds((prev) => Array.from(new Set([...prev, ...groupIds])));
+      setSelectedJobIds((prev) => Array.from(new Set([...prev, ...billableIds])));
     }
   };
 
   const allFilteredSelected =
-    filteredApprovedJobs.length > 0 &&
-    filteredApprovedJobs.every((j) => selectedJobIds.includes(j.id));
+    billableFilteredJobs.length > 0 &&
+    billableFilteredJobs.every((j) => selectedJobIds.includes(j.id));
 
   const toggleSelectAllFiltered = () => {
-    const filteredIds = filteredApprovedJobs.map((j) => j.id);
+    const filteredIds = billableFilteredJobs.map((j) => j.id);
+    if (filteredIds.length === 0) return;
     if (allFilteredSelected) {
       setSelectedJobIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
     } else {
       setSelectedJobIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  };
+
+  const handleSaveVendorInvoice = async (job: Job) => {
+    const draft = (vendorInvoiceDrafts[job.id] ?? job.vendorInvoiceNumber ?? '').trim();
+    if (!draft) {
+      showToast(`กรุณากรอกเลข Invoice สำหรับใบงาน ${job.jobNumber}`, 'error');
+      return;
+    }
+    setSavingInvoiceJobId(job.id);
+    try {
+      const result = await updateJobInvoiceNumber(job.id, draft);
+      if (result.success) {
+        setVendorInvoiceDrafts((prev) => ({ ...prev, [job.id]: draft }));
+        showToast(
+          `อัปเดตเลข Invoice ใบงาน ${job.jobNumber} เป็น ${draft} เรียบร้อยแล้ว — สามารถติ๊กเลือกกดออกบิลเพื่อเปิด PO ได้ทันที`,
+          'success',
+          4500
+        );
+      } else {
+        showToast(result.error || 'ไม่สามารถอัปเดตเลข Invoice ได้', 'error');
+      }
+    } finally {
+      setSavingInvoiceJobId(null);
     }
   };
 
@@ -355,8 +435,6 @@ export default function SupplierInvoicesPage() {
       setPreviewInvoices(selected);
     }
   };
-
-  const { showToast } = useToast();
 
   const handleCreateInvoice = async () => {
     if (selectedBillingGroups.length === 0) return;
@@ -563,34 +641,70 @@ export default function SupplierInvoicesPage() {
       {/* Create Invoice Section */}
       {approvedJobs.length > 0 && (
         <div className="p-5 rounded-2xl bg-white border border-gray-100 shadow-xs">
-          <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
             <div className="flex items-center gap-2">
               <Plus className="w-5 h-5" style={{ color: theme.primary }} />
               <h3 className="text-sm font-bold text-gray-900">
                 ออกใบวางบิลใหม่
               </h3>
             </div>
-            <div className="flex items-center gap-3">
-              {filteredApprovedJobs.length > 1 && (
+            <div className="flex items-center gap-3 flex-wrap">
+              {billableFilteredJobs.length > 0 && (
                 <button
                   type="button"
                   onClick={toggleSelectAllFiltered}
                   className="text-xs font-semibold hover:underline cursor-pointer"
                   style={{ color: theme.primary }}
                 >
-                  {allFilteredSelected ? 'ยกเลิกที่เลือกทั้งหมด' : `เลือกทั้งหมด (${filteredApprovedJobs.length})`}
+                  {allFilteredSelected
+                    ? 'ยกเลิกที่เลือกทั้งหมด'
+                    : `เลือกงานที่อัปเดตแล้วทั้งหมด (${billableFilteredJobs.length})`}
                 </button>
               )}
               <span className="text-xs text-gray-500">
                 {hasActiveFilter
-                  ? `แสดง ${filteredApprovedJobs.length} / ${approvedJobs.length} งานพร้อมออกบิล`
-                  : `${approvedJobs.length} งานพร้อมออกบิล`}
+                  ? `แสดง ${filteredApprovedJobs.length} / ${approvedJobs.length} งาน`
+                  : `${approvedJobs.length} งานที่อนุมัติแล้ว`}
               </span>
             </div>
           </div>
 
+          {/* 2-Status Filter Bar: รออัปเดต Invoice / อัปเดต Invoice แล้ว */}
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            {([
+              { key: 'ALL', label: 'ทั้งหมด', count: approvedJobs.length, active: 'bg-[#0f5238] text-white border-[#0f5238]' },
+              { key: 'PENDING_UPDATE', label: 'รออัปเดต Invoice', count: pendingUpdateCount, active: 'bg-amber-600 text-white border-amber-600' },
+              { key: 'UPDATED', label: 'อัปเดต Invoice แล้ว', count: updatedInvoiceCount, active: 'bg-emerald-600 text-white border-emerald-600' },
+            ] as const).map((pill) => {
+              const isActive = invoiceStatusFilter === pill.key;
+              return (
+                <button
+                  key={pill.key}
+                  type="button"
+                  onClick={() => setInvoiceStatusFilter(pill.key)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer ${
+                    isActive
+                      ? `${pill.active} shadow-2xs`
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {pill.key === 'PENDING_UPDATE' && <Clock className="w-3 h-3" />}
+                  {pill.key === 'UPDATED' && <CheckCircle2 className="w-3 h-3" />}
+                  <span>{pill.label}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-white text-gray-600'
+                    }`}
+                  >
+                    {pill.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           <p className="text-xs text-gray-500 mb-3">
-            เลือกงานที่ต้องการรวมในใบวางบิล (จัดกลุ่มแยกตามสาขาเจ้าของรถผู้รับผิดชอบค่าใช้จ่าย หากเลือกหลายสาขา ระบบจะแยกออกใบวางบิลให้อัตโนมัติ):
+            กรอกเลข Invoice ของท่านและกด <strong>อัปเดต Invoice</strong> ให้สถานะเป็น <strong>อัปเดต Invoice แล้ว</strong> ก่อน จากนั้นจึงติ๊กเลือกเพื่อกดออกใบวางบิลและเปิด PO ใน D365:
           </p>
 
           {filteredApprovedJobs.length === 0 ? (
@@ -610,11 +724,12 @@ export default function SupplierInvoicesPage() {
           ) : (
             <div className="flex flex-col gap-3.5 mb-4">
               {billingGroups.map((group) => {
-                const groupSelectedCount = group.jobs.filter((j) =>
+                const billableInGroup = group.jobs.filter((j) => isJobInvoiceUpdated(j));
+                const groupSelectedCount = billableInGroup.filter((j) =>
                   selectedJobIds.includes(j.id)
                 ).length;
                 const allGroupSelected =
-                  group.jobs.length > 0 && groupSelectedCount === group.jobs.length;
+                  billableInGroup.length > 0 && groupSelectedCount === billableInGroup.length;
                 return (
                   <div
                     key={group.key}
@@ -646,21 +761,30 @@ export default function SupplierInvoicesPage() {
                             {formatCurrency(group.subtotal)}
                           </span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => toggleGroupJobs(group.jobs)}
-                          className="text-[11px] font-bold hover:underline cursor-pointer"
-                          style={{ color: theme.primary }}
-                        >
-                          {allGroupSelected ? 'ยกเลิกกลุ่มนี้' : 'เลือกกลุ่มนี้'}
-                        </button>
+                        {billableInGroup.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => toggleGroupJobs(group.jobs)}
+                            className="text-[11px] font-bold hover:underline cursor-pointer"
+                            style={{ color: theme.primary }}
+                          >
+                            {allGroupSelected
+                              ? 'ยกเลิกกลุ่มนี้'
+                              : `เลือกที่พร้อมออกบิล (${billableInGroup.length})`}
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     {/* Jobs in this Owner Branch group */}
                     <div className="p-2.5 flex flex-col gap-2 bg-white">
                       {group.jobs.map((job) => {
-                        const isSelected = selectedJobIds.includes(job.id);
+                        const updated = isJobInvoiceUpdated(job);
+                        const statusMeta = getInvoiceUpdateStatusMeta(
+                          job.invoiceUpdateStatus,
+                          job.vendorInvoiceNumber
+                        );
+                        const isSelected = updated && selectedJobIds.includes(job.id);
                         const cost = getJobTotalCost(job);
                         const activeItems = (job.carWashItems || []).filter(
                           (i) => i.status !== 'CANCELLED'
@@ -668,15 +792,21 @@ export default function SupplierInvoicesPage() {
                         const firstVin = activeItems[0]?.vin || job.vin || '';
                         const extraCarCount = activeItems.length > 1 ? activeItems.length - 1 : 0;
                         const displayDate = job.approvedAt || job.completedAt || job.createdAt;
+                        const draftInvoice =
+                          vendorInvoiceDrafts[job.id] ?? job.vendorInvoiceNumber ?? '';
+                        const isSavingThis = savingInvoiceJobId === job.id;
+                        const isUnchanged =
+                          updated && draftInvoice.trim() === (job.vendorInvoiceNumber || '').trim();
+
                         return (
-                          <button
+                          <div
                             key={job.id}
-                            type="button"
-                            onClick={() => toggleJob(job.id)}
-                            className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                            className={`flex flex-col gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
                               isSelected
                                 ? 'border-current bg-current/5'
-                                : 'border-gray-100 hover:border-gray-200'
+                                : updated
+                                  ? 'border-gray-100 hover:border-gray-200 bg-white'
+                                  : 'border-amber-100 bg-amber-50/20'
                             }`}
                             style={
                               isSelected
@@ -684,71 +814,165 @@ export default function SupplierInvoicesPage() {
                                 : {}
                             }
                           >
-                            <div
-                              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
-                                isSelected ? 'text-white' : 'border-gray-300'
-                              }`}
-                              style={
-                                isSelected
-                                  ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                                  : {}
-                              }
-                            >
-                              {isSelected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                {job.jobType === 'CAR_WASH' ? (
-                                  <Sparkles className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                ) : (
-                                  <Truck className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                                )}
-                                <span className="text-xs font-bold font-mono text-gray-900">
-                                  {job.jobNumber}
-                                </span>
-                                {job.d365PoNumber ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
-                                    PO: {job.d365PoNumber}
-                                  </span>
-                                ) : job.d365PoStatus === 'FAILED' ? (
-                                  <span
-                                    title={job.d365PoMessage || 'เปิด PO ใน D365 ไม่สำเร็จ'}
-                                    className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800"
-                                  >
-                                    เปิด PO ครั้งก่อนไม่สำเร็จ
-                                  </span>
+                            {/* Row Top: Checkbox + Job & Invoice Info + Cost */}
+                            <div className="flex items-start sm:items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => toggleJob(job)}
+                                aria-label={
+                                  updated
+                                    ? `เลือกใบงาน ${job.jobNumber} เพื่อออกใบวางบิล`
+                                    : `ต้องอัปเดตเลข Invoice ของใบงาน ${job.jobNumber} ก่อน`
+                                }
+                                title={
+                                  updated
+                                    ? 'คลิกเพื่อเลือกออกใบวางบิลและเปิด PO'
+                                    : 'กรุณาอัปเดตเลข Invoice ก่อนจึงจะเลือกออกบิลได้'
+                                }
+                                className={`mt-0.5 sm:mt-0 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                                  !updated
+                                    ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed'
+                                    : isSelected
+                                      ? 'text-white cursor-pointer'
+                                      : 'border-gray-300 bg-white hover:border-gray-400 cursor-pointer'
+                                }`}
+                                style={
+                                  isSelected
+                                    ? { backgroundColor: theme.primary, borderColor: theme.primary }
+                                    : {}
+                                }
+                              >
+                                {!updated ? (
+                                  <Lock className="w-3 h-3" />
+                                ) : isSelected ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
                                 ) : null}
-                              </div>
-                              <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                <span>
-                                  {job.companyCode} • {job.branchName}
-                                </span>
-                                {displayDate && (
-                                  <>
-                                    <span className="text-gray-300">•</span>
-                                    <span>{formatThaiDate(displayDate)}</span>
-                                  </>
-                                )}
-                                {firstVin && (
-                                  <>
-                                    <span className="text-gray-300">•</span>
-                                    <span className="font-mono text-gray-600">
-                                      {firstVin}
-                                      {extraCarCount > 0 ? ` (+${extraCarCount} คัน)` : ''}
+                              </button>
+
+                              <div
+                                onClick={() => {
+                                  if (updated) toggleJob(job);
+                                }}
+                                className={`flex-1 min-w-0 ${updated ? 'cursor-pointer' : ''}`}
+                              >
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {job.jobType === 'CAR_WASH' ? (
+                                    <Sparkles className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                  ) : (
+                                    <Truck className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                  )}
+                                  <span className="text-xs font-bold font-mono text-gray-900">
+                                    {job.jobNumber}
+                                  </span>
+                                  {job.initialInvoiceNumber && (
+                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono font-bold text-slate-700">
+                                      เลขชุดแรก: {job.initialInvoiceNumber}
                                     </span>
-                                  </>
-                                )}
-                              </p>
+                                  )}
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${statusMeta.badgeClass}`}
+                                  >
+                                    {updated ? (
+                                      <CheckCircle2 className="w-2.5 h-2.5" />
+                                    ) : (
+                                      <Clock className="w-2.5 h-2.5" />
+                                    )}
+                                    {statusMeta.label}
+                                  </span>
+                                  {updated && job.vendorInvoiceNumber && (
+                                    <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-[10px] font-mono font-bold text-blue-800">
+                                      Invoice: {job.vendorInvoiceNumber}
+                                    </span>
+                                  )}
+                                  {job.d365PoNumber ? (
+                                    <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
+                                      PO: {job.d365PoNumber}
+                                    </span>
+                                  ) : job.d365PoStatus === 'FAILED' ? (
+                                    <span
+                                      title={job.d365PoMessage || 'เปิด PO ใน D365 ไม่สำเร็จ'}
+                                      className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800"
+                                    >
+                                      เปิด PO ครั้งก่อนไม่สำเร็จ
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  <span>
+                                    {job.companyCode} • {job.branchName}
+                                  </span>
+                                  {displayDate && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <span>{formatThaiDate(displayDate)}</span>
+                                    </>
+                                  )}
+                                  {firstVin && (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <span className="font-mono text-gray-600">
+                                        {firstVin}
+                                        {extraCarCount > 0 ? ` (+${extraCarCount} คัน)` : ''}
+                                      </span>
+                                    </>
+                                  )}
+                                </p>
+                              </div>
+
+                              <span
+                                className="text-xs font-bold font-mono shrink-0"
+                                style={{ color: theme.primary }}
+                              >
+                                {formatCurrency(cost)}
+                              </span>
                             </div>
 
-                            <span
-                              className="text-xs font-bold font-mono shrink-0"
-                              style={{ color: theme.primary }}
-                            >
-                              {formatCurrency(cost)}
-                            </span>
-                          </button>
+                            {/* Row Bottom: Inline Vendor Invoice Update Input */}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pl-0 sm:pl-8 pt-2 border-t border-gray-100">
+                              <label className="text-[11px] font-semibold text-gray-600 whitespace-nowrap shrink-0">
+                                อัปเดตเลข Invoice:
+                              </label>
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <input
+                                  type="text"
+                                  value={draftInvoice}
+                                  onChange={(e) =>
+                                    setVendorInvoiceDrafts((prev) => ({
+                                      ...prev,
+                                      [job.id]: e.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      void handleSaveVendorInvoice(job);
+                                    }
+                                  }}
+                                  placeholder="กรอกเลข Invoice เพื่ออัปเดต..."
+                                  aria-label={`กรอกเลข Invoice สำหรับใบงาน ${job.jobNumber}`}
+                                  className="flex-1 min-w-0 h-8 px-2.5 rounded-lg border border-gray-200 bg-white text-xs font-mono text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#0f5238] focus:ring-2 focus:ring-[#0f5238]/15"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={isSavingThis || !draftInvoice.trim() || isUnchanged}
+                                  onClick={() => void handleSaveVendorInvoice(job)}
+                                  className="h-8 px-3 rounded-lg text-white text-[11px] font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 whitespace-nowrap"
+                                  style={{ backgroundColor: theme.primary }}
+                                >
+                                  {isSavingThis
+                                    ? 'กำลังบันทึก...'
+                                    : updated
+                                      ? 'บันทึกแก้ไข'
+                                      : 'อัปเดต Invoice'}
+                                </button>
+                              </div>
+                              {!updated && (
+                                <span className="text-[10px] font-medium text-amber-700 whitespace-nowrap">
+                                  อัปเดตก่อนจึงจะกดออกบิลเปิด PO ได้
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -759,11 +983,11 @@ export default function SupplierInvoicesPage() {
           )}
 
           {/* Submit Invoice */}
-          {selectedJobIds.length > 0 && (
+          {selectedValidJobIds.length > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-gray-100">
               <div className="space-y-1">
                 <p className="text-xs text-gray-500">
-                  เลือก {selectedJobIds.length} งาน
+                  เลือก {selectedValidJobIds.length} งาน (อัปเดต Invoice แล้ว)
                   {selectedBillingGroups.length === 1 && (
                     <span className="text-gray-600 font-medium">
                       {' '}• สาขาเจ้าของรถ {selectedBillingGroups[0].ownerBranchCode}
@@ -933,6 +1157,11 @@ export default function SupplierInvoicesPage() {
                             <p className="text-xs sm:text-sm font-bold text-gray-900 font-mono tracking-tight">
                               {inv.invoiceNumber}
                             </p>
+                            {inv.vendorInvoiceNumber && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200 text-[10px] font-mono font-bold text-blue-800">
+                                Vendor INV: {inv.vendorInvoiceNumber}
+                              </span>
+                            )}
                             {linkedPos.length > 0 && (
                               <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
                                 PO: {linkedPos.slice(0, 2).join(', ')}{linkedPos.length > 2 ? ` +${linkedPos.length - 2}` : ''}

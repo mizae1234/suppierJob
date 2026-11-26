@@ -245,10 +245,15 @@ model Job {
   d365PoLogs       D365PoLog[]
 
   // ค่าใช้จ่ายและการวางบิล
-  estimatedCost    Float?
-  actualCost       Float?
-  invoiceId        String?
-  invoice          Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estimatedCost        Float?
+  actualCost           Float?
+  invoiceId            String?
+  invoice              Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  initialInvoiceNumber String?       // เลข Invoice ชุดแรกที่ออกอัตโนมัติตอนอนุมัติงาน (เช่น INV-GI-2611-123456)
+  vendorInvoiceNumber  String?       // เลข Invoice ของ Vendor ที่กรอกอัปเดตก่อนกดออกบิลเปิด PO
+  invoiceUpdateStatus  String?       // PENDING_UPDATE (รออัปเดต Invoice) | UPDATED (อัปเดต Invoice แล้ว)
+  invoiceUpdatedAt     DateTime?     // เวลาที่อัปเดตเลข Invoice ล่าสุด
+  invoiceUpdatedBy     String?       // ชื่อผู้อัปเดตเลข Invoice
 
   // บันทึกการเชื่อมโยง Purchase Order (D365)
   d365PoNumber     String?       // เช่น PO126000086
@@ -277,6 +282,8 @@ model Job {
   @@index([createdAt])
   @@index([vin])
   @@index([invoiceId])
+  @@index([initialInvoiceNumber])
+  @@index([invoiceUpdateStatus])
   @@index([d365PoNumber])
 }
 
@@ -342,9 +349,10 @@ model JobActivity {
 
 // ใบวางบิล Invoice
 model Invoice {
-  id            String        @id @default(uuid())
-  invoiceNumber String        @unique // INV-EV7-202609-001, INV-GI-202609-001
-  supplierId    String
+  id                  String        @id @default(uuid())
+  invoiceNumber       String        @unique // INV-EV7-202609-001, INV-GI-202609-001
+  vendorInvoiceNumber String?       // เลข Invoice ของ Vendor ที่กรอกอัปเดต (เก็บคู่กับ invoiceNumber ของระบบ)
+  supplierId          String
   supplier      Supplier      @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   companyId     String
   company       Company       @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)

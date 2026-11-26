@@ -254,7 +254,12 @@ export function serializeJob(job: SerializableJob) {
       return job.actualCost;
     })(),
     invoiceId: job.invoiceId,
-    invoiceNumber: job.invoice?.invoiceNumber,
+    invoiceNumber: job.invoice?.invoiceNumber ?? job.initialInvoiceNumber ?? undefined,
+    initialInvoiceNumber: job.initialInvoiceNumber ?? null,
+    vendorInvoiceNumber: job.vendorInvoiceNumber ?? null,
+    invoiceUpdateStatus: job.invoiceUpdateStatus ?? null,
+    invoiceUpdatedAt: job.invoiceUpdatedAt?.toISOString() ?? null,
+    invoiceUpdatedBy: job.invoiceUpdatedBy ?? null,
     // D365 PO Integration
     d365PoNumber: job.d365PoNumber,
     d365PoStatus: job.d365PoStatus,

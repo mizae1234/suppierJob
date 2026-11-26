@@ -151,11 +151,24 @@ function InvoiceDocumentSheet({
   const orderingRequester = primaryJob?.requestedBy || '';
   const orderingRequesterPosition = primaryJob?.requesterPosition || '';
 
-  // Gather unique D365 PO numbers across all jobs in this invoice
-  const allInvoiceJobs: Array<{ d365PoNumber?: string | null }> =
-    invoiceJobs.length > 0 ? invoiceJobs : (invoice.jobs || []);
+  // Gather unique D365 PO numbers and Vendor Invoice numbers across all jobs in this invoice
+  const allInvoiceJobs: Array<{
+    d365PoNumber?: string | null;
+    initialInvoiceNumber?: string | null;
+    vendorInvoiceNumber?: string | null;
+  }> = invoiceJobs.length > 0 ? invoiceJobs : (invoice.jobs || []);
   const poNumbers = Array.from(
     new Set(allInvoiceJobs.map((j) => j.d365PoNumber).filter((po): po is string => Boolean(po)))
+  );
+  const vendorInvoiceNumbers = Array.from(
+    new Set(
+      [
+        ...(invoice.vendorInvoiceNumber
+          ? invoice.vendorInvoiceNumber.split(',').map((s) => s.trim())
+          : []),
+        ...allInvoiceJobs.map((j) => (j.vendorInvoiceNumber || '').trim()),
+      ].filter(Boolean)
+    )
   );
 
   const vehicleItems: VehicleBreakdownItem[] = [];
@@ -276,13 +289,23 @@ function InvoiceDocumentSheet({
           <table className="border border-gray-400 text-xs border-collapse inline-table text-left w-full sm:w-[320px] print:w-[320px] bg-white">
             <tbody>
               <tr className="border-b border-gray-300">
-                <td className="py-1.5 px-2.5 sm:px-3 font-semibold text-gray-700 bg-gray-50/80 border-r border-gray-300 w-28 whitespace-nowrap">
-                  เลขที่เอกสาร:
+                <td className="py-1.5 px-2.5 sm:px-3 font-semibold text-gray-700 bg-gray-50/80 border-r border-gray-300 w-32 whitespace-nowrap">
+                  เลขที่เอกสาร (ระบบ):
                 </td>
                 <td className="py-1.5 px-2.5 sm:px-3 font-mono font-black text-gray-900 text-right whitespace-nowrap text-xs sm:text-sm">
                   {invoice.invoiceNumber}
                 </td>
               </tr>
+              {vendorInvoiceNumbers.length > 0 && (
+                <tr className="border-b border-gray-300 bg-blue-50/30">
+                  <td className="py-1.5 px-2.5 sm:px-3 font-semibold text-blue-900 border-r border-gray-300 whitespace-nowrap">
+                    เลข Invoice (Vendor):
+                  </td>
+                  <td className="py-1.5 px-2.5 sm:px-3 font-mono font-bold text-gray-900 text-right">
+                    {vendorInvoiceNumbers.join(', ')}
+                  </td>
+                </tr>
+              )}
               <tr className="border-b border-gray-300">
                 <td className="py-1.5 px-2.5 sm:px-3 font-semibold text-gray-700 bg-gray-50/80 border-r border-gray-300 whitespace-nowrap">
                   วันที่:
@@ -415,6 +438,16 @@ function InvoiceDocumentSheet({
                         </span>
                       ) : (
                         <span className="text-[10px] text-gray-400">-</span>
+                      )}
+                      {j.initialInvoiceNumber && j.initialInvoiceNumber !== invoice.invoiceNumber && (
+                        <span className="font-mono text-[10px] text-gray-500 block">
+                          เลขระบบ: {j.initialInvoiceNumber}
+                        </span>
+                      )}
+                      {j.vendorInvoiceNumber && (
+                        <span className="font-mono text-[10px] text-blue-800 font-semibold block">
+                          Vendor INV: {j.vendorInvoiceNumber}
+                        </span>
                       )}
                     </td>
                     <td className="py-2 px-2 border-r border-gray-300 text-gray-800">

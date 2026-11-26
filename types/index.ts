@@ -279,6 +279,14 @@ export interface Job {
   actualCost?: number;
   invoiceId?: string;
   invoiceNumber?: string;
+  /** เลข Invoice ชุดแรกที่ระบบออกให้ทันทีเมื่ออนุมัติใบงาน */
+  initialInvoiceNumber?: string | null;
+  /** เลข Invoice ของ Vendor ที่กรอกอัปเดตก่อนออกบิลเปิด PO */
+  vendorInvoiceNumber?: string | null;
+  /** สถานะการอัปเดต Invoice: PENDING_UPDATE (รออัปเดต) | UPDATED (อัปเดตแล้ว) */
+  invoiceUpdateStatus?: 'PENDING_UPDATE' | 'UPDATED' | string | null;
+  invoiceUpdatedAt?: string | null;
+  invoiceUpdatedBy?: string | null;
 
   // D365 Purchase Order
   d365PoNumber?: string | null;
@@ -311,6 +319,8 @@ export interface JobActivity {
 export interface Invoice {
   id: string;
   invoiceNumber: string;
+  /** เลข Invoice ของ Vendor ที่กรอกอัปเดต (เก็บคู่กับ invoiceNumber ของระบบ) */
+  vendorInvoiceNumber?: string | null;
   supplierId: string;
   supplierName: string;
   companyId: string;

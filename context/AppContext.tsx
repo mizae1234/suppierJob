@@ -129,6 +129,10 @@ interface AppContextType {
     }[]
   ) => Promise<{ success: boolean; error?: string; addedCount?: number }>;
   addJobEvidence: (jobId: string, evidence: Omit<JobEvidence, 'id' | 'jobId' | 'uploadedAt'>) => Promise<void>;
+  updateJobInvoiceNumber: (
+    jobId: string,
+    vendorInvoiceNumber: string
+  ) => Promise<{ success: boolean; error?: string; job?: Partial<Job> }>;
   createInvoice: (params: CreateInvoiceParams) => Promise<{ success: boolean; error?: string; invoice?: Invoice }>;
   refreshData: () => Promise<void>;
   refreshJobs: () => Promise<void>;
@@ -152,6 +156,9 @@ function isSameJobSnapshot(a: Job, b: Job): boolean {
     a.d365PoMessage === b.d365PoMessage &&
     a.d365TransferStatus === b.d365TransferStatus &&
     a.d365TransferMessage === b.d365TransferMessage &&
+    a.initialInvoiceNumber === b.initialInvoiceNumber &&
+    a.vendorInvoiceNumber === b.vendorInvoiceNumber &&
+    a.invoiceUpdateStatus === b.invoiceUpdateStatus &&
     (a.evidenceCount ?? a.evidences?.length ?? 0) === (b.evidenceCount ?? b.evidences?.length ?? 0) &&
     (a.carWashItems?.length ?? 0) === (b.carWashItems?.length ?? 0)
   );
@@ -377,7 +384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const res = await fetch('/api/invoices');
+      const res = await fetch('/api/invoices', { cache: 'no-store' });
       if (!res.ok) return;
       const data = await res.json();
       if (data.invoices) setInvoices(data.invoices);
@@ -452,13 +459,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [pendingPoJobIds, fetchVehicles]);
 
-  // ─── Auto-refresh ใบงานแบบ incremental ทุก 30 วินาที (+ โหลดเต็มทุก ~5 นาที และ debounce focus/visibility) ─────
+  // ─── Auto-refresh ใบงานแบบ incremental และใบวางบิลทุก 30 วินาที (+ โหลดเต็มทุก ~5 นาที และ debounce focus/visibility) ─────
   useEffect(() => {
     if (!isAuthenticated) return;
 
     const refreshIfVisible = () => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible') {
         void fetchJobs({ full: false });
+        void fetchInvoices();
       }
     };
 
@@ -469,6 +477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       if (Date.now() - lastFetchAtRef.current < FOCUS_DEBOUNCE_MS) return;
       void fetchJobs({ full: false });
+      void fetchInvoices();
     };
 
     document.addEventListener('visibilitychange', handleResume);
@@ -479,7 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       document.removeEventListener('visibilitychange', handleResume);
       window.removeEventListener('focus', handleResume);
     };
-  }, [isAuthenticated, fetchJobs]);
+  }, [isAuthenticated, fetchJobs, fetchInvoices]);
 
   // ─── Sync user auth data to context (อ้างอิงเฉพาะค่า primitive ที่เสถียรแทน user object ทั้งก้อน) ─────────────
   const authSyncKey = isAuthenticated && userId
@@ -728,6 +737,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               approvedBy: data.job.approvedBy ?? j.approvedBy,
               actualCost: data.job.actualCost ?? j.actualCost,
               rejectReason: data.job.rejectReason ?? j.rejectReason,
+              initialInvoiceNumber: data.job.initialInvoiceNumber ?? j.initialInvoiceNumber,
+              vendorInvoiceNumber: data.job.vendorInvoiceNumber ?? j.vendorInvoiceNumber,
+              invoiceUpdateStatus: data.job.invoiceUpdateStatus ?? j.invoiceUpdateStatus,
+              invoiceNumber: data.job.initialInvoiceNumber ?? j.invoiceNumber,
             } : {}),
             ...(data.d365Po ? {
               d365PoNumber: data.d365Po.purchId ?? j.d365PoNumber,
@@ -898,6 +911,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [refreshJob]);
 
+  // ─── Action: Update Job Vendor Invoice Number (via API) ───────────
+  const updateJobInvoiceNumber = useCallback(async (
+    jobId: string,
+    vendorInvoiceNumber: string
+  ): Promise<{ success: boolean; error?: string; job?: Partial<Job> }> => {
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/invoice-number`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendorInvoiceNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || 'ไม่สามารถอัปเดตเลข Invoice ได้' };
+      }
+      if (data.job) {
+        setJobs(prev =>
+          prev.map(j =>
+            j.id === jobId
+              ? {
+                  ...j,
+                  initialInvoiceNumber: data.job.initialInvoiceNumber ?? j.initialInvoiceNumber,
+                  invoiceNumber: data.job.initialInvoiceNumber ?? j.invoiceNumber,
+                  vendorInvoiceNumber: data.job.vendorInvoiceNumber,
+                  invoiceUpdateStatus: data.job.invoiceUpdateStatus,
+                  invoiceUpdatedAt: data.job.invoiceUpdatedAt,
+                  invoiceUpdatedBy: data.job.invoiceUpdatedBy,
+                  updatedAt: data.job.updatedAt ?? j.updatedAt,
+                }
+              : j
+          )
+        );
+      }
+      return { success: true, job: data.job };
+    } catch (e) {
+      console.error('Update job invoice number failed:', e);
+      return { success: false, error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' };
+    }
+  }, []);
+
   // ─── Action: Create Invoice (via API) ───────────
   const createInvoice = useCallback(async (params: CreateInvoiceParams) => {
     const company = companies.find(c => c.code === params.companyCode);
@@ -974,6 +1027,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateCarWashItemStatus,
     addVehiclesToJob,
     addJobEvidence,
+    updateJobInvoiceNumber,
     createInvoice,
     refreshData,
     refreshJobs,
@@ -1005,6 +1059,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateCarWashItemStatus,
     addVehiclesToJob,
     addJobEvidence,
+    updateJobInvoiceNumber,
     createInvoice,
     refreshData,
     refreshJobs,

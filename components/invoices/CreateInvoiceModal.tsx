@@ -5,7 +5,8 @@ import { Job, CompanyCode, Supplier, Invoice } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { getJobTotalCost, getOwnerBranchCorporateInfo } from '@/lib/job-utils';
 import { formatThaiDate } from '@/lib/date-utils';
-import { Receipt, AlertCircle, X, Check, Sparkles, Truck, Building2, Layers } from 'lucide-react';
+import { getInvoiceUpdateStatusMeta, isJobInvoiceUpdated } from '@/lib/invoice-workflow';
+import { Receipt, AlertCircle, X, Check, Sparkles, Truck, Building2, Layers, Lock } from 'lucide-react';
 import CustomDropdown, { DropdownOption } from '@/components/ui/CustomDropdown';
 
 export interface CreateInvoiceModalProps {
@@ -35,13 +36,15 @@ export function CreateInvoiceModal({
   onCreateInvoice,
   onSuccess,
 }: CreateInvoiceModalProps) {
-  const { vehicles, branches, companies } = useApp();
+  const { vehicles, branches, companies, updateJobInvoiceNumber } = useApp();
 
   const [invoiceCompany, setInvoiceCompany] = useState<CompanyCode>('EV7');
   const [invoiceSupplierId, setInvoiceSupplierId] = useState<string>(
     currentRole === 'SUPPLIER' && currentSupplierId ? currentSupplierId : suppliers[0]?.id || ''
   );
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
+  const [vendorInvoiceDrafts, setVendorInvoiceDrafts] = useState<Record<string, string>>({});
+  const [updatingJobId, setUpdatingJobId] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState<string>(() =>
     new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   );
@@ -102,12 +105,17 @@ export function CreateInvoiceModal({
     [groupJobsByOwnerBranch, eligibleJobs]
   );
 
+  const billableEligibleJobs = useMemo(
+    () => eligibleJobs.filter((j) => isJobInvoiceUpdated(j)),
+    [eligibleJobs]
+  );
+
   // Calculate selected jobs total
   const selectedSupplier = suppliers.find(s => s.id === invoiceSupplierId);
   const hasVat = selectedSupplier?.vatType === 'VAT_7';
   const selectedJobs = useMemo(
-    () => eligibleJobs.filter(j => selectedJobIds.includes(j.id)),
-    [eligibleJobs, selectedJobIds]
+    () => billableEligibleJobs.filter(j => selectedJobIds.includes(j.id)),
+    [billableEligibleJobs, selectedJobIds]
   );
   const selectedOwnerGroups = useMemo(
     () => groupJobsByOwnerBranch(selectedJobs),
@@ -119,27 +127,59 @@ export function CreateInvoiceModal({
 
   if (!isOpen) return null;
 
-  const handleToggleJob = (jobId: string) => {
+  const handleToggleJob = (job: Job) => {
+    if (!isJobInvoiceUpdated(job)) {
+      setErrorMessage(`กรุณาอัปเดตเลข Invoice ของใบงาน ${job.jobNumber} ก่อนเลือกออกใบวางบิล`);
+      return;
+    }
+    setErrorMessage(null);
     setSelectedJobIds(prev =>
-      prev.includes(jobId) ? prev.filter(id => id !== jobId) : [...prev, jobId]
+      prev.includes(job.id) ? prev.filter(id => id !== job.id) : [...prev, job.id]
     );
   };
 
   const handleToggleGroup = (groupJobs: Job[]) => {
-    const ids = groupJobs.map(j => j.id);
-    const allChecked = ids.every(id => selectedJobIds.includes(id));
+    const billableIds = groupJobs.filter((j) => isJobInvoiceUpdated(j)).map(j => j.id);
+    if (billableIds.length === 0) {
+      setErrorMessage('ยังไม่มีงานในกลุ่มนี้ที่อัปเดตเลข Invoice แล้ว กรุณาอัปเดตเลข Invoice ก่อน');
+      return;
+    }
+    setErrorMessage(null);
+    const allChecked = billableIds.every(id => selectedJobIds.includes(id));
     if (allChecked) {
-      setSelectedJobIds(prev => prev.filter(id => !ids.includes(id)));
+      setSelectedJobIds(prev => prev.filter(id => !billableIds.includes(id)));
     } else {
-      setSelectedJobIds(prev => Array.from(new Set([...prev, ...ids])));
+      setSelectedJobIds(prev => Array.from(new Set([...prev, ...billableIds])));
     }
   };
 
   const handleSelectAllEligible = () => {
-    if (selectedJobIds.length === eligibleJobs.length) {
+    const billableIds = billableEligibleJobs.map(j => j.id);
+    if (billableIds.length === 0) return;
+    if (billableIds.every(id => selectedJobIds.includes(id))) {
       setSelectedJobIds([]);
     } else {
-      setSelectedJobIds(eligibleJobs.map(j => j.id));
+      setSelectedJobIds(billableIds);
+    }
+  };
+
+  const handleSaveJobInvoice = async (job: Job) => {
+    const draft = (vendorInvoiceDrafts[job.id] ?? job.vendorInvoiceNumber ?? '').trim();
+    if (!draft) {
+      setErrorMessage(`กรุณากรอกเลข Invoice สำหรับใบงาน ${job.jobNumber}`);
+      return;
+    }
+    setErrorMessage(null);
+    setUpdatingJobId(job.id);
+    try {
+      const res = await updateJobInvoiceNumber(job.id, draft);
+      if (!res.success) {
+        setErrorMessage(res.error || 'ไม่สามารถอัปเดตเลข Invoice ได้');
+      } else {
+        setVendorInvoiceDrafts(prev => ({ ...prev, [job.id]: draft }));
+      }
+    } finally {
+      setUpdatingJobId(null);
     }
   };
 
@@ -279,25 +319,30 @@ export function CreateInvoiceModal({
               <span className="font-bold text-gray-800">
                 3. เลือกรายการงานที่สาขา Approve แล้ว (พร้อมวางบิล):
               </span>
-              {eligibleJobs.length > 0 && (
+              {billableEligibleJobs.length > 0 && (
                 <button
                   type="button"
                   onClick={handleSelectAllEligible}
                   className="text-xs font-bold text-[#0f5238] hover:underline"
                 >
-                  {selectedJobIds.length === eligibleJobs.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+                  {billableEligibleJobs.every(j => selectedJobIds.includes(j.id))
+                    ? 'ยกเลิกเลือกทั้งหมด'
+                    : `เลือกที่อัปเดตแล้วทั้งหมด (${billableEligibleJobs.length})`}
                 </button>
               )}
             </div>
 
-            <div className="border border-gray-200 rounded-2xl max-h-60 overflow-y-auto p-1.5 space-y-2">
+            <div className="border border-gray-200 rounded-2xl max-h-72 overflow-y-auto p-1.5 space-y-2">
               {eligibleJobs.length === 0 ? (
                 <div className="p-8 text-center text-gray-400">
                   ไม่มีงานที่ได้รับการ Approve สำหรับ {invoiceCompany} ที่พร้อมวางบิลในขณะนี้
                 </div>
               ) : (
                 eligibleGroups.map(group => {
-                  const allGroupChecked = group.jobs.every(j => selectedJobIds.includes(j.id));
+                  const billableInGroup = group.jobs.filter(j => isJobInvoiceUpdated(j));
+                  const allGroupChecked =
+                    billableInGroup.length > 0 &&
+                    billableInGroup.every(j => selectedJobIds.includes(j.id));
                   return (
                     <div key={group.branchCode} className="rounded-xl border border-gray-100 overflow-hidden">
                       <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-[#f4f9f5] border-b border-gray-100">
@@ -309,63 +354,122 @@ export function CreateInvoiceModal({
                             {group.nameTh}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleGroup(group.jobs)}
-                          className="text-[10px] font-bold text-[#0f5238] hover:underline shrink-0 cursor-pointer"
-                        >
-                          {allGroupChecked ? 'ยกเลิกกลุ่มนี้' : 'เลือกกลุ่มนี้'}
-                        </button>
+                        {billableInGroup.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleGroup(group.jobs)}
+                            className="text-[10px] font-bold text-[#0f5238] hover:underline shrink-0 cursor-pointer"
+                          >
+                            {allGroupChecked ? 'ยกเลิกกลุ่มนี้' : `เลือกที่พร้อมออกบิล (${billableInGroup.length})`}
+                          </button>
+                        )}
                       </div>
                       <div className="divide-y divide-gray-100">
                         {group.jobs.map(job => {
-                          const isChecked = selectedJobIds.includes(job.id);
+                          const updated = isJobInvoiceUpdated(job);
+                          const statusMeta = getInvoiceUpdateStatusMeta(
+                            job.invoiceUpdateStatus,
+                            job.vendorInvoiceNumber
+                          );
+                          const isChecked = updated && selectedJobIds.includes(job.id);
+                          const draftValue = vendorInvoiceDrafts[job.id] ?? job.vendorInvoiceNumber ?? '';
+                          const isSavingThis = updatingJobId === job.id;
                           return (
                             <div
                               key={job.id}
-                              onClick={() => handleToggleJob(job.id)}
-                              className={`p-3 cursor-pointer flex items-center justify-between gap-2 transition-colors ${
-                                isChecked ? 'bg-[#f4f9f5]' : 'hover:bg-gray-50'
+                              className={`p-3 flex flex-col gap-2 transition-colors ${
+                                isChecked ? 'bg-[#f4f9f5]' : updated ? 'hover:bg-gray-50' : 'bg-amber-50/20'
                               }`}
                             >
-                              <div className="flex items-center gap-2.5">
-                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                                  isChecked ? 'bg-[#0f5238] border-[#0f5238] text-white' : 'border-gray-300'
-                                }`}>
-                                  {isChecked && <Check className="w-3 h-3" />}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-mono font-bold text-gray-900">{job.jobNumber}</span>
-                                    {job.d365PoNumber ? (
-                                      <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
-                                        PO: {job.d365PoNumber}
-                                      </span>
-                                    ) : job.d365PoStatus === 'FAILED' ? (
-                                      <span
-                                        title={job.d365PoMessage || 'เปิด PO ใน D365 ไม่สำเร็จ'}
-                                        className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800"
-                                      >
-                                        เปิด PO ครั้งก่อนไม่สำเร็จ
-                                      </span>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <button
+                                    type="button"
+                                    disabled={!updated}
+                                    onClick={() => handleToggleJob(job)}
+                                    title={updated ? 'เลือกใบงานเพื่อออกบิล' : 'กรุณาอัปเดตเลข Invoice ก่อนเลือกออกบิล'}
+                                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                      !updated
+                                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        : isChecked
+                                          ? 'bg-[#0f5238] border-[#0f5238] text-white cursor-pointer'
+                                          : 'border-gray-300 bg-white hover:border-[#0f5238] cursor-pointer'
+                                    }`}
+                                  >
+                                    {!updated ? (
+                                      <Lock className="w-2.5 h-2.5" />
+                                    ) : isChecked ? (
+                                      <Check className="w-3 h-3" />
                                     ) : null}
-                                    <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
-                                      {job.jobType === 'CAR_WASH' ? <Sparkles className="w-3 h-3 text-emerald-500" /> : <Truck className="w-3 h-3 text-blue-500" />}
-                                      {job.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}
-                                    </span>
+                                  </button>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-mono font-bold text-gray-900">{job.jobNumber}</span>
+                                      {job.initialInvoiceNumber && (
+                                        <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono font-semibold text-slate-700">
+                                          {job.initialInvoiceNumber}
+                                        </span>
+                                      )}
+                                      <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${statusMeta.badgeClass}`}>
+                                        {statusMeta.label}
+                                      </span>
+                                      {job.d365PoNumber ? (
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
+                                          PO: {job.d365PoNumber}
+                                        </span>
+                                      ) : job.d365PoStatus === 'FAILED' ? (
+                                        <span
+                                          title={job.d365PoMessage || 'เปิด PO ใน D365 ไม่สำเร็จ'}
+                                          className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800"
+                                        >
+                                          เปิด PO ครั้งก่อนไม่สำเร็จ
+                                        </span>
+                                      ) : null}
+                                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                        {job.jobType === 'CAR_WASH' ? <Sparkles className="w-3 h-3 text-emerald-500" /> : <Truck className="w-3 h-3 text-blue-500" />}
+                                        {job.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                      สาขา {job.branchName} • {formatThaiDate(job.createdAt)}
+                                    </p>
                                   </div>
-                                  <p className="text-[11px] text-gray-400 mt-0.5">
-                                    สาขา {job.branchName} • {formatThaiDate(job.createdAt)}
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="font-mono font-bold text-gray-900">
+                                    ฿{getJobTotalCost(job).toLocaleString()}
+                                  </span>
+                                  <p className="text-[10px] text-gray-400">
+                                    {job.carWashItems?.filter(i => i.status !== 'CANCELLED').length || 1} คัน
                                   </p>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <span className="font-mono font-bold text-gray-900">
-                                  ฿{getJobTotalCost(job).toLocaleString()}
-                                </span>
-                                <p className="text-[10px] text-gray-400">
-                                  {job.carWashItems?.filter(i => i.status !== 'CANCELLED').length || 1} คัน
-                                </p>
+
+                              {/* Inline Vendor Invoice Update Input */}
+                              <div className="flex items-center gap-2 pl-6">
+                                <input
+                                  type="text"
+                                  value={draftValue}
+                                  onChange={(e) =>
+                                    setVendorInvoiceDrafts(prev => ({ ...prev, [job.id]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      void handleSaveJobInvoice(job);
+                                    }
+                                  }}
+                                  placeholder="กรอกเลข Invoice (Vendor) เพื่ออัปเดต..."
+                                  className="flex-1 h-8 px-2.5 rounded-lg border border-gray-200 bg-white text-[11px] font-mono text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#0f5238] focus:ring-2 focus:ring-[#0f5238]/15"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={isSavingThis || !draftValue.trim() || (updated && draftValue.trim() === (job.vendorInvoiceNumber || '').trim())}
+                                  onClick={() => void handleSaveJobInvoice(job)}
+                                  className="h-8 px-3 rounded-lg bg-[#0f5238] hover:bg-[#0a3d28] text-white text-[11px] font-bold disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 cursor-pointer"
+                                >
+                                  {isSavingThis ? 'กำลังบันทึก...' : updated ? 'บันทึกแก้ไข' : 'อัปเดต Invoice'}
+                                </button>
                               </div>
                             </div>
                           );
@@ -391,7 +495,7 @@ export function CreateInvoiceModal({
             )}
             <div className="flex justify-between text-gray-600">
               <span>จำนวนงานที่เลือก:</span>
-              <span className="font-bold">{selectedJobIds.length} รายการ</span>
+              <span className="font-bold">{selectedJobs.length} รายการ</span>
             </div>
             <div className="flex justify-between text-gray-600">
               <span>ยอดรวมก่อนภาษี (Subtotal):</span>
@@ -447,7 +551,7 @@ export function CreateInvoiceModal({
             </button>
             <button
               type="submit"
-              disabled={selectedJobIds.length === 0 || isSubmitting}
+              disabled={selectedJobs.length === 0 || isSubmitting}
               className="px-6 py-2 rounded-xl text-xs font-bold bg-[#0f5238] text-white hover:bg-[#0a3d28] disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer"
             >
               {isSubmitting

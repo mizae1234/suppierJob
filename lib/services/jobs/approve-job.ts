@@ -5,6 +5,8 @@ import { logAuditFromUser } from '@/lib/audit-log';
 import { sendJobToD365TransferJournal, type D365TransferStatus } from '@/lib/d365/transfer';
 import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { ConflictError } from '@/lib/errors';
+import { generateInitialInvoiceNumber } from '@/lib/invoice-number';
+import { INVOICE_UPDATE_STATUS } from '@/lib/invoice-workflow';
 import {
   snapshotFromWarehousesInTx,
   moveVehiclesOnApprovalInTx,
@@ -94,6 +96,7 @@ export async function finalizeJobApproval(
     where: { id: jobId },
     include: {
       carWashItems: true,
+      company: { select: { code: true } },
       pickupBranch: { select: { code: true, name: true, address: true, companyId: true } },
       destBranch: { select: { code: true, name: true, address: true, companyId: true } },
       supplier: { select: { name: true } },
@@ -179,7 +182,13 @@ export async function finalizeJobApproval(
       actualCost = jobSnapshot.actualCost || jobSnapshot.estimatedCost || 0;
     }
 
-    // 3) Optimistic lock เปลี่ยนสถานะใบงานเป็น APPROVED
+    // 3) Optimistic lock เปลี่ยนสถานะใบงานเป็น APPROVED พร้อมออกเลข Invoice ชุดแรกและตั้งสถานะ "รออัปเดต Invoice"
+    const initialInvoiceNumber =
+      jobSnapshot.initialInvoiceNumber ||
+      generateInitialInvoiceNumber(jobSnapshot.company?.code || 'GI', now);
+    const invoiceUpdateStatus =
+      jobSnapshot.invoiceUpdateStatus || INVOICE_UPDATE_STATUS.PENDING_UPDATE;
+
     const jobLocked = await tx.job.updateMany({
       where: { id: jobId, status: expectedJobStatus },
       data: {
@@ -188,6 +197,8 @@ export async function finalizeJobApproval(
         approvedAt: now,
         approvedBy,
         completedAt: jobSnapshot.completedAt || now,
+        initialInvoiceNumber,
+        invoiceUpdateStatus,
         updatedAt: now,
       },
     });

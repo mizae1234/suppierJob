@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomInt } from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { getFailedAttemptFee, SLIDE_COMPLETION_FAILED_ATTEMPT } from '@/lib/slide-failed-attempt';
 import { createInvoiceSchema, parseBody } from '@/lib/validation';
 import { ensureJobsHaveD365Po } from '@/lib/services/invoices/ensure-invoice-pos';
+import { generateInitialInvoiceNumber } from '@/lib/invoice-number';
+import { isJobInvoiceUpdated, mergeVendorInvoiceNumbers } from '@/lib/invoice-workflow';
 
 /** เผื่อเวลาให้การเปิด D365 PO หลายใบงานใน 1 ใบวางบิล (Fail-closed) */
 export const maxDuration = 300;
@@ -100,7 +101,17 @@ export async function GET(request: NextRequest) {
         supplier: { select: { code: true, name: true } },
         company: { select: { code: true, name: true } },
         jobs: {
-          select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true, d365PoNumber: true },
+          select: {
+            id: true,
+            jobNumber: true,
+            jobType: true,
+            estimatedCost: true,
+            actualCost: true,
+            d365PoNumber: true,
+            initialInvoiceNumber: true,
+            vendorInvoiceNumber: true,
+            invoiceUpdateStatus: true,
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -110,6 +121,9 @@ export async function GET(request: NextRequest) {
     const formatted = invoices.map(inv => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
+      vendorInvoiceNumber:
+        inv.vendorInvoiceNumber ??
+        mergeVendorInvoiceNumbers(inv.jobs.map((j) => j.vendorInvoiceNumber)),
       supplierId: inv.supplierId,
       supplierName: inv.supplier.name,
       companyId: inv.companyId,
@@ -224,6 +238,14 @@ export async function POST(request: NextRequest) {
         throw new InvoiceValidationError('ไม่สามารถรวมงานข้าม Supplier ได้');
       }
 
+      // บังคับต้องอัปเดตเลข Invoice ของ Vendor เรียบร้อยแล้วทุกใบงานก่อนกดออกบิลเพื่อเปิด PO
+      const pendingInvoiceUpdates = jobs.filter((j) => !isJobInvoiceUpdated(j));
+      if (pendingInvoiceUpdates.length > 0) {
+        throw new InvoiceValidationError(
+          `กรุณาอัปเดตเลข Invoice ของใบงาน ${pendingInvoiceUpdates.map((j) => j.jobNumber).join(', ')} ให้เรียบร้อยก่อนกดออกบิลเพื่อเปิด PO`
+        );
+      }
+
       // ป้องกันการรวมงานข้ามสาขาเจ้าของรถ (คนละนิติบุคคล / Legal Entity ใน D365) ไว้ในใบวางบิลใบเดียวกัน
       const ownerBranchCodes = Array.from(
         new Set(jobs.map((j) => resolveJobOwnerBranchCode(j)))
@@ -268,9 +290,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const dateSeq = new Date().toISOString().slice(2, 7).replace('-', '');
-    const uniqueSuffix = `${Date.now().toString().slice(-4)}${randomInt(100, 1000)}`;
-    const invoiceNumber = `INV-${company.code}-${dateSeq}-${uniqueSuffix}`;
+    // ใช้เลข Invoice ชุดแรกที่ได้ตอนอนุมัติของใบงานแรก (หากยังไม่ซ้ำในตาราง Invoice) มิฉะนั้นสร้างเลขใหม่
+    const candidateInvoiceNumber = preCheckJobs.find((j) => j.initialInvoiceNumber?.trim())?.initialInvoiceNumber?.trim();
+    const existingWithCandidate = candidateInvoiceNumber
+      ? await prisma.invoice.findUnique({ where: { invoiceNumber: candidateInvoiceNumber }, select: { id: true } })
+      : null;
+    const invoiceNumber =
+      candidateInvoiceNumber && !existingWithCandidate
+        ? candidateInvoiceNumber
+        : generateInitialInvoiceNumber(company.code);
 
     // ─── ขั้นตอนที่ 3: ล็อกงานเป็น INVOICED และสร้างใบวางบิลแบบ Atomic ─────────────
     const invoice = await prisma.$transaction(async (tx) => {
@@ -301,13 +329,18 @@ export async function POST(request: NextRequest) {
       const effectiveVatRate = supplier.vatType === 'VAT_7' ? (supplier.vatRate || 0.07) : 0;
       const vatAmount = Number((subtotal * effectiveVatRate).toFixed(2));
       const totalAmount = Number((subtotal + vatAmount).toFixed(2));
+      const mergedVendorInvoiceNumber = mergeVendorInvoiceNumbers(
+        targetJobs.map((j) => j.vendorInvoiceNumber)
+      );
 
-      // Atomically verify and lock all target jobs to INVOICED (must have d365PoNumber)
+      // Atomically verify and lock all target jobs to INVOICED (must have d365PoNumber & UPDATED invoice)
       const updateResult = await tx.job.updateMany({
         where: {
           id: { in: jobIds },
           status: 'APPROVED',
           invoiceId: null,
+          invoiceUpdateStatus: 'UPDATED',
+          vendorInvoiceNumber: { not: null },
           d365PoNumber: { not: null },
         },
         data: {
@@ -324,6 +357,7 @@ export async function POST(request: NextRequest) {
       const inv = await tx.invoice.create({
         data: {
           invoiceNumber,
+          vendorInvoiceNumber: mergedVendorInvoiceNumber,
           supplierId,
           companyId,
           status: 'SUBMITTED',
@@ -339,7 +373,17 @@ export async function POST(request: NextRequest) {
           supplier: { select: { code: true, name: true, bankName: true, bankAccount: true } },
           company: { select: { code: true, name: true } },
           jobs: {
-            select: { id: true, jobNumber: true, jobType: true, estimatedCost: true, actualCost: true, d365PoNumber: true },
+            select: {
+              id: true,
+              jobNumber: true,
+              jobType: true,
+              estimatedCost: true,
+              actualCost: true,
+              d365PoNumber: true,
+              initialInvoiceNumber: true,
+              vendorInvoiceNumber: true,
+              invoiceUpdateStatus: true,
+            },
           },
         },
       });
@@ -350,6 +394,9 @@ export async function POST(request: NextRequest) {
     const formatted = {
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
+      vendorInvoiceNumber:
+        invoice.vendorInvoiceNumber ??
+        mergeVendorInvoiceNumbers(invoice.jobs.map((j) => j.vendorInvoiceNumber)),
       supplierId: invoice.supplierId,
       supplierName: invoice.supplier?.name || '',
       companyCode: invoice.company?.code,

@@ -26,3 +26,15 @@ export const createInvoiceSchema = z.object({
 });
 
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
+
+// ─── PATCH /api/jobs/[id]/invoice-number ─────────────────────────────────────
+
+export const updateJobInvoiceNumberSchema = z.object({
+  vendorInvoiceNumber: z
+    .string({ error: 'กรุณากรอกเลข Invoice' })
+    .trim()
+    .min(1, 'กรุณากรอกเลข Invoice')
+    .max(100, 'เลข Invoice ยาวเกินกำหนด (สูงสุด 100 ตัวอักษร)'),
+});
+
+export type UpdateJobInvoiceNumberInput = z.infer<typeof updateJobInvoiceNumberSchema>;
