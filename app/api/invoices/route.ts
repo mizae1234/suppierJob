@@ -5,6 +5,10 @@ import { requireAuth } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 import { getFailedAttemptFee, SLIDE_COMPLETION_FAILED_ATTEMPT } from '@/lib/slide-failed-attempt';
 import { createInvoiceSchema, parseBody } from '@/lib/validation';
+import { ensureJobsHaveD365Po } from '@/lib/services/invoices/ensure-invoice-pos';
+
+/** เผื่อเวลาให้การเปิด D365 PO หลายใบงานใน 1 ใบวางบิล (Fail-closed) */
+export const maxDuration = 300;
 
 /** ข้อผิดพลาดทางธุรกิจในการสร้างใบวางบิลที่ส่งข้อความกลับให้ผู้ใช้ได้ตรงๆ */
 class InvoiceValidationError extends Error {
@@ -132,7 +136,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: สร้าง Invoice ใหม่ พร้อมป้องกัน Race Condition & Double Invoicing
+// POST: สร้าง Invoice ใหม่ พร้อมเปิด D365 PO แบบ Fail-closed (1 ใบงาน = 1 PO) และป้องกัน Race Condition & Double Invoicing
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request, ['MASTER', 'SUPPLIER', 'ADMIN']);
   if (auth.response) return auth.response;
@@ -141,7 +145,8 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = await parseBody(request, createInvoiceSchema);
     if (parsed.response) return parsed.response;
-    const { supplierId, companyId, jobIds, dueDate, notes } = parsed.data;
+    const { supplierId, companyId, jobIds: rawJobIds, dueDate, notes } = parsed.data;
+    const jobIds = Array.from(new Set(rawJobIds));
 
     // Role-based validation
     if (user.role === 'SUPPLIER' && user.supplierId !== supplierId) {
@@ -170,69 +175,116 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ไม่พบข้อมูล Supplier นี้' }, { status: 404 });
     }
 
-    const dateSeq = new Date().toISOString().slice(2, 7).replace('-', '');
-    const uniqueSuffix = `${Date.now().toString().slice(-4)}${randomInt(100, 1000)}`;
-    const invoiceNumber = `INV-${company.code}-${dateSeq}-${uniqueSuffix}`;
-
-    // Execute atomic validation and creation within a single transaction
-    const invoice = await prisma.$transaction(async (tx) => {
-      // 1. Fetch target jobs inside transaction (รวมข้อมูลเจ้าของรถเพื่อตรวจไม่ให้รวมข้ามนิติบุคคล)
-      const targetJobs = await tx.job.findMany({
-        where: { id: { in: jobIds } },
+    const jobInclude = {
+      carWashItems: {
         include: {
-          carWashItems: {
-            include: {
-              vehicle: {
-                select: {
-                  d365SiteId: true,
-                  currentBranch: { select: { code: true } },
-                },
-              },
-            },
-          },
           vehicle: {
             select: {
               d365SiteId: true,
               currentBranch: { select: { code: true } },
             },
           },
-          pickupBranch: { select: { code: true } },
-          branch: { select: { code: true } },
-          company: { select: { code: true } },
         },
-      });
+      },
+      vehicle: {
+        select: {
+          d365SiteId: true,
+          currentBranch: { select: { code: true } },
+        },
+      },
+      pickupBranch: { select: { code: true } },
+      branch: { select: { code: true } },
+      company: { select: { code: true } },
+    } as const;
 
-      if (targetJobs.length !== jobIds.length) {
+    const validateTargetJobs = (
+      jobs: Awaited<ReturnType<typeof prisma.job.findMany<{ include: typeof jobInclude }>>>
+    ) => {
+      if (jobs.length !== jobIds.length) {
         throw new InvoiceValidationError('พบบางงานไม่ถูกต้องหรือไม่มีอยู่ในระบบ');
       }
 
-      const unapproved = targetJobs.filter(j => j.status !== 'APPROVED');
-      if (unapproved.length > 0) {
-        throw new InvoiceValidationError('ทุกงานที่นำมาวางบิลต้องได้รับการ Approve แล้วเท่านั้น');
-      }
-
-      const wrongCompany = targetJobs.filter(j => j.companyId !== companyId);
-      if (wrongCompany.length > 0) {
-        throw new InvoiceValidationError('ไม่สามารถรวมงานข้ามบริษัทได้');
-      }
-
-      const wrongSupplier = targetJobs.filter(j => j.supplierId !== supplierId);
-      if (wrongSupplier.length > 0) {
-        throw new InvoiceValidationError('ไม่สามารถรวมงานข้าม Supplier ได้');
-      }
-
-      const alreadyInvoiced = targetJobs.filter(j => j.invoiceId || j.status === 'INVOICED');
+      const alreadyInvoiced = jobs.filter(j => j.invoiceId || j.status === 'INVOICED');
       if (alreadyInvoiced.length > 0) {
         throw new InvoiceValidationError('มีบางรายการงานที่ถูกวางบิลไปแล้ว กรุณารีเฟรชหน้ารายการ');
       }
 
+      const unapproved = jobs.filter(j => j.status !== 'APPROVED');
+      if (unapproved.length > 0) {
+        throw new InvoiceValidationError('ทุกงานที่นำมาวางบิลต้องได้รับการ Approve แล้วเท่านั้น');
+      }
+
+      const wrongCompany = jobs.filter(j => j.companyId !== companyId);
+      if (wrongCompany.length > 0) {
+        throw new InvoiceValidationError('ไม่สามารถรวมงานข้ามบริษัทได้');
+      }
+
+      const wrongSupplier = jobs.filter(j => j.supplierId !== supplierId);
+      if (wrongSupplier.length > 0) {
+        throw new InvoiceValidationError('ไม่สามารถรวมงานข้าม Supplier ได้');
+      }
+
       // ป้องกันการรวมงานข้ามสาขาเจ้าของรถ (คนละนิติบุคคล / Legal Entity ใน D365) ไว้ในใบวางบิลใบเดียวกัน
       const ownerBranchCodes = Array.from(
-        new Set(targetJobs.map((j) => resolveJobOwnerBranchCode(j)))
+        new Set(jobs.map((j) => resolveJobOwnerBranchCode(j)))
       );
       if (ownerBranchCodes.length > 1) {
         throw new InvoiceValidationError(
           `ไม่สามารถรวมงานข้ามสาขาเจ้าของรถในใบวางบิลเดียวกันได้ (${ownerBranchCodes.join(', ')}) กรุณาแยกออกบิลตามสาขาเจ้าของรถ`
+        );
+      }
+    };
+
+    // ─── ขั้นตอนที่ 1: ตรวจสอบความถูกต้องของใบงานทั้งหมดก่อนยิง D365 PO ───────────
+    const preCheckJobs = await prisma.job.findMany({
+      where: { id: { in: jobIds } },
+      include: jobInclude,
+      orderBy: { createdAt: 'asc' },
+    });
+    validateTargetJobs(preCheckJobs);
+
+    // ─── ขั้นตอนที่ 2: เปิด D365 PO (1 ใบงาน = 1 PO) แบบ Fail-closed ก่อนสร้างบิล ───
+    const actorName = user.displayName || user.username;
+    const poResult = await ensureJobsHaveD365Po(
+      preCheckJobs.map((j) => ({
+        id: j.id,
+        jobNumber: j.jobNumber,
+        d365PoNumber: j.d365PoNumber,
+        d365PoStatus: j.d365PoStatus,
+        d365PoSentAt: j.d365PoSentAt,
+      })),
+      { id: user.id, name: actorName, role: user.role }
+    );
+
+    if (!poResult.ok) {
+      return NextResponse.json(
+        {
+          error: poResult.error,
+          failedJobId: poResult.failedJobId,
+          failedJobNumber: poResult.failedJobNumber,
+          openedBeforeFailure: poResult.openedBeforeFailure,
+        },
+        { status: poResult.status }
+      );
+    }
+
+    const dateSeq = new Date().toISOString().slice(2, 7).replace('-', '');
+    const uniqueSuffix = `${Date.now().toString().slice(-4)}${randomInt(100, 1000)}`;
+    const invoiceNumber = `INV-${company.code}-${dateSeq}-${uniqueSuffix}`;
+
+    // ─── ขั้นตอนที่ 3: ล็อกงานเป็น INVOICED และสร้างใบวางบิลแบบ Atomic ─────────────
+    const invoice = await prisma.$transaction(async (tx) => {
+      const targetJobs = await tx.job.findMany({
+        where: { id: { in: jobIds } },
+        include: jobInclude,
+      });
+      validateTargetJobs(targetJobs);
+
+      const missingPo = targetJobs.filter((j) => !j.d365PoNumber);
+      if (missingPo.length > 0) {
+        throw new InvoiceValidationError(
+          `ไม่สามารถสร้างใบวางบิลได้ เนื่องจากใบงาน ${missingPo.map((j) => j.jobNumber).join(', ')} ยังไม่มีเลข D365 PO`,
+          422
         );
       }
 
@@ -250,12 +302,13 @@ export async function POST(request: NextRequest) {
       const vatAmount = Number((subtotal * effectiveVatRate).toFixed(2));
       const totalAmount = Number((subtotal + vatAmount).toFixed(2));
 
-      // 2. Atomically verify and lock all target jobs to INVOICED
+      // Atomically verify and lock all target jobs to INVOICED (must have d365PoNumber)
       const updateResult = await tx.job.updateMany({
-        where: { 
+        where: {
           id: { in: jobIds },
           status: 'APPROVED',
           invoiceId: null,
+          d365PoNumber: { not: null },
         },
         data: {
           status: 'INVOICED',
@@ -267,7 +320,7 @@ export async function POST(request: NextRequest) {
         throw new InvoiceValidationError('เกิดข้อผิดพลาดในการล็อกสถานะงาน (บางงานอาจถูกวางบิลไปก่อนหน้า)');
       }
 
-      // 3. Create invoice and connect jobs (sets invoiceId to inv.id)
+      // Create invoice and connect jobs (sets invoiceId to inv.id)
       const inv = await tx.invoice.create({
         data: {
           invoiceNumber,
@@ -312,7 +365,18 @@ export async function POST(request: NextRequest) {
       createdAt: invoice.createdAt.toISOString(),
     };
 
-    return NextResponse.json({ success: true, invoice: formatted }, { status: 201 });
+    return NextResponse.json(
+      {
+        success: true,
+        invoice: formatted,
+        poSummary: {
+          openedCount: poResult.openedCount,
+          existingCount: poResult.existingCount,
+          poNumbers: poResult.poNumbers,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error: unknown) {
     if (error instanceof InvoiceValidationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

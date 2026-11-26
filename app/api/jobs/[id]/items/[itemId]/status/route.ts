@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { assertCanMutateJob } from '@/lib/job-access';
@@ -7,11 +7,9 @@ import { isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { ConflictError, toErrorResponse } from '@/lib/errors';
 import { validateItemStatusTransition } from '@/lib/services/jobs/state-machine';
 import {
-  claimJobForApprovalPo,
   finalizeJobApproval,
   isPoPendingActive,
   resolveApprovedByLabel,
-  runAsyncApprovalWithPo,
   STATUS_CONFLICT_MESSAGE,
 } from '@/lib/services/jobs/approve-job';
 import {
@@ -24,7 +22,7 @@ import { parseBody, updateCarWashItemStatusSchema } from '@/lib/validation';
 
 // PATCH: อัปเดตสถานะ CarWashItem รายคัน พร้อมตรวจสอบสิทธิ์ + State Machine + Optimistic Locking
 // เมื่อทุกรายการ COMPLETED → Master Job auto-transitions to WAITING_APPROVAL
-// เมื่อรายการสุดท้ายถูก APPROVED → เปิด D365 PO แบบ Async ผ่าน after() แล้วค่อยปิดใบงานเป็น APPROVED เมื่อ PO สำเร็จ
+// เมื่อรายการสุดท้ายถูก APPROVED → ปิดใบงานเป็น APPROVED + ย้ายรถ + ส่ง D365 Transfer Journal ทันที (D365 PO เปิดตอน Vendor ออกบิล)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; itemId: string }> }
@@ -118,7 +116,8 @@ export async function PATCH(
     }
 
     // ─── ตรวจว่าการอนุมัติรถคันนี้จะทำให้ใบงานครบทุกคัน (allApproved) หรือไม่ ────────
-    // หากครบทุกคัน: เปิด PO แบบ Async ผ่าน after() และยังไม่เปลี่ยนสถานะรายการรถคันสุดท้าย/ใบงานเป็น APPROVED จนกว่า PO สำเร็จ
+    // หากครบทุกคัน: ปิดอนุมัติใบงานทันที (APPROVED + ย้ายรถ + ส่ง D365 Transfer Journal)
+    // การเปิด D365 PO ย้ายไปทำเมื่อ Vendor กดออกใบวางบิล (POST /api/invoices)
     if (nextStatus === 'APPROVED') {
       const allItemsBefore = await prisma.carWashItem.findMany({ where: { jobId } });
       const simulatedItems = allItemsBefore.map((i) =>
@@ -134,82 +133,25 @@ export async function PATCH(
       if (willAllBeApproved) {
         const autoApprovedBy = resolveApprovedByLabel(user);
 
-        // กรณีใบงานมีเลข PO อยู่แล้ว → ปิดอนุมัติได้ทันที
-        if (job.d365PoNumber) {
-          const finalized = await finalizeJobApproval({
-            jobId,
-            expectedJobStatus: job.status,
-            user,
-            approvedBy: autoApprovedBy,
-            triggerItem: {
-              itemId,
-              expectedItemStatus: item.status,
-              remarks: remarks ?? null,
-            },
-            request,
-          });
-          const d365Po = {
-            success: true,
-            purchId: job.d365PoNumber,
-            message: `ใบงานนี้มีเลข PO แล้ว (${job.d365PoNumber})`,
-          };
-          return NextResponse.json({
-            success: true,
-            item: finalized.triggerItem ?? item,
-            progress: { ...finalized.progress, d365Po, d365Transfer: finalized.d365Transfer },
-            d365Po,
-            d365Transfer: finalized.d365Transfer,
-          });
-        }
-
-        // จองสถานะ d365PoStatus = 'PENDING' แบบ atomic แล้วตอบ 202 ทันที
-        // รายการรถคันสุดท้ายยังคงเป็น COMPLETED จนกว่า PO จะสำเร็จใน after() เพื่อให้ข้อมูลสอดคล้องเสมอ
-        await claimJobForApprovalPo({ jobId, expectedStatus: job.status });
-
-        const previousPoStatus = job.d365PoStatus ?? null;
-        const expectedJobStatus = job.status;
-        const expectedItemStatus = item.status;
-
-        after(() =>
-          runAsyncApprovalWithPo({
-            jobId,
-            jobNumber: job.jobNumber,
-            expectedJobStatus,
-            previousPoStatus,
-            user,
-            approvedBy: autoApprovedBy,
-            triggerItem: {
-              itemId,
-              expectedItemStatus,
-              remarks: remarks ?? null,
-            },
-          })
-        );
-
-        const completedCount = allItemsBefore.filter((i) => i.status === 'COMPLETED').length;
-        const approvedCount = allItemsBefore.filter((i) => i.status === 'APPROVED').length;
-        const cancelledCount = allItemsBefore.filter((i) => i.status === 'CANCELLED').length;
-        const totalCount = allItemsBefore.length;
-        const doneCount = completedCount + approvedCount;
-
-        return NextResponse.json(
-          {
-            success: true,
-            pending: true,
-            message: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
-            item,
-            progress: {
-              completed: doneCount,
-              approved: approvedCount,
-              cancelled: cancelledCount,
-              total: totalCount,
-              allResolved: doneCount + cancelledCount === totalCount,
-              allApproved: false,
-              pending: true,
-            },
+        const finalized = await finalizeJobApproval({
+          jobId,
+          expectedJobStatus: job.status,
+          user,
+          approvedBy: autoApprovedBy,
+          triggerItem: {
+            itemId,
+            expectedItemStatus: item.status,
+            remarks: remarks ?? null,
           },
-          { status: 202 }
-        );
+          request,
+        });
+
+        return NextResponse.json({
+          success: true,
+          item: finalized.triggerItem ?? item,
+          progress: { ...finalized.progress, d365Transfer: finalized.d365Transfer },
+          d365Transfer: finalized.d365Transfer,
+        });
       }
     }
 
@@ -253,7 +195,7 @@ export async function PATCH(
       const allApproved = approvedCount > 0 && approvedCount + cancelledCount === totalCount;
 
       // กัน race condition กรณีมีผู้ตรวจรับอนุมัติคันอื่นพร้อมกันจนครบทุกคันระหว่าง transaction นี้
-      // ห้ามเปลี่ยนใบงานเป็น APPROVED โดยไม่ผ่าน D365 PO → rollback ให้ผู้ใช้ลองใหม่ (รอบถัดไปจะเข้า async PO flow)
+      // เพื่อให้การปิดใบงานเป็น APPROVED + ส่ง D365 Transfer Journal ทำงานผ่าน finalizeJobApproval อย่างสมบูรณ์
       if (allApproved && ['IN_PROGRESS', 'WAITING_APPROVAL', 'REJECTED'].includes(job.status)) {
         throw new ConflictError(STATUS_CONFLICT_MESSAGE);
       }

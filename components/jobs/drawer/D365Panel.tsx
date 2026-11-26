@@ -34,10 +34,14 @@ export function D365Panel({
   const hasPo = Boolean(job.d365PoNumber);
   const isPoPending = !hasPo && job.d365PoStatus === 'PENDING';
   const isPoFailed = !hasPo && job.d365PoStatus === 'FAILED';
+  const isWaitingVendorBill = !hasPo && !isPoPending && !isPoFailed && job.status === 'APPROVED';
   const showPoCard = hasPo || isApprovedOrInvoiced || isPoFailed || isPoPending;
   const poMessage = hasPo
     ? `ระบบสร้างและยืนยัน PO เลขที่ ${job.d365PoNumber} ใน D365 เรียบร้อยแล้ว`
-    : job.d365PoMessage || 'รอเปิดใบสั่งซื้อในระบบ Dynamics 365';
+    : job.d365PoMessage ||
+      (isWaitingVendorBill
+        ? 'ระบบจะส่งเปิดใบสั่งซื้อไปยัง D365 อัตโนมัติเมื่อ Vendor กดออกใบวางบิล'
+        : 'รอเปิดใบสั่งซื้อในระบบ Dynamics 365');
 
   // D365 Transfer Journal state (Vehicle Slide only)
   const transferStatus = job.d365TransferStatus;
@@ -118,7 +122,9 @@ export function D365Panel({
                       ? 'กำลังเปิดใบสั่งซื้อใน D365...'
                       : isPoFailed
                         ? 'เปิดใบสั่งซื้อใน D365 ไม่สำเร็จ'
-                        : 'สถานะใบสั่งซื้อ D365'}
+                        : isWaitingVendorBill
+                          ? 'รอเปิดใบสั่งซื้อ (D365 PO) ตอนวางบิล'
+                          : 'สถานะใบสั่งซื้อ D365'}
                 </span>
                 {hasPo && (
                   <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-emerald-100 text-[#0f5238] border border-emerald-300">
@@ -137,11 +143,12 @@ export function D365Panel({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Retry PO Button for MASTER / ADMIN */}
+            {/* Retry PO Button for MASTER / ADMIN (แสดงเมื่อเคยส่งล้มเหลว หรือวางบิลแล้วแต่ยังไม่มีเลข PO) */}
             {(currentRole === 'MASTER' || currentRole === 'ADMIN') &&
               !hasPo &&
               !isPoPending &&
-              isApprovedOrInvoiced && (
+              isApprovedOrInvoiced &&
+              (isPoFailed || job.status === 'INVOICED') && (
                 <button
                   type="button"
                   disabled={isRetryingPo}

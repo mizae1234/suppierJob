@@ -390,6 +390,8 @@ export default function AuditLogsPage() {
                     ? 'กดส่งซ้ำ (Manual Retry)'
                     : item.trigger === 'ODATA_RECOVERY'
                     ? 'กู้คืน PO จาก D365 OData'
+                    : item.trigger === 'AUTO_INVOICE'
+                    ? 'ออกใบวางบิลอัตโนมัติ'
                     : 'อนุมัติงานอัตโนมัติ';
 
                 return (

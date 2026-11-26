@@ -259,11 +259,11 @@ export interface D365PurchaseOrderResponse {
 }
 
 export interface SendPoOptions {
-  trigger?: 'AUTO_APPROVE' | 'MANUAL_RETRY';
+  trigger?: 'AUTO_INVOICE' | 'AUTO_APPROVE' | 'MANUAL_RETRY';
   actorId?: string | null;
   actorName?: string | null;
   actorRole?: string | null;
-  /** true เมื่อผู้เรียกจอง d365PoStatus='PENDING' แบบ atomic ไว้ก่อนแล้ว (เช่น ผ่าน Next.js after()) */
+  /** true เมื่อผู้เรียกจอง d365PoStatus='PENDING' แบบ atomic ไว้ก่อนแล้ว */
   alreadyClaimed?: boolean;
   /** ค่า d365PoStatus ก่อนผู้เรียกจองเป็น PENDING — ใช้ตัดสินใจรัน OData recovery เมื่อเคย FAILED */
   previousPoStatus?: string | null;
@@ -341,7 +341,7 @@ export async function sendJobToD365PurchaseOrder(
   message: string;
 }> {
   const startTime = Date.now();
-  const trigger = options?.trigger || 'AUTO_APPROVE';
+  const trigger = options?.trigger || 'AUTO_INVOICE';
 
   const job = await prisma.job.findUnique({
     where: { id: jobId },

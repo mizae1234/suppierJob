@@ -103,9 +103,9 @@ export async function POST(
       return NextResponse.json({ error: 'ไม่พบข้อมูลใบสั่งงาน' }, { status: 404 });
     }
 
-    if (job.status !== 'APPROVED' && job.status !== 'INVOICED' && job.status !== 'WAITING_APPROVAL') {
+    if (job.status !== 'APPROVED' && job.status !== 'INVOICED') {
       return NextResponse.json(
-        { error: 'สามารถสร้าง PO ได้เฉพาะงานที่รอตรวจรับ (WAITING_APPROVAL) หรืออนุมัติแล้ว (APPROVED) เท่านั้น' },
+        { error: 'สามารถสร้าง PO ได้เฉพาะงานที่อนุมัติแล้ว (APPROVED) หรือวางบิลแล้ว (INVOICED) เท่านั้น' },
         { status: 400 }
       );
     }

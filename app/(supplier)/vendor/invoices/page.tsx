@@ -389,11 +389,15 @@ export default function SupplierInvoicesPage() {
 
       if (createdInvoices.length > 0 && failedMessages.length === 0) {
         if (createdInvoices.length === 1) {
-          showToast(`ออกใบวางบิล ${createdInvoices[0].invoiceNumber} เรียบร้อยแล้ว`, 'success');
+          showToast(
+            `เปิด PO ใน D365 และออกใบวางบิล ${createdInvoices[0].invoiceNumber} เรียบร้อยแล้ว`,
+            'success',
+            5500
+          );
         } else {
           const numbers = createdInvoices.map((i) => i.invoiceNumber).join(', ');
           showToast(
-            `ออกใบวางบิลแยกตามสาขาเจ้าของรถสำเร็จ ${createdInvoices.length} ใบ (${numbers}) — พิมพ์รวมชุดได้ทันที`,
+            `เปิด PO ใน D365 และออกใบวางบิลแยกตามสาขาเจ้าของรถสำเร็จ ${createdInvoices.length} ใบ (${numbers}) — พิมพ์รวมชุดได้ทันที`,
             'success',
             6000
           );
@@ -403,11 +407,11 @@ export default function SupplierInvoicesPage() {
         showToast(
           `ออกใบวางบิลสำเร็จ ${createdInvoices.length} ใบ แต่ไม่สำเร็จบางสาขา: ${failedMessages.join(' | ')}`,
           'warning',
-          7000
+          8000
         );
         setPreviewInvoices(createdInvoices);
       } else {
-        showToast(failedMessages[0] || 'เกิดข้อผิดพลาดในการสร้างใบวางบิล', 'error');
+        showToast(failedMessages[0] || 'เกิดข้อผิดพลาดในการสร้างใบวางบิล', 'error', 8000);
       }
     } catch (err) {
       console.error(err);
@@ -703,11 +707,18 @@ export default function SupplierInvoicesPage() {
                                 <span className="text-xs font-bold font-mono text-gray-900">
                                   {job.jobNumber}
                                 </span>
-                                {job.d365PoNumber && (
+                                {job.d365PoNumber ? (
                                   <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
                                     PO: {job.d365PoNumber}
                                   </span>
-                                )}
+                                ) : job.d365PoStatus === 'FAILED' ? (
+                                  <span
+                                    title={job.d365PoMessage || 'เปิด PO ใน D365 ไม่สำเร็จ'}
+                                    className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800"
+                                  >
+                                    เปิด PO ครั้งก่อนไม่สำเร็จ
+                                  </span>
+                                ) : null}
                               </div>
                               <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                                 <span>
@@ -771,6 +782,9 @@ export default function SupplierInvoicesPage() {
                     </span>
                   </p>
                 )}
+                <p className="text-[11px] text-gray-500">
+                  เมื่อกดออกใบวางบิล ระบบจะส่งเปิด PO ใน D365 ให้แต่ละใบงานอัตโนมัติก่อนสร้างเอกสาร
+                </p>
               </div>
               <button
                 type="button"
@@ -784,9 +798,11 @@ export default function SupplierInvoicesPage() {
                 ) : (
                   <Receipt className="w-4 h-4" />
                 )}
-                {selectedBillingGroups.length > 1
-                  ? `ออก ${selectedBillingGroups.length} ใบวางบิล`
-                  : 'ออกใบวางบิล'}
+                {isCreating
+                  ? 'กำลังเปิด PO ใน D365 และออกใบวางบิล...'
+                  : selectedBillingGroups.length > 1
+                    ? `ออก ${selectedBillingGroups.length} ใบวางบิล`
+                    : 'ออกใบวางบิล'}
               </button>
             </div>
           )}

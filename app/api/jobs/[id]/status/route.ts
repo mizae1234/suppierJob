@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth } from '@/lib/auth';
 import { assertCanMutateJob } from '@/lib/job-access';
@@ -10,11 +10,9 @@ import {
 import { ConflictError, toErrorResponse } from '@/lib/errors';
 import { validateJobStatusTransition } from '@/lib/services/jobs/state-machine';
 import {
-  claimJobForApprovalPo,
   finalizeJobApproval,
   isPoPendingActive,
   resolveApprovedByLabel,
-  runAsyncApprovalWithPo,
   STATUS_CONFLICT_MESSAGE,
 } from '@/lib/services/jobs/approve-job';
 import {
@@ -114,8 +112,8 @@ export async function PATCH(
       }
     }
 
-    // ─── อนุมัติใบงาน (APPROVED): เปิด D365 PO แบบ Async ผ่าน Next.js after() ────────
-    // กฎสำคัญ: ใบงานยังไม่เปลี่ยนเป็น APPROVED บน Kanban จนกว่าการเปิด PO ใน D365 จะสำเร็จ
+    // ─── อนุมัติใบงาน (APPROVED): ปิดอนุมัติทันที + ย้ายรถ + ส่ง D365 Transfer Journal ────────
+    // การเปิด D365 Purchase Order (PO) ย้ายไปทำเมื่อ Vendor กดออกใบวางบิล (POST /api/invoices)
     if (nextStatus === 'APPROVED') {
       const resolvedApprovedBy = resolveApprovedByLabel(user, approvedBy);
       const resolvedFailedFee =
@@ -129,59 +127,20 @@ export async function PATCH(
         );
       }
 
-      // กรณีใบงานมีเลข PO อยู่แล้ว (เช่น เคยกดส่งซ้ำจนสำเร็จ) → ปิดอนุมัติได้ทันทีโดยไม่ต้องเปิด PO ใหม่
-      if (job.d365PoNumber) {
-        const finalized = await finalizeJobApproval({
-          jobId: id,
-          expectedJobStatus: job.status,
-          user,
-          approvedBy: resolvedApprovedBy,
-          failedAttemptFee: resolvedFailedFee,
-          request,
-        });
-        const d365Po = {
-          success: true,
-          purchId: job.d365PoNumber,
-          message: `ใบงานนี้มีเลข PO แล้ว (${job.d365PoNumber})`,
-        };
-        return NextResponse.json({
-          success: true,
-          job: finalized.job,
-          d365Po,
-          d365Transfer: finalized.d365Transfer,
-        });
-      }
-
-      // จองสถานะ d365PoStatus = 'PENDING' แบบ atomic แล้วตอบ 202 ทันที จากนั้นเปิด PO + ปิดอนุมัติใน after()
-      // กรณีเที่ยวเปล่าที่มีการแก้ไขยอด: บันทึก actualCost ไว้ตั้งแต่ขั้นตอนนี้เพื่อให้ D365 PO อ่านยอดใหม่ทันที
-      await claimJobForApprovalPo({
+      const finalized = await finalizeJobApproval({
         jobId: id,
-        expectedStatus: job.status,
-        actualCost: resolvedFailedFee,
+        expectedJobStatus: job.status,
+        user,
+        approvedBy: resolvedApprovedBy,
+        failedAttemptFee: resolvedFailedFee,
+        request,
       });
 
-      const previousPoStatus = job.d365PoStatus ?? null;
-      const expectedJobStatus = job.status;
-      after(() =>
-        runAsyncApprovalWithPo({
-          jobId: id,
-          jobNumber: job.jobNumber,
-          expectedJobStatus,
-          previousPoStatus,
-          user,
-          approvedBy: resolvedApprovedBy,
-          failedAttemptFee: resolvedFailedFee,
-        })
-      );
-
-      return NextResponse.json(
-        {
-          success: true,
-          pending: true,
-          message: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
-        },
-        { status: 202 }
-      );
+      return NextResponse.json({
+        success: true,
+        job: finalized.job,
+        d365Transfer: finalized.d365Transfer,
+      });
     }
 
     // ─── Non-APPROVED Atomic Update with Optimistic Lock ──────────────

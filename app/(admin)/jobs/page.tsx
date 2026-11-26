@@ -277,34 +277,7 @@ function JobsContent() {
       return;
     }
 
-    if (res?.pending) {
-      showToast(
-        `กำลังเปิด PO ใน D365 สำหรับใบงาน ${jobLabel}... ระบบจะเปลี่ยนสถานะเป็นอนุมัติอัตโนมัติเมื่อเปิด PO สำเร็จ`,
-        'info',
-        5500
-      );
-      if (selectedJob?.id === jobId) {
-        setSelectedJob(prev =>
-          prev
-            ? {
-                ...prev,
-                ...(typeof failedAttemptFee === 'number' ? { actualCost: failedAttemptFee } : {}),
-                d365PoStatus: 'PENDING',
-                d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
-              }
-            : null
-        );
-      }
-      return;
-    }
-
-    if (res?.d365Po?.success && res.d365Po.purchId) {
-      showToast(`อนุมัติใบงาน ${jobLabel} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${res.d365Po.purchId})`, 'success', 5500);
-    } else if (res?.d365Po && !res.d365Po.success) {
-      showToast(`อนุมัติใบงาน ${jobLabel} เรียบร้อยแล้ว แต่สร้าง PO ในระบบ D365 ไม่สำเร็จ: ${res.d365Po.message}`, 'warning', 6500);
-    } else {
-      showToast(`อนุมัติใบงาน ${jobLabel} เรียบร้อยแล้ว`, 'success', 4500);
-    }
+    showToast(`อนุมัติใบงาน ${jobLabel} เรียบร้อยแล้ว`, 'success', 4500);
 
     if (selectedJob?.id === jobId) {
       setSelectedJob(prev =>
@@ -342,23 +315,8 @@ function JobsContent() {
       return;
     }
 
-    if (progress.pending) {
-      showToast(
-        `กำลังเปิด PO ใน D365 สำหรับใบงาน ${job.jobNumber}... ระบบจะอนุมัติใบงานอัตโนมัติเมื่อเปิด PO สำเร็จ`,
-        'info',
-        5500
-      );
-      return;
-    }
-
     if (progress.allApproved) {
-      if (progress.d365Po?.success && progress.d365Po.purchId) {
-        showToast(`อนุมัติใบงาน ${job.jobNumber} และสร้าง PO ในระบบ D365 เรียบร้อยแล้ว (เลขที่ PO: ${progress.d365Po.purchId})`, 'success', 5500);
-      } else if (progress.d365Po && !progress.d365Po.success) {
-        showToast(`อนุมัติใบงาน ${job.jobNumber} เรียบร้อยแล้ว แต่สร้าง PO ในระบบ D365 ไม่สำเร็จ: ${progress.d365Po.message}`, 'warning', 6500);
-      } else {
-        showToast(`อนุมัติครบทุกคันเรียบร้อยแล้ว — ปิดใบงาน ${job.jobNumber}`, 'success', 4500);
-      }
+      showToast(`อนุมัติครบทุกคันเรียบร้อยแล้ว — ปิดใบงาน ${job.jobNumber}`, 'success', 4500);
     } else {
       const carLabel = item.licensePlate || item.vin;
       showToast(`อนุมัติรถคัน ${carLabel} เรียบร้อยแล้ว (${progress.approved}/${progress.total - progress.cancelled} คัน)`, 'success', 3500);

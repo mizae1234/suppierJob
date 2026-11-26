@@ -2,7 +2,6 @@ import type { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import type { SessionUser } from '@/lib/session';
 import { logAuditFromUser } from '@/lib/audit-log';
-import { sendJobToD365PurchaseOrder } from '@/lib/d365/po';
 import { sendJobToD365TransferJournal, type D365TransferStatus } from '@/lib/d365/transfer';
 import { getFailedAttemptFee, isFailedAttemptJob } from '@/lib/slide-failed-attempt';
 import { ConflictError } from '@/lib/errors';
@@ -41,53 +40,6 @@ export function resolveApprovedByLabel(
   return userBranchLabel ? `${userBranchLabel} (${userName})` : userName;
 }
 
-/**
- * จองใบงานแบบ atomic เพื่อเริ่มเปิด PO ใน D365 แบบ asynchronous (ผ่าน Next.js after())
- * - ตรวจว่า job.status ยังตรงกับ expectedStatus และไม่มีการส่ง PO ค้างอยู่ (d365PoStatus != 'PENDING' หรือ stale แล้ว)
- * - ยังไม่เปลี่ยน job.status เป็น APPROVED (Kanban จะยังคงอยู่ที่รอตรวจรับจนกว่า PO จะสำเร็จ)
- */
-export async function claimJobForApprovalPo(params: {
-  jobId: string;
-  expectedStatus: string;
-  actualCost?: number;
-}): Promise<void> {
-  const { jobId, expectedStatus, actualCost } = params;
-  const staleCutoff = new Date(Date.now() - PO_PENDING_STALE_MS);
-
-  const claimed = await prisma.job.updateMany({
-    where: {
-      id: jobId,
-      status: expectedStatus,
-      OR: [
-        { d365PoStatus: null },
-        { d365PoStatus: { not: 'PENDING' } },
-        { d365PoSentAt: null },
-        { d365PoSentAt: { lt: staleCutoff } },
-      ],
-    },
-    data: {
-      d365PoStatus: 'PENDING',
-      d365PoMessage: 'กำลังส่งเปิดใบสั่งซื้อไปยัง D365...',
-      d365PoSentAt: new Date(),
-      ...(typeof actualCost === 'number' && Number.isFinite(actualCost) && actualCost > 0
-        ? { actualCost }
-        : {}),
-      updatedAt: new Date(),
-    },
-  });
-
-  if (claimed.count === 0) {
-    const latest = await prisma.job.findUnique({
-      where: { id: jobId },
-      select: { status: true, d365PoStatus: true, d365PoSentAt: true },
-    });
-    if (latest && latest.status === expectedStatus && isPoPendingActive(latest)) {
-      throw new ConflictError('ใบงานนี้กำลังส่งเปิด PO ไปยัง D365 อยู่ กรุณารอสักครู่');
-    }
-    throw new ConflictError(STATUS_CONFLICT_MESSAGE);
-  }
-}
-
 export interface FinalizeApprovalParams {
   jobId: string;
   expectedJobStatus: string;
@@ -124,16 +76,14 @@ export interface FinalizeApprovalResult {
 }
 
 /**
- * ปิดการอนุมัติใบงานหลังเปิด PO สำเร็จแล้ว (ใช้ร่วมกันทั้ง whole-job approve และ final-item auto-approve):
+ * ปิดการอนุมัติใบงาน (ใช้ร่วมกันทั้ง whole-job approve และ final-item auto-approve):
  * 1) ตรวจ optimistic lock ของ Job (และ triggerItem ถ้ามี)
  * 2) snapshot Vehicle.d365WarehouseId ลง CarWashItem.fromWarehouseId ก่อนแก้คลังรถ
  * 3) เปลี่ยนสถานะใบงานเป็น APPROVED, อนุมัติรายการรถที่เกี่ยวข้อง, ย้ายสาขา/คลังรถ (ยกเว้นเที่ยวเปล่า)
  * 4) บันทึก JobActivity, AuditLog, VehicleSlideLog
  * 5) ส่ง D365 Inventory Transfer Journal (เฉพาะงานรถสไลด์ปกติ ไม่ใช่เที่ยวเปล่า)
  *
- * หมายเหตุสำหรับการอนุมัติรายคันที่ทำให้ครบทั้งใบงาน:
- * เราเลือกเก็บสถานะรายการรถคันสุดท้ายไว้เป็น COMPLETED จนกว่าการเปิด PO จะสำเร็จ แล้วจึงเปลี่ยนทั้งรายการรถและใบงานเป็น APPROVED
- * พร้อมกันใน transaction เดียว เพื่อให้ข้อมูลสอดคล้องเสมอ (หาก PO ล้มเหลว รถคันสุดท้ายยังไม่ถูกย้ายสาขา และผู้ใช้กดอนุมัติซ้ำได้ทันที)
+ * หมายเหตุ: การเปิด D365 Purchase Order (PO) ย้ายไปทำเมื่อ Vendor กดออกใบวางบิล (POST /api/invoices)
  */
 export async function finalizeJobApproval(
   params: FinalizeApprovalParams
@@ -431,74 +381,4 @@ export async function finalizeJobApproval(
     progress: txResult.progress,
     d365Transfer,
   };
-}
-
-/**
- * งานเบื้องหลังที่รันใน Next.js after() หลัง claimJobForApprovalPo และตอบ 202 แล้ว:
- * 1) เปิด PO ใน D365 (alreadyClaimed: true)
- * 2) หากสำเร็จ → เรียก finalizeJobApproval (เปลี่ยนเป็น APPROVED + ย้ายรถ + ส่ง Transfer Journal)
- * 3) หากล้มเหลว → คงใบงานไว้สถานะเดิม (WAITING_APPROVAL/IN_PROGRESS) และ d365PoStatus = FAILED
- */
-export async function runAsyncApprovalWithPo(params: {
-  jobId: string;
-  jobNumber: string;
-  expectedJobStatus: string;
-  previousPoStatus: string | null;
-  user: SessionUser;
-  approvedBy: string;
-  failedAttemptFee?: number;
-  triggerItem?: {
-    itemId: string;
-    expectedItemStatus: string;
-    remarks?: string | null;
-  };
-}): Promise<void> {
-  const { jobId, jobNumber, expectedJobStatus, previousPoStatus, user, approvedBy, failedAttemptFee, triggerItem } = params;
-
-  let poResult: { success: boolean; purchId?: string; message: string };
-  try {
-    poResult = await sendJobToD365PurchaseOrder(jobId, {
-      trigger: 'AUTO_APPROVE',
-      actorId: user.id,
-      actorName: approvedBy,
-      actorRole: user.role,
-      alreadyClaimed: true,
-      previousPoStatus,
-    });
-    console.log(`[AsyncApprove] D365 PO result for ${jobNumber}:`, poResult);
-  } catch (poErr) {
-    const msg = poErr instanceof Error ? poErr.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อ D365';
-    console.error(`[AsyncApprove] Unexpected D365 PO error for ${jobNumber}:`, poErr);
-    // กันสถานะค้าง PENDING กรณีเกิด error นอก try/catch ของ po.ts
-    await prisma.job
-      .updateMany({
-        where: { id: jobId, d365PoStatus: 'PENDING' },
-        data: {
-          d365PoStatus: 'FAILED',
-          d365PoMessage: msg,
-          d365PoSentAt: new Date(),
-          updatedAt: new Date(),
-        },
-      })
-      .catch((dbErr) => console.error('[AsyncApprove] Failed to mark PO FAILED:', dbErr));
-    return;
-  }
-
-  if (!poResult.success) {
-    // po.ts บันทึก d365PoStatus = 'FAILED' เรียบร้อยแล้ว → ไม่เปลี่ยนสถานะใบงานเป็น APPROVED
-    return;
-  }
-
-  try {
-    await finalizeJobApproval({
-      jobId,
-      expectedJobStatus,
-      user,
-      approvedBy,
-      failedAttemptFee,
-      triggerItem,
-    });
-  } catch (finalizeErr) {
-    console.error(`[AsyncApprove] Finalize approval failed after PO success for ${jobNumber}:`, finalizeErr);
-  }
 }

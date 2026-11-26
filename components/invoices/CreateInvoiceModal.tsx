@@ -337,11 +337,18 @@ export function CreateInvoiceModal({
                                 <div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-mono font-bold text-gray-900">{job.jobNumber}</span>
-                                    {job.d365PoNumber && (
+                                    {job.d365PoNumber ? (
                                       <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-[#0f5238]">
                                         PO: {job.d365PoNumber}
                                       </span>
-                                    )}
+                                    ) : job.d365PoStatus === 'FAILED' ? (
+                                      <span
+                                        title={job.d365PoMessage || 'เปิด PO ใน D365 ไม่สำเร็จ'}
+                                        className="px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-800"
+                                      >
+                                        เปิด PO ครั้งก่อนไม่สำเร็จ
+                                      </span>
+                                    ) : null}
                                     <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
                                       {job.jobType === 'CAR_WASH' ? <Sparkles className="w-3 h-3 text-emerald-500" /> : <Truck className="w-3 h-3 text-blue-500" />}
                                       {job.jobType === 'CAR_WASH' ? 'ล้างรถ' : 'รถสไลด์'}
@@ -444,7 +451,7 @@ export function CreateInvoiceModal({
               className="px-6 py-2 rounded-xl text-xs font-bold bg-[#0f5238] text-white hover:bg-[#0a3d28] disabled:opacity-50 disabled:cursor-not-allowed shadow-xs cursor-pointer"
             >
               {isSubmitting
-                ? 'กำลังสร้างใบวางบิล...'
+                ? 'กำลังเปิด PO ใน D365 และสร้างใบวางบิล...'
                 : selectedOwnerGroups.length > 1
                   ? `ยืนยันสร้าง ${selectedOwnerGroups.length} ใบวางบิล`
                   : 'ยืนยันการสร้างใบวางบิล'}

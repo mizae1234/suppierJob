@@ -400,9 +400,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await Promise.all([fetchJobs({ full: false }), fetchVehicles()]);
   }, [fetchJobs, fetchVehicles]);
 
-  // ─── ติดตามสถานะ PO ที่กำลังส่งไป D365 เบื้องหลัง ─────
-  // เมื่อกดอนุมัติ API จะจอง d365PoStatus=PENDING แล้วตอบ 202 ทันที จากนั้นเปิด PO และปิดอนุมัติใน after()
-  // (ใบงานจะยังไม่เปลี่ยนเป็น APPROVED จนกว่า PO สำเร็จ)
+  // ─── ติดตามสถานะ PO ที่กำลังส่งไป D365 ─────
+  // กรณีมีใบงานที่กำลังส่งเปิด PO ค้างอยู่ (d365PoStatus=PENDING เช่น จากอีกแท็บหรือระหว่างออกบิล)
   // ดึงเฉพาะงานที่ PENDING ทุก 5 วินาที สูงสุด 48 ครั้ง (~4 นาที เผื่อ PO timeout 120 วินาที + OData recovery)
   const pendingPoJobIds = useMemo(
     () => jobs.filter(j => j.d365PoStatus === 'PENDING').map(j => j.id).sort().join(','),
@@ -916,13 +915,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        // Jobs become INVOICED + new invoice → refresh jobs + invoices
+        // Jobs become INVOICED with D365 PO numbers + new invoice → refresh jobs + invoices
         await Promise.all([fetchJobs(), fetchInvoices()]);
         return { success: true, invoice: data.invoice };
       }
+      // กรณีเปิด PO ล้มเหลวบางงาน (หรือเปิดสำเร็จไปบางส่วนก่อนพลาด) → รีเฟรชสถานะใบงานเพื่อให้เห็นเลข PO / สถานะ FAILED ล่าสุด
+      void fetchJobs({ full: false });
       return { success: false, error: data.error || 'สร้าง Invoice ไม่สำเร็จ' };
     } catch (e) {
       console.error('Create invoice failed:', e);
+      void fetchJobs({ full: false });
       return { success: false, error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' };
     }
   }, [companies, fetchJobs, fetchInvoices]);
